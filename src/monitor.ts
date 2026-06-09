@@ -1,0 +1,61 @@
+/**
+ * Polling monitor — calls a tick function on a configurable interval.
+ * Fires the first tick immediately, then every N minutes.
+ */
+
+import type { Logger } from './logger'
+import { sleep } from './utils'
+
+export interface PollingMonitor {
+  start: () => Promise<void>
+  stop: () => Promise<void>
+}
+
+export function createPollingMonitor(opts: {
+  intervalMinutes: number
+  onTick: () => Promise<void>
+  logger?: Logger
+}): PollingMonitor {
+  const intervalMs = opts.intervalMinutes * 60 * 1000
+  let active = true
+  const currentTick: Promise<void> | null = null
+  const timer: ReturnType<typeof setTimeout> | null = null
+
+  async function start(): Promise<void> {
+    active = true
+    opts.logger?.info(`Polling started (interval: ${opts.intervalMinutes} min)`)
+
+    while (active) {
+      try {
+        await opts.onTick()
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        opts.logger?.error(`Tick error: ${msg}`)
+      }
+
+      if (!active) break
+
+      // Wait for the interval, checking periodically if we should stop
+      const checkInterval = 1000 // check every second
+      let waited = 0
+      while (waited < intervalMs) {
+        if (!active) break
+        await sleep(Math.min(checkInterval, intervalMs - waited))
+        waited += checkInterval
+      }
+    }
+
+    opts.logger?.info('Polling stopped')
+  }
+
+  async function stop(): Promise<void> {
+    active = false
+    if (timer) clearTimeout(timer)
+    // Wait for in-flight tick to finish
+    if (currentTick) {
+      await currentTick
+    }
+  }
+
+  return { start, stop }
+}
