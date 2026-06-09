@@ -2,8 +2,8 @@
  * Recorder orchestrator — wires together the API, monitor, stream downloader,
  * and converter into a single RecorderController.
  *
- * Downloads the full stream as a single FLV, then uses FFmpeg to split it
- * into time-aligned MP4 segments.
+ * Downloads the full stream (FLV via fetch, HLS via FFmpeg), then uses FFmpeg
+ * to split it into time-aligned MP4 segments.
  */
 
 import { spawn } from "node:child_process"
