@@ -22,8 +22,8 @@ describe('parseArgs', () => {
     expect(cfg.interval).toBe(10)
   })
 
-  test('parses --duration', () => {
-    const cfg = parseArgs(['bun', 'test', '--user', 'u', '--duration', '300'])
+  test('parses --duration (minutes, converted to seconds)', () => {
+    const cfg = parseArgs(['bun', 'test', '--user', 'u', '--duration', '5'])
     expect(cfg.duration).toBe(300)
   })
 
@@ -52,5 +52,40 @@ describe('parseArgs', () => {
 
   test('throws on invalid --log-level', () => {
     expect(() => parseArgs(['bun', 'test', '--user', 'u', '--log-level', 'verbose'])).toThrow()
+  })
+
+  test('parses -u as shorthand for --user', () => {
+    const cfg = parseArgs(['bun', 'test', '-u', 'testuser'])
+    expect(cfg.user).toBe('testuser')
+  })
+
+  test('parses -o as shorthand for --output', () => {
+    const cfg = parseArgs(['bun', 'test', '-u', 'u', '-o', '/videos'])
+    expect(cfg.outputDir).toBe('/videos')
+  })
+
+  test('parses -i as shorthand for --interval', () => {
+    const cfg = parseArgs(['bun', 'test', '-u', 'u', '-i', '10'])
+    expect(cfg.interval).toBe(10)
+  })
+
+  test('parses -d as shorthand for --duration', () => {
+    const cfg = parseArgs(['bun', 'test', '-u', 'u', '-d', '5'])
+    expect(cfg.duration).toBe(300)
+  })
+
+  test('parses -p as shorthand for --proxy', () => {
+    const cfg = parseArgs(['bun', 'test', '-u', 'u', '-p', 'http://proxy:8080'])
+    expect(cfg.proxy).toBe('http://proxy:8080')
+  })
+
+  test('parses -l as shorthand for --log-level', () => {
+    const cfg = parseArgs(['bun', 'test', '-u', 'u', '-l', 'debug'])
+    expect(cfg.logLevel).toBe('debug')
+  })
+
+  test('parses -c as shorthand for --cookies', () => {
+    const cfg = parseArgs(['bun', 'test', '-u', 'u', '-c', './custom-cookies.json'])
+    expect(cfg.cookiesPath).toBe('./custom-cookies.json')
   })
 })

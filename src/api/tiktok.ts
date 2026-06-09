@@ -97,7 +97,7 @@ export function createTikTokApi(http: HttpClient): TikTokApi {
       }
 
       return { roomId, isLive, streamUrl, title: liveRoom.title ?? null }
-    } catch (err) {
+    } catch (_err) {
       // Timeout (15s) or network error → treat as offline
       return null
     }
@@ -115,7 +115,7 @@ export function createTikTokApi(http: HttpClient): TikTokApi {
       if (!res.ok) return null
 
       const text = await res.text()
-      if (!text.length) return null
+      if (text.length === 0) return null
 
       const data = JSON.parse(text) as Record<string, unknown>
 
