@@ -9,7 +9,6 @@
  * per poll cycle.
  */
 
-import { TikTokError } from '../config'
 import type { HttpClient } from './client'
 
 export interface TikTokApi {
@@ -99,8 +98,8 @@ export function createTikTokApi(http: HttpClient): TikTokApi {
 
       return { roomId, isLive, streamUrl, title: liveRoom.title ?? null }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      throw new TikTokError('network-error', `Failed to fetch live info: ${msg}`, err)
+      // Timeout (15s) or network error → treat as offline
+      return null
     }
   }
 
