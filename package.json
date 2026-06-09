@@ -3,20 +3,20 @@
   "version": "0.2.1",
   "description": "Minimal TikTok live stream recorder — Bun + TypeScript",
   "type": "module",
-  "main": "./dist/lib.js",
-  "types": "./dist/lib.d.ts",
+  "main": "./dist/lib.mjs",
+  "types": "./dist/lib.d.mts",
   "exports": {
     ".": {
-      "types": "./dist/lib.d.ts",
-      "default": "./dist/lib.js"
+      "types": "./dist/lib.d.mts",
+      "default": "./dist/lib.mjs"
     },
     "./cli": {
-      "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
+      "types": "./dist/index.d.mts",
+      "default": "./dist/index.mjs"
     }
   },
   "bin": {
-    "tiktok-live-recorder": "./dist/index.js"
+    "tiktok-live-recorder": "./dist/index.mjs"
   },
   "files": [
     "dist"
@@ -44,6 +44,14 @@
     "bun": ">=1.2"
   },
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zfadhli/tokrec.git"
+  },
+  "bugs": {
+    "url": "https://github.com/zfadhli/tokrec/issues"
+  },
+  "homepage": "https://github.com/zfadhli/tokrec",
   "publishConfig": {
     "access": "public"
   }
