@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] — 2026-06-09
+
+### Added
+
+- **Auto-detect TikTok cookies from Firefox** — the tool now automatically
+  reads `sessionid_ss` and `tt-target-idc` from Firefox's cookie store
+  (`~/.mozilla/firefox/*/cookies.sqlite`) using bun:sqlite. Falls back to
+  `cookies.json` if Firefox isn't available or no TikTok login session is
+  found. No CLI flags, no config changes, no extra dependencies required.
+
 ## [0.3.1] — 2026-06-09
 
 ### Fixed
