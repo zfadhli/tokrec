@@ -1,6 +1,6 @@
 {
-  "name": "tiktok-live-recorder-bun",
-  "version": "0.2.0",
+  "name": "@zfadhli/tokrec",
+  "version": "0.2.1",
   "description": "Minimal TikTok live stream recorder — Bun + TypeScript",
   "type": "module",
   "main": "./dist/lib.js",
@@ -43,5 +43,8 @@
   "engines": {
     "bun": ">=1.2"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  }
 }
