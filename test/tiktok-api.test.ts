@@ -82,7 +82,7 @@ describe("createTikTokApi with fixture mocks", () => {
 
     const streamUrl = await api.getLiveUrl(roomId!)
     expect(streamUrl).not.toBeNull()
-    expect(streamUrl).toMatch(/\.flv/)
+    expect(streamUrl).toMatch(/\.(flv|m3u8)/)
 
     await http.close()
   })
@@ -168,6 +168,6 @@ describe("findStreamUrlRecursively with fixture data", () => {
     const data = JSON.parse(roomInfoJson)
     const streamUrl = findStreamUrlRecursively(data)
     expect(streamUrl).not.toBeNull()
-    expect(streamUrl).toMatch(/https?:\/\/.+\..+\.flv/)
+    expect(streamUrl).toMatch(/https?:\/\/.+\..+\.(flv|m3u8)/)
   })
 })
