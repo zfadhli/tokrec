@@ -24,6 +24,7 @@ export function parseArgs(argv: string[] = process.argv): RecorderConfig {
     cmd.option('-p, --proxy <url>', 'HTTP proxy (e.g. http://127.0.0.1:8080)')
     cmd.option('-l, --log-level <level>', 'Log level: debug | info | warn | error')
     cmd.option('-c, --cookies <path>', 'Path to cookies.json')
+    cmd.option('-s, --segment-minutes <minutes>', 'Segment duration in minutes', { default: '20' })
 
     cmd.action((opts: Record<string, unknown>) => {
       try {
@@ -63,6 +64,13 @@ export function parseArgs(argv: string[] = process.argv): RecorderConfig {
           parsed.logLevel = opts.logLevel as LogLevel
         }
         if (opts.cookies) parsed.cookiesPath = opts.cookies as string
+        if (opts.segmentMinutes !== undefined) {
+          const n = Number(opts.segmentMinutes)
+          if (!Number.isFinite(n) || n < 1) {
+            throw new TikTokError('config-error', '--segment-minutes must be a number >= 1')
+          }
+          parsed.segmentMinutes = n
+        }
 
         config = parsed
       } catch (err) {

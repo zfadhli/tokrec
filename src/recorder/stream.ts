@@ -1,6 +1,6 @@
 /**
  * Stream downloader — fetches a FLV stream and writes it to disk with buffering.
- * Enforces duration limits and reports progress.
+ * Cuts the stream into segments (default 20 min) to avoid long-running file corruption.
  */
 
 import { type WriteStream, createWriteStream } from 'node:fs'
@@ -15,13 +15,14 @@ export interface DownloadResult {
 }
 
 export interface StreamDownloader {
-  /** Download a live stream. Resolves when the stream ends or is aborted. */
+  /** Download a live stream. Resolves with one result per segment when the stream ends or is aborted. */
   download: (
     liveUrl: string,
     user: string,
     outputDir: string,
     maxDuration?: number,
-  ) => Promise<DownloadResult>
+    segmentMinutes?: number,
+  ) => Promise<DownloadResult[]>
   /** Abort an active download */
   abort: () => void
 }
@@ -32,7 +33,6 @@ export function createStreamDownloader(logger?: Logger): StreamDownloader {
 
   function abort(): void {
     abortFlag = true
-    // Cancel the in-flight reader.read() so the download loop exits immediately
     streamReader?.cancel().catch(() => {})
   }
 
@@ -41,16 +41,15 @@ export function createStreamDownloader(logger?: Logger): StreamDownloader {
     user: string,
     outputDir: string,
     maxDuration = 0,
-  ): Promise<DownloadResult> {
+    segmentMinutes = 20,
+  ): Promise<DownloadResult[]> {
     abortFlag = false
     ensureDir(outputDir)
 
-    const filename = formatFilename(user, 'flv')
-    const filepath = join(outputDir, filename)
-    logger?.info(`Recording started: ${filename}`)
-
-    const startTime = Date.now()
-    let totalBytes = 0
+    const segmentDurationSec = segmentMinutes * 60
+    const results: DownloadResult[] = []
+    let totalElapsed = 0
+    let segmentIndex = 1
 
     // Fetch the stream
     const response = await fetch(liveUrl)
@@ -58,67 +57,87 @@ export function createStreamDownloader(logger?: Logger): StreamDownloader {
       throw new Error(`Failed to fetch stream: ${response.status}`)
     }
 
-    const writer: WriteStream = createWriteStream(filepath)
+    streamReader = response.body.getReader()
+    const reader = streamReader
 
     try {
-      streamReader = response.body.getReader()
-      const reader = streamReader
-      const bufferSize = 512 * 1024 // 512 KB buffer
-      let buffer = Buffer.alloc(0)
-
       while (!abortFlag) {
-        const { done, value } = await reader.read()
-        if (done) break
+        const segmentStartTime = Date.now()
+        const filename = formatFilename(user, 'flv', segmentIndex)
+        const filepath = join(outputDir, filename)
+        logger?.info(`Recording segment ${segmentIndex}: ${filename}`)
 
-        // Accumulate into buffer
-        buffer = Buffer.concat([buffer, Buffer.from(value)])
+        const writer = createWriteStream(filepath)
+        let segmentBytes = 0
+        let buffer = Buffer.alloc(0)
+        let segmentDone = false
 
-        // Flush when buffer is full
-        if (buffer.length >= bufferSize) {
-          await writeBuffer(writer, buffer)
-          totalBytes += buffer.length
-          buffer = Buffer.alloc(0)
-        }
-
-        // Check duration limit
-        if (maxDuration > 0) {
-          const elapsed = (Date.now() - startTime) / 1000
-          if (elapsed >= maxDuration) {
-            logger?.info(`Duration limit reached (${maxDuration}s)`)
+        while (!abortFlag && !segmentDone) {
+          const { done, value } = await reader.read()
+          if (done) {
+            segmentDone = true
             break
+          }
+
+          // Accumulate into buffer
+          buffer = Buffer.concat([buffer, Buffer.from(value)])
+
+          // Flush when buffer is full (512 KB)
+          if (buffer.length >= 512 * 1024) {
+            await writeBuffer(writer, buffer)
+            segmentBytes += buffer.length
+            buffer = Buffer.alloc(0)
+          }
+
+          // Check segment time limit
+          const segmentElapsed = (Date.now() - segmentStartTime) / 1000
+          if (segmentElapsed >= segmentDurationSec) {
+            segmentDone = true
           }
         }
 
-        // Log progress every ~10 MB
-        if (totalBytes > 0 && totalBytes % (10 * 1024 * 1024) === 0) {
-          const elapsed = (Date.now() - startTime) / 1000
-          logger?.info(
-            `Still recording... ${bytesToHuman(totalBytes)} downloaded after ${formatDuration(elapsed)}`,
-          )
+        // Flush remaining buffer
+        if (buffer.length > 0) {
+          await writeBuffer(writer, buffer)
+          segmentBytes += buffer.length
+        }
+        writer.close()
+
+        const segDuration = (Date.now() - segmentStartTime) / 1000
+        totalElapsed += segDuration
+
+        logger?.info(
+          `Segment ${segmentIndex} finished: ${filename} (${formatDuration(segDuration)}, ${bytesToHuman(segmentBytes)})`,
+        )
+
+        results.push({ file: filepath, duration: segDuration, size: segmentBytes })
+
+        // Check total duration limit
+        if (maxDuration > 0 && totalElapsed >= maxDuration) {
+          logger?.info(`Duration limit reached (${maxDuration}s)`)
+          break
+        }
+
+        // If the stream ended, don't start another segment
+        if (segmentDone && !abortFlag) {
+          segmentIndex++
         }
       }
 
-      // Flush remaining buffer
-      if (buffer.length > 0) {
-        await writeBuffer(writer, buffer)
-        totalBytes += buffer.length
-      }
-
-      const duration = (Date.now() - startTime) / 1000
+      // Log progress every ~10 MB across all segments
+      const totalBytes = results.reduce((sum, r) => sum + r.size, 0)
+      const totalDuration = results.reduce((sum, r) => sum + r.duration, 0)
       logger?.info(
-        `Recording finished: ${filename} (${formatDuration(duration)}, ${bytesToHuman(totalBytes)})`,
+        `Recording finished: ${results.length} segment(s) (${formatDuration(totalDuration)}, ${bytesToHuman(totalBytes)})`,
       )
 
-      return { file: filepath, duration, size: totalBytes }
+      return results
     } catch (err) {
-      // Ensure we flush on error too
       abort()
-      const duration = (Date.now() - startTime) / 1000
       logger?.error(`Recording error: ${err instanceof Error ? err.message : String(err)}`)
-      return { file: filepath, duration, size: totalBytes }
+      return results
     } finally {
       streamReader = null
-      writer.close()
     }
   }
 

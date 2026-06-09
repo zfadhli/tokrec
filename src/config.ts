@@ -27,6 +27,8 @@ export interface RecorderConfig {
   cookies?: CookieAuth
   /** Log level (default: info) */
   logLevel?: LogLevel
+  /** Segment duration in minutes (default: 20). Stream is cut into segments of this length. */
+  segmentMinutes?: number
 }
 
 export interface RecorderController {
@@ -86,6 +88,7 @@ const DEFAULTS = {
   interval: 3,
   duration: 0,
   logLevel: 'info' as LogLevel,
+  segmentMinutes: 20,
 }
 
 export function normalizeConfig(
@@ -101,6 +104,7 @@ export function normalizeConfig(
     proxy: config.proxy,
     cookies: config.cookies,
     cookiesPath: config.cookiesPath,
+    segmentMinutes: config.segmentMinutes ?? DEFAULTS.segmentMinutes,
   }
 }
 

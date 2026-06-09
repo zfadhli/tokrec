@@ -119,32 +119,45 @@ export function createRecorder(config: RecorderConfig): RecorderController {
         logger.info(`@${user} is LIVE! (room: ${roomId})`)
         emit('tick', { user, isLive: true })
 
-        // Record the stream
+        // Record the stream (may produce multiple segments)
         setState({ state: 'recording' })
         emit('recording:start', { user, file: '' })
 
-        const result = await downloader!.download(liveUrl, user, cfg.outputDir, cfg.duration)
+        const results = await downloader!.download(
+          liveUrl,
+          user,
+          cfg.outputDir,
+          cfg.duration,
+          cfg.segmentMinutes,
+        )
 
-        setState({
-          currentFile: result.file,
-          sessionDuration: result.duration,
-        })
-        emit('recording:end', {
-          file: result.file,
-          duration: result.duration,
-          size: result.size,
-        })
+        let sessionDuration = 0
+        for (const result of results) {
+          if (stopRequested) break
 
-        // 5. Convert to MP4
-        if (result.size > 0) {
-          setState({ state: 'converting' })
-          try {
-            const mp4File = await converter!.convert(result.file)
-            emit('converted', { input: result.file, output: mp4File })
-          } catch (err) {
-            const tkErr = err instanceof TikTokError ? err : new TikTokError('unknown', String(err))
-            logger.error(`Conversion failed: ${tkErr.message}`)
-            emit('error', tkErr)
+          sessionDuration += result.duration
+          setState({
+            currentFile: result.file,
+            sessionDuration,
+          })
+          emit('recording:end', {
+            file: result.file,
+            duration: result.duration,
+            size: result.size,
+          })
+
+          // Convert each segment to MP4
+          if (result.size > 0) {
+            setState({ state: 'converting' })
+            try {
+              const mp4File = await converter!.convert(result.file)
+              emit('converted', { input: result.file, output: mp4File })
+            } catch (err) {
+              const tkErr =
+                err instanceof TikTokError ? err : new TikTokError('unknown', String(err))
+              logger.error(`Conversion failed: ${tkErr.message}`)
+              emit('error', tkErr)
+            }
           }
         }
 
