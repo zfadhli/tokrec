@@ -223,6 +223,8 @@ export function createRecorder(config: RecorderConfig): RecorderController {
               String(segmentTime),
               "-reset_timestamps",
               "1",
+              "-segment_start_number",
+              "1",
               outputPattern,
             ])
 
