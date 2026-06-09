@@ -1,11 +1,10 @@
 /**
  * Stream downloader — fetches a FLV stream and writes it to disk with buffering.
- * Monitors room liveness during recording and enforces duration limits.
+ * Enforces duration limits and reports progress.
  */
 
 import { type WriteStream, createWriteStream } from 'node:fs'
 import { join } from 'node:path'
-import type { TikTokApi } from '../api/tiktok'
 import type { Logger } from '../logger'
 import { bytesToHuman, ensureDir, formatFilename } from '../utils'
 
@@ -19,7 +18,6 @@ export interface StreamDownloader {
   /** Download a live stream. Resolves when the stream ends or is aborted. */
   download: (
     liveUrl: string,
-    roomId: string,
     user: string,
     outputDir: string,
     maxDuration?: number,
@@ -28,7 +26,7 @@ export interface StreamDownloader {
   abort: () => void
 }
 
-export function createStreamDownloader(api: TikTokApi, logger?: Logger): StreamDownloader {
+export function createStreamDownloader(logger?: Logger): StreamDownloader {
   let abortFlag = false
 
   function abort(): void {
@@ -37,7 +35,6 @@ export function createStreamDownloader(api: TikTokApi, logger?: Logger): StreamD
 
   async function download(
     liveUrl: string,
-    roomId: string,
     user: string,
     outputDir: string,
     maxDuration = 0,
@@ -88,17 +85,12 @@ export function createStreamDownloader(api: TikTokApi, logger?: Logger): StreamD
           }
         }
 
-        // Check if room is still alive every ~5 seconds
-        if (totalBytes > 0 && totalBytes % (1024 * 1024) === 0) {
-          try {
-            const alive = await api.isRoomAlive(roomId)
-            if (!alive) {
-              logger?.info('Stream ended (user went offline)')
-              break
-            }
-          } catch {
-            // If health check fails, continue recording
-          }
+        // Log progress every ~10 MB
+        if (totalBytes > 0 && totalBytes % (10 * 1024 * 1024) === 0) {
+          const elapsed = (Date.now() - startTime) / 1000
+          logger?.info(
+            `Still recording... ${bytesToHuman(totalBytes)} downloaded after ${formatDuration(elapsed)}`,
+          )
         }
       }
 
