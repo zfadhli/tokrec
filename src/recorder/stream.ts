@@ -106,7 +106,8 @@ export function createStreamDownloader(logger?: Logger): StreamDownloader {
           await writeBuffer(writer, buffer)
           segmentBytes += buffer.length
         }
-        writer.close()
+        // Ensure all data is flushed to disk before the onSegment callback fires
+        await new Promise<void>((resolve) => writer.end(resolve))
 
         const segDuration = (Date.now() - segmentStartTime) / 1000
         totalElapsed += segDuration
