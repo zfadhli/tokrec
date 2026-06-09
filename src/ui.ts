@@ -13,168 +13,178 @@ import {
   ICON_WARN,
   color,
   createSpinner,
-} from '@zfadhli/koko-cli'
-import type { SpinnerInstance } from '@zfadhli/koko-cli'
+} from "@zfadhli/koko-cli";
+import type { SpinnerInstance } from "@zfadhli/koko-cli";
 
 export interface Display {
   /** Called once when polling begins. */
-  pollingStarted(intervalMinutes: number): void
+  pollingStarted(intervalMinutes: number): void;
   /** Spinner while checking if a user is live. */
-  checkingUser(user: string): void
+  checkingUser(user: string): void;
   /** User is offline (no active display). */
-  userOffline(user: string): void
+  userOffline(user: string): void;
   /** User is live! Clears the checking spinner. */
-  userLive(user: string, roomId: string): void
+  userLive(user: string, roomId: string): void;
 
   /** Recording starts: spinner without filename (known only post-download). */
-  startRecording(): void
+  startRecording(): void;
   /** Update the recording spinner with live counters. */
-  updateProgress(bytes: number, elapsed: number, speed: number): void
+  updateProgress(bytes: number, elapsed: number, speed: number): void;
   /** Recording finished successfully. Shows filename from the result. */
-  finishRecording(filename: string, duration: number, size: string): void
+  finishRecording(filename: string, duration: number, size: string): void;
   /** Recording encountered a non-fatal error. */
-  recordingError(message: string): void
+  recordingError(message: string): void;
 
   /** FFmpeg segmenting starts. */
-  startSegmenting(): void
+  startSegmenting(): void;
   /** FFmpeg segmenting done. */
-  segmentsCreated(count: number): void
+  segmentsCreated(count: number): void;
 
   /** FFmpeg simple conversion starts (fallback path). */
-  startConverting(): void
+  startConverting(): void;
   /** Simple conversion done. */
-  conversionDone(output: string): void
+  conversionDone(output: string): void;
 
   /** General-purpose status helpers. */
-  showError(message: string): void
-  showInfo(message: string): void
-  showWarning(message: string): void
+  showError(message: string): void;
+  showInfo(message: string): void;
+  showWarning(message: string): void;
 
   /** Stop all active spinners and clean up the terminal. */
-  stop(): void
+  stop(): void;
 }
 
 export function createDisplay(): Display {
-  let activeSpinner: SpinnerInstance | null = null
+  let activeSpinner: SpinnerInstance | null = null;
 
   /** Stop the currently active spinner (if any) without printing anything. */
   function clearSpinner(): void {
     if (activeSpinner?.isSpinning) {
-      activeSpinner.stop()
+      activeSpinner.stop();
     }
-    activeSpinner = null
+    activeSpinner = null;
   }
 
   /** Stop the current spinner and print a one-liner with the given icon. */
   function finalize(icon: string, text: string): void {
-    clearSpinner()
-    process.stdout.write(`  ${icon} ${text}\n`)
+    clearSpinner();
+    process.stdout.write(`  ${icon} ${text}\n`);
   }
 
   /** Format seconds into a compact human-readable duration. */
   function fmtDuration(seconds: number): string {
-    const m = Math.floor(seconds / 60)
-    const s = Math.floor(seconds % 60)
-    if (m > 0) return `${m}m ${s}s`
-    return `${s}s`
+    const m = Math.floor(seconds / 60);
+    const s = Math.floor(seconds % 60);
+    if (m > 0) return `${m}m ${s}s`;
+    return `${s}s`;
   }
 
   /** Format bytes into human-readable size. */
   function fmtBytes(bytes: number): string {
-    if (bytes === 0) return '0 B'
-    const units = ['B', 'KB', 'MB', 'GB']
-    const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1)
-    return `${(bytes / 1024 ** i).toFixed(1)} ${units[i]}`
+    if (bytes === 0) return "0 B";
+    const units = ["B", "KB", "MB", "GB"];
+    const i = Math.min(
+      Math.floor(Math.log(bytes) / Math.log(1024)),
+      units.length - 1,
+    );
+    return `${(bytes / 1024 ** i).toFixed(1)} ${units[i]}`;
   }
 
   /** Format bytes per second into a readable speed string. */
   function fmtSpeed(bytesPerSec: number): string {
-    if (bytesPerSec < 1024) return `${bytesPerSec.toFixed(0)} B/s`
-    if (bytesPerSec < 1024 * 1024) return `${(bytesPerSec / 1024).toFixed(1)} KB/s`
-    return `${(bytesPerSec / (1024 * 1024)).toFixed(1)} MB/s`
+    if (bytesPerSec < 1024) return `${bytesPerSec.toFixed(0)} B/s`;
+    if (bytesPerSec < 1024 * 1024)
+      return `${(bytesPerSec / 1024).toFixed(1)} KB/s`;
+    return `${(bytesPerSec / (1024 * 1024)).toFixed(1)} MB/s`;
   }
 
   return {
     pollingStarted(intervalMinutes: number): void {
-      finalize(ICON_SUCCESS, color.dim(`Polling started (every ${intervalMinutes} min)`))
+      finalize(
+        ICON_SUCCESS,
+        color.dim(`Polling started (every ${intervalMinutes} min)`),
+      );
     },
 
     checkingUser(user: string): void {
-      clearSpinner()
-      activeSpinner = createSpinner(color.cyan(`Checking @${user}...`))
-      activeSpinner.start()
+      clearSpinner();
+      activeSpinner = createSpinner(color.cyan(`Checking @${user}...`));
+      activeSpinner.start();
     },
 
     userOffline(user: string): void {
-      finalize(ICON_INFO, color.dim(`@${user} is offline`))
+      finalize(ICON_INFO, color.dim(`@${user} is offline`));
     },
 
     userLive(user: string, roomId: string): void {
-      clearSpinner()
+      clearSpinner();
       process.stdout.write(
         `  ${ICON_SUCCESS} ${color.green(`@${user} is LIVE!`)} ${color.dim(`(room: ${roomId})`)}\n`,
-      )
+      );
     },
 
     startRecording(): void {
-      clearSpinner()
-      activeSpinner = createSpinner(color.cyan('Recording stream...'))
-      activeSpinner.start()
+      clearSpinner();
+      activeSpinner = createSpinner(color.cyan("Recording stream..."));
+      activeSpinner.start();
     },
 
     updateProgress(bytes: number, elapsed: number, speed: number): void {
-      if (!activeSpinner || !activeSpinner.isSpinning) return
-      activeSpinner.text = ` ${fmtBytes(bytes)} ${color.dim('•')} ${fmtDuration(elapsed)} ${color.dim('•')} ${fmtSpeed(speed)}`
+      if (!activeSpinner || !activeSpinner.isSpinning) return;
+      activeSpinner.text = ` ${fmtBytes(bytes)} ${color.dim("•")} ${fmtDuration(elapsed)} ${color.dim("•")} ${fmtSpeed(speed)}`;
     },
 
     finishRecording(filename: string, duration: number, size: string): void {
       finalize(
         ICON_SUCCESS,
-        `${color.green('Recording finished')} ${color.dim(`${filename} — ${size} in ${fmtDuration(duration)}`)}`,
-      )
+        `${color.green("Recording finished")} ${color.dim(`${filename} — ${size} in ${fmtDuration(duration)}`)}`,
+      );
     },
 
     recordingError(message: string): void {
-      finalize(ICON_ERROR, color.red(`Recording failed: ${message}`))
+      finalize(ICON_ERROR, color.red(`Recording failed: ${message}`));
     },
 
     startSegmenting(): void {
-      clearSpinner()
-      activeSpinner = createSpinner(color.cyan('Segmenting...'))
-      activeSpinner.start()
+      clearSpinner();
+      activeSpinner = createSpinner(color.cyan("Segmenting..."));
+      activeSpinner.start();
     },
 
     segmentsCreated(count: number): void {
-      finalize(ICON_SUCCESS, color.green(`Created ${count} MP4 segment${count !== 1 ? 's' : ''}`))
+      finalize(
+        ICON_SUCCESS,
+        color.green(`Created ${count} MP4 segment${count !== 1 ? "s" : ""}`),
+      );
     },
 
     startConverting(): void {
-      clearSpinner()
-      activeSpinner = createSpinner(color.cyan('Converting to MP4...'))
-      activeSpinner.start()
+      clearSpinner();
+      activeSpinner = createSpinner(color.cyan("Converting to MP4..."));
+      activeSpinner.start();
     },
 
     conversionDone(output: string): void {
-      finalize(ICON_SUCCESS, color.green(`Converted: ${output}`))
+      finalize(ICON_SUCCESS, color.green(`Converted: ${output}`));
     },
 
     showError(message: string): void {
-      clearSpinner()
-      process.stdout.write(`  ${ICON_ERROR} ${color.red(message)}\n`)
+      clearSpinner();
+      process.stdout.write(`  ${ICON_ERROR} ${color.red(message)}\n`);
     },
 
     showInfo(message: string): void {
-      clearSpinner()
-      process.stdout.write(`  ${ICON_INFO} ${color.dim(message)}\n`)
+      clearSpinner();
+      process.stdout.write(`  ${ICON_INFO} ${color.dim(message)}\n`);
     },
 
     showWarning(message: string): void {
-      clearSpinner()
-      process.stdout.write(`  ${ICON_WARN} ${color.yellow(message)}\n`)
+      clearSpinner();
+      process.stdout.write(`  ${ICON_WARN} ${color.yellow(message)}\n`);
     },
 
     stop(): void {
-      clearSpinner()
+      clearSpinner();
     },
-  }
+  };
 }
