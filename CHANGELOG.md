@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] — 2026-06-09
+
+### Fixed
+
+- **Segment file timestamps now reflect recording time** — each MP4 segment's
+  file modification time is set to the approximate time that segment was
+  recorded, so segments appear in correct playback order when sorted by date
+  in a file manager.
+- **Segment numbering starts from `_part1`** — the `-segment_start_number 1`
+  FFmpeg flag changes the output pattern so the first segment is named
+  `username=20260609_171234_part1.mp4` instead of `_part0.mp4`.
+
 ## [0.4.0] — 2026-06-09
 
 ### Added
