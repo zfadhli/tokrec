@@ -5,7 +5,8 @@
 
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { parseArgs, printHelp } from './cli'
+import { color } from '@zfadhli/koko-cli'
+import { parseArgs } from './cli'
 import { TikTokError, validateConfig } from './config'
 import type { RecorderConfig } from './config'
 import { createLogger } from './logger'
@@ -38,8 +39,7 @@ async function main(): Promise<void> {
     validateConfig(config)
   } catch (err) {
     if (err instanceof TikTokError && err.kind === 'config-error') {
-      console.error(`\x1b[31mError:\x1b[0m ${err.message}`)
-      printHelp()
+      console.error(`${color.red('Error:')} ${err.message}`)
       process.exit(1)
     }
     throw err
@@ -57,17 +57,15 @@ async function main(): Promise<void> {
 
   // Subscribe to events for console output
   recorder.on('recording:start', (info) => {
-    logger.info(`📹 Recording started for @${info.user}`)
+    logger.info(`Recording started for @${info.user}`)
   })
 
   recorder.on('recording:end', (info) => {
-    logger.info(
-      `✅ Recording saved: ${info.file} (${(info.duration).toFixed(1)}s, ${info.size} bytes)`,
-    )
+    logger.info(`Recording saved: ${info.file} (${info.duration.toFixed(1)}s, ${info.size} bytes)`)
   })
 
   recorder.on('converted', (info) => {
-    logger.info(`🎬 Converted to MP4: ${info.output}`)
+    logger.info(`Converted to MP4: ${info.output}`)
   })
 
   recorder.on('error', (err) => {
