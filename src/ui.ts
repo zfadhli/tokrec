@@ -23,6 +23,8 @@ export interface Display {
   checkingUser(user: string): void
   /** User is offline (no active display). */
   userOffline(user: string): void
+  /** User is still offline — updates the previous offline line with a timestamp. */
+  userOfflineRepeat(user: string, lastCheck: string): void
   /** User is live! Clears the checking spinner. */
   userLive(user: string, roomId: string): void
 
@@ -56,6 +58,7 @@ export interface Display {
 
 export function createDisplay(): Display {
   let activeSpinner: SpinnerInstance | null = null
+  let offlineLineShown = false
 
   /** Stop the currently active spinner (if any) without printing anything. */
   function clearSpinner(): void {
@@ -107,10 +110,28 @@ export function createDisplay(): Display {
 
     userOffline(user: string): void {
       finalize(ICON_INFO, color.dim(`@${user} is offline`))
+      offlineLineShown = true
+    },
+
+    userOfflineRepeat(user: string, lastCheck: string): void {
+      clearSpinner()
+      if (offlineLineShown) {
+        // Move cursor up one line and overwrite the previous offline message
+        process.stdout.write(
+          `\x1b[1A\r  ${ICON_INFO} ${color.dim(`@${user} is offline`)} ${color.dim(`[last check: ${lastCheck}]`)}\x1b[K\n`,
+        )
+      } else {
+        // Fallback if state is out of sync
+        process.stdout.write(
+          `  ${ICON_INFO} ${color.dim(`@${user} is offline`)} ${color.dim(`[last check: ${lastCheck}]`)}\n`,
+        )
+        offlineLineShown = true
+      }
     },
 
     userLive(user: string, roomId: string): void {
       clearSpinner()
+      offlineLineShown = false
       process.stdout.write(
         `  ${ICON_SUCCESS} ${color.green(`@${user} is LIVE!`)} ${color.dim(`(room: ${roomId})`)}\n`,
       )
@@ -160,21 +181,25 @@ export function createDisplay(): Display {
 
     showError(message: string): void {
       clearSpinner()
+      offlineLineShown = false
       process.stdout.write(`  ${ICON_ERROR} ${color.red(message)}\n`)
     },
 
     showInfo(message: string): void {
       clearSpinner()
+      offlineLineShown = false
       process.stdout.write(`  ${ICON_INFO} ${color.dim(message)}\n`)
     },
 
     showWarning(message: string): void {
       clearSpinner()
+      offlineLineShown = false
       process.stdout.write(`  ${ICON_WARN} ${color.yellow(message)}\n`)
     },
 
     stop(): void {
       clearSpinner()
+      offlineLineShown = false
     },
   }
 }
