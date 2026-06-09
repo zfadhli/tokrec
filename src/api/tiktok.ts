@@ -325,7 +325,10 @@ interface SigiState {
 
 // ─── HTML parsing ──────────────────────────────────────────
 
-function extractSigiState(html: string): SigiState | null {
+/**
+ * @public Exported for testing.
+ */
+export function extractSigiState(html: string): SigiState | null {
   const match = html.match(/<script\s+id="SIGI_STATE"\s+type="application\/json">(.*?)<\/script>/)
   if (!match?.[1]) return null
   try {
@@ -345,8 +348,10 @@ function extractSigiState(html: string): SigiState | null {
  *
  * Returns { userId, roomId } where userId is always set when the data
  * is found, and roomId is set only when the user is currently live.
+ *
+ * @public Exported for testing and fixture capture.
  */
-function extractUserFromUniversalData(html: string): {
+export function extractUserFromUniversalData(html: string): {
   userId: string | null
   roomId: string | null
 } {

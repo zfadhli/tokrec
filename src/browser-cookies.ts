@@ -64,7 +64,8 @@ export function extractTikTokCookiesFromFirefox(): TikTokCookies | null {
  *   2. Fall back to scanning directory entries that look like Firefox profiles
  *      (contain a cookies.sqlite file).
  */
-function findFirefoxCookieDb(): string | null {
+/** @public Exported for testing */
+export function findFirefoxCookieDb(): string | null {
   const firefoxDir = join(homedir(), ".mozilla", "firefox")
   if (!existsSync(firefoxDir)) return null
 
@@ -103,7 +104,8 @@ function findFirefoxCookieDb(): string | null {
  *   Path=1pese0rl.default-release
  *   Default=1
  */
-function parseFirefoxProfilesIni(iniPath: string, firefoxDir: string): string | null {
+/** @public Exported for testing */
+export function parseFirefoxProfilesIni(iniPath: string, firefoxDir: string): string | null {
   const text = readFileSync(iniPath, "utf-8")
 
   let defaultPath: string | null = null
@@ -126,11 +128,12 @@ function parseFirefoxProfilesIni(iniPath: string, firefoxDir: string): string | 
 
     if (!inProfile) continue
 
-    if (trimmed.startsWith("path=")) {
+    const lower = trimmed.toLowerCase()
+    if (lower.startsWith("path=")) {
       defaultPath = trimmed.slice(5)
-    } else if (trimmed.startsWith("isrelative=")) {
+    } else if (lower.startsWith("isrelative=")) {
       isRelative = trimmed.slice(11).trim() !== "0"
-    } else if (trimmed.startsWith("default=")) {
+    } else if (lower.startsWith("default=")) {
       if (trimmed.slice(8).trim() !== "1") {
         // Not the default profile — skip
         inProfile = false
