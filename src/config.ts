@@ -15,9 +15,9 @@ export interface RecorderConfig {
   user: string
   /** Output directory for recordings (default: ./recordings) */
   outputDir?: string
-  /** Polling interval in minutes (default: 5) */
+  /** Polling interval in minutes (default: 3) */
   interval?: number
-  /** Max recording duration in seconds (default: 0 — unlimited) */
+  /** Max recording duration in seconds (default: 0 — unlimited). CLI accepts minutes, converted internally. */
   duration?: number
   /** HTTP proxy URL (e.g. http://127.0.0.1:8080) */
   proxy?: string
@@ -83,7 +83,7 @@ export class TikTokError extends Error {
 
 const DEFAULTS = {
   outputDir: './recordings',
-  interval: 5,
+  interval: 3,
   duration: 0,
   logLevel: 'info' as LogLevel,
 }

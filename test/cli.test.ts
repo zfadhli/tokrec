@@ -22,8 +22,8 @@ describe('parseArgs', () => {
     expect(cfg.interval).toBe(10)
   })
 
-  test('parses --duration', () => {
-    const cfg = parseArgs(['bun', 'test', '--user', 'u', '--duration', '300'])
+  test('parses --duration (minutes, converted to seconds)', () => {
+    const cfg = parseArgs(['bun', 'test', '--user', 'u', '--duration', '5'])
     expect(cfg.duration).toBe(300)
   })
 
@@ -70,7 +70,7 @@ describe('parseArgs', () => {
   })
 
   test('parses -d as shorthand for --duration', () => {
-    const cfg = parseArgs(['bun', 'test', '-u', 'u', '-d', '300'])
+    const cfg = parseArgs(['bun', 'test', '-u', 'u', '-d', '5'])
     expect(cfg.duration).toBe(300)
   })
 
