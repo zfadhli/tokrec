@@ -1,10 +1,11 @@
 /**
  * TikTok API — resolves room IDs, live status, and stream URLs.
  *
- * Primary path: parse SIGI_STATE from the user's /live page (fast, ~95% of
- * cases).  Fallback paths handle async-loaded room info by reading
- * UserModule / LiveRoom.liveRoomStatus from SIGI_STATE and, when needed,
- * calling the Webcast API (room/info/ or room/enter/).
+ * Primary path: parse SIGI_STATE from the user's /live page (fast path for
+ * older TikTok pages).  When SIGI_STATE is absent (TikTok's new unified page
+ * structure), falls back to __UNIVERSAL_DATA_FOR_REHYDRATION__ on the profile
+ * page to extract the numeric user ID, then calls the Webcast API
+ * (room/enter/) for live status and stream URL.
  *
  * Architecture:
  *   createTikTokApi(httpClient) → { getRoomId, isRoomAlive, getLiveUrl }
@@ -69,47 +70,79 @@ export function createTikTokApi(http: HttpClient): TikTokApi {
     },
   }
 
-  // ─── Internal: fetch and parse SIGI_STATE ─────────────────
+  // ─── Internal: fetch and parse SIGI_STATE / Universal Data ──
 
   async function fetchLiveInfo(user: string): Promise<LiveInfo | null> {
-    // Track whether SIGI_STATE actually existed (for retry decisions)
     let sigi: SigiState | null = null
+    let html = ""
 
     try {
       const res = await http.get(`${TIKTOK_BASE}/@${user}/live`)
       if (!res.ok) return null
 
-      const html = await res.text()
+      html = await res.text()
       sigi = extractSigiState(html)
-      if (!sigi) return null
 
-      // ── Primary path: room info in LiveRoom.liveRoomUserInfo ──
-      const liveRoom = sigi.LiveRoom?.liveRoomUserInfo?.liveRoom
-      const userInfo = sigi.LiveRoom?.liveRoomUserInfo?.user
+      if (sigi) {
+        // ── Primary path: room info in LiveRoom.liveRoomUserInfo ──
+        const liveRoom = sigi.LiveRoom?.liveRoomUserInfo?.liveRoom
+        const userInfo = sigi.LiveRoom?.liveRoomUserInfo?.user
 
-      if (liveRoom && userInfo?.roomId) {
-        const roomId = String(userInfo.roomId)
-        const isLive = liveRoom.status === 2 // 2 = live, 4 = offline
+        if (liveRoom && userInfo?.roomId) {
+          const roomId = String(userInfo.roomId)
+          const isLive = liveRoom.status === 2 // 2 = live, 4 = offline
 
-        // Extract stream URL: try SIGI_STATE first, then Webcast API fallback
-        let streamUrl: string | null = null
-        if (isLive) {
-          streamUrl = extractStreamUrlFast(liveRoom)
-          if (!streamUrl) streamUrl = findStreamUrlRecursively(sigi)
-          if (!streamUrl) streamUrl = await fetchStreamUrlFromApi(roomId)
+          // Extract stream URL: try SIGI_STATE first, then Webcast API fallback
+          let streamUrl: string | null = null
+          if (isLive) {
+            streamUrl = extractStreamUrlFast(liveRoom)
+            if (!streamUrl) streamUrl = findStreamUrlRecursively(sigi)
+            if (!streamUrl) streamUrl = await fetchStreamUrlFromApi(roomId)
+          }
+
+          return { roomId, isLive, streamUrl, title: liveRoom.title ?? null }
         }
 
-        return { roomId, isLive, streamUrl, title: liveRoom.title ?? null }
+        // ── Legacy fallback: async-loaded SIGI_STATE ──
+        const legacy = await fetchLiveInfoFallback(sigi, user)
+        if (legacy) return legacy
       }
     } catch (_err) {
       // Timeout (15s) or network error → treat as offline
       return null
     }
 
-    // ── Fallback path: async-loaded room info ──
-    // When LiveRoom.liveRoomUserInfo is absent, check LiveRoom.liveRoomStatus
-    // and UserModule.users[user].roomId, then use the Webcast API for stream URL.
-    return fetchLiveInfoFallback(sigi, user)
+    // ── New fallback: TikTok's unified page structure ──
+    // TikTok migrated from SIGI_STATE to __UNIVERSAL_DATA_FOR_REHYDRATION__.
+    // The /live page may not have it, so try the main profile page.
+    const userId = extractUserIdFromUniversalData(html)
+    if (userId) {
+      const result = await fetchRoomInfoFromApi(userId)
+      if (result) return result
+    }
+
+    // Final fallback: fetch the main profile page for webapp.user-detail
+    return fetchLiveInfoFromProfile(user)
+  }
+
+  /**
+   * Fetch the main profile page to extract user info from
+   * __UNIVERSAL_DATA_FOR_REHYDRATION__, then use the Webcast API
+   * to determine live status and stream URL.
+   */
+  async function fetchLiveInfoFromProfile(user: string): Promise<LiveInfo | null> {
+    try {
+      const res = await http.get(`${TIKTOK_BASE}/@${user}`)
+      if (!res.ok) return null
+
+      const html = await res.text()
+      const userId = extractUserIdFromUniversalData(html)
+      if (!userId) return null
+
+      return fetchRoomInfoFromApi(userId)
+    } catch {
+      return null
+    }
   }
 
   /**
@@ -251,6 +284,32 @@ function extractSigiState(html: string): SigiState | null {
   if (!match?.[1]) return null
   try {
     return JSON.parse(match[1]) as SigiState
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Extract the numeric user ID from TikTok's new page structure.
+ *
+ * TikTok migrated from SIGI_STATE to __UNIVERSAL_DATA_FOR_REHYDRATION__.
+ * The data is embedded as a JSON script tag in both the /live and profile
+ * pages, but the profile page also includes "webapp.user-detail" which
+ * contains the user's numeric ID.
+ *
+ * Returns null if the data isn't found or can't be parsed.
+ */
+function extractUserIdFromUniversalData(html: string): string | null {
+  const match = html.match(
+    /<script\s+id="__UNIVERSAL_DATA_FOR_REHYDRATION__"\s+type="application\/json">(.*?)<\/script>/,
+  )
+  if (!match?.[1]) return null
+  try {
+    const data = JSON.parse(match[1])
+    const scope = (data as any).__DEFAULT_SCOPE__ ?? data
+    const userDetail = scope?.["webapp.user-detail"]
+    const userId = userDetail?.userInfo?.user?.id
+    return userId ? String(userId) : null
   } catch {
     return null
   }
