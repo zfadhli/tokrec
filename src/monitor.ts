@@ -18,19 +18,21 @@ export function createPollingMonitor(opts: {
 }): PollingMonitor {
   const intervalMs = opts.intervalMinutes * 60 * 1000
   let active = true
-  const currentTick: Promise<void> | null = null
-  const timer: ReturnType<typeof setTimeout> | null = null
+  let currentTick: Promise<void> | null = null
 
   async function start(): Promise<void> {
     active = true
     opts.logger?.info(`Polling started (interval: ${opts.intervalMinutes} min)`)
 
     while (active) {
+      currentTick = opts.onTick()
       try {
-        await opts.onTick()
+        await currentTick
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
         opts.logger?.error(`Tick error: ${msg}`)
+      } finally {
+        currentTick = null
       }
 
       if (!active) break
@@ -50,8 +52,7 @@ export function createPollingMonitor(opts: {
 
   async function stop(): Promise<void> {
     active = false
-    if (timer) clearTimeout(timer)
-    // Wait for in-flight tick to finish
+    // Wait for in-flight tick to finish (e.g. recording → converting → MP4)
     if (currentTick) {
       await currentTick
     }
