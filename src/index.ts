@@ -9,7 +9,7 @@ import { parseArgs, printHelp } from './cli'
 import { TikTokError, validateConfig } from './config'
 import type { RecorderConfig } from './config'
 import { createLogger } from './logger'
-import { createRecorder } from './recorder/index'
+import { createRecorder } from './lib'
 
 async function loadCookies(
   cookiesPath?: string,
