@@ -36,3 +36,17 @@ export function bytesToHuman(bytes: number): string {
 export function sanitizeUser(user: string): string {
   return user.replace(/^@+/, "").trim()
 }
+
+/** Format a millisecond elapsed time as a relative human-readable string. */
+export function relativeTime(ms: number): string {
+  const sec = Math.floor(ms / 1000)
+  if (sec < 5) return "just now"
+  if (sec < 60) return `${sec}s ago`
+  const min = Math.floor(sec / 60)
+  if (min < 60) return `${min}m ago`
+  const hours = Math.floor(min / 60)
+  const mins = min % 60
+  if (hours < 24) return mins > 0 ? `${hours}h ${mins}m ago` : `${hours}h ago`
+  const days = Math.floor(hours / 24)
+  return `${days}d ago`
+}
