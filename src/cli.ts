@@ -17,13 +17,13 @@ export function parseArgs(argv: string[] = process.argv): RecorderConfig {
   )
 
   cli.command('', 'Record a TikTok live stream', (cmd) => {
-    cmd.option('--user <name>', 'TikTok username (required)')
-    cmd.option('--output <dir>', 'Output directory', { default: './recordings' })
-    cmd.option('--interval <minutes>', 'Polling interval in minutes', { default: '5' })
-    cmd.option('--duration <seconds>', 'Max recording duration in seconds')
-    cmd.option('--proxy <url>', 'HTTP proxy (e.g. http://127.0.0.1:8080)')
-    cmd.option('--log-level <level>', 'Log level: debug | info | warn | error')
-    cmd.option('--cookies <path>', 'Path to cookies.json')
+    cmd.option('-u, --user <name>', 'TikTok username (required)')
+    cmd.option('-o, --output <dir>', 'Output directory', { default: './recordings' })
+    cmd.option('-i, --interval <minutes>', 'Polling interval in minutes', { default: '5' })
+    cmd.option('-d, --duration <seconds>', 'Max recording duration in seconds')
+    cmd.option('-p, --proxy <url>', 'HTTP proxy (e.g. http://127.0.0.1:8080)')
+    cmd.option('-l, --log-level <level>', 'Log level: debug | info | warn | error')
+    cmd.option('-c, --cookies <path>', 'Path to cookies.json')
 
     cmd.action((opts: Record<string, unknown>) => {
       try {
@@ -62,6 +62,7 @@ export function parseArgs(argv: string[] = process.argv): RecorderConfig {
           }
           parsed.logLevel = opts.logLevel as LogLevel
         }
+        if (opts.cookies) parsed.cookiesPath = opts.cookies as string
 
         config = parsed
       } catch (err) {

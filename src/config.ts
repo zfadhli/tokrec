@@ -21,6 +21,8 @@ export interface RecorderConfig {
   duration?: number
   /** HTTP proxy URL (e.g. http://127.0.0.1:8080) */
   proxy?: string
+  /** Path to cookies.json (default: ./cookies.json) */
+  cookiesPath?: string
   /** Cookie auth loaded from cookies.json */
   cookies?: CookieAuth
   /** Log level (default: info) */
@@ -88,7 +90,8 @@ const DEFAULTS = {
 
 export function normalizeConfig(
   config: RecorderConfig,
-): Required<Omit<RecorderConfig, 'cookies' | 'proxy'>> & Pick<RecorderConfig, 'cookies' | 'proxy'> {
+): Required<Omit<RecorderConfig, 'cookies' | 'cookiesPath' | 'proxy'>> &
+  Pick<RecorderConfig, 'cookies' | 'cookiesPath' | 'proxy'> {
   return {
     user: config.user,
     outputDir: config.outputDir ?? DEFAULTS.outputDir,
@@ -97,6 +100,7 @@ export function normalizeConfig(
     logLevel: config.logLevel ?? DEFAULTS.logLevel,
     proxy: config.proxy,
     cookies: config.cookies,
+    cookiesPath: config.cookiesPath,
   }
 }
 

@@ -9,8 +9,8 @@ import { color } from '@zfadhli/koko-cli'
 import { parseArgs } from './cli'
 import { TikTokError, validateConfig } from './config'
 import type { RecorderConfig } from './config'
-import { createLogger } from './logger'
 import { createRecorder } from './lib'
+import { createLogger } from './logger'
 
 async function loadCookies(
   cookiesPath?: string,
@@ -46,7 +46,7 @@ async function main(): Promise<void> {
   }
 
   // Load cookies
-  const cookies = await loadCookies()
+  const cookies = await loadCookies(config.cookiesPath)
   if (cookies) {
     config.cookies = cookies
   }
