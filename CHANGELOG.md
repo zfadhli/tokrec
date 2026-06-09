@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] — 2026-06-10
+
+### Changed
+
+- **CLI output — repeated offline messages suppressed** — the `tick` handler
+  now tracks the last known live state and only prints `@user is offline` on
+  the first detection or when transitioning from live → offline. Subsequent
+  offline ticks update the same line in-place with a `[last check: ...]`
+  relative timestamp (e.g. `3m ago`) using ANSI escape sequences, eliminating
+  the flood of repeated "is offline" lines during long offline periods.
+
 ## [0.5.0] — 2026-06-10
 
 ### Added
