@@ -24,6 +24,7 @@ export interface TikTokApi {
 }
 
 const TIKTOK_BASE = 'https://www.tiktok.com'
+const WEBCAST_BASE = 'https://webcast.tiktok.com'
 
 export function createTikTokApi(http: HttpClient): TikTokApi {
   // Per-tick cache — stores the last fetched live info so the three public
@@ -84,12 +85,15 @@ export function createTikTokApi(http: HttpClient): TikTokApi {
       const roomId = String(userInfo.roomId)
       const isLive = liveRoom.status === 2 // 2 = live, 4 = offline
 
-      // Extract stream URL: try fast known path first, then brute-force SIGI_STATE
+      // Extract stream URL: try SIGI_STATE first, then Webcast API fallback
       let streamUrl: string | null = null
       if (isLive) {
         streamUrl = extractStreamUrlFast(liveRoom)
         if (!streamUrl) {
           streamUrl = findStreamUrlRecursively(sigi)
+        }
+        if (!streamUrl) {
+          streamUrl = await fetchStreamUrlFromApi(roomId)
         }
       }
 
@@ -97,6 +101,31 @@ export function createTikTokApi(http: HttpClient): TikTokApi {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       throw new TikTokError('network-error', `Failed to fetch live info: ${msg}`, err)
+    }
+  }
+
+  /**
+   * Fallback: fetch stream URL from the Webcast API.
+   * This covers cases where SIGI_STATE doesn't include stream data
+   * (e.g. async-loaded room info).
+   */
+  async function fetchStreamUrlFromApi(roomId: string): Promise<string | null> {
+    try {
+      const url = `${WEBCAST_BASE}/webcast/room/info/?aid=1988&room_id=${roomId}&type=live`
+      const res = await http.get(url)
+      if (!res.ok) return null
+
+      const text = await res.text()
+      if (!text.length) return null
+
+      const data = JSON.parse(text) as Record<string, unknown>
+
+      // status_code 4003110 = live restriction / room not found
+      if ((data as any).status_code === 4003110) return null
+
+      return findStreamUrlRecursively(data)
+    } catch {
+      return null
     }
   }
 }
@@ -156,7 +185,9 @@ function extractStreamUrlFast(
     const raw = liveRoom?.streamData?.pull_data?.stream_data
     if (!raw) return null
     const parsed = JSON.parse(raw) as Record<string, unknown>
-    const data = (parsed as { data?: { hd?: { main?: { flv?: string } }; ld?: { main?: { flv?: string } } } }).data
+    const data = (
+      parsed as { data?: { hd?: { main?: { flv?: string } }; ld?: { main?: { flv?: string } } } }
+    ).data
     // Prefer HD (720p), fall back to LD (360p)
     return data?.hd?.main?.flv ?? data?.ld?.main?.flv ?? null
   } catch {
