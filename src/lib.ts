@@ -10,7 +10,7 @@
  * ```
  */
 
-export { createRecorder } from "./recorder/index";
+export { createRecorder } from "./recorder/index"
 export type {
   AppErrorKind,
   RecorderConfig,
@@ -19,4 +19,4 @@ export type {
   RecorderEventHandler,
   RecorderStatus,
   TikTokError,
-} from "./config";
+} from "./config"
