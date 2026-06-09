@@ -4,6 +4,7 @@
  */
 
 import { createCLI } from '@zfadhli/koko-cli'
+import pkg from '../package.json'
 import type { LogLevel, RecorderConfig } from './config'
 import { TikTokError } from './config'
 import { sanitizeUser } from './utils'
@@ -12,12 +13,12 @@ export function parseArgs(argv: string[] = process.argv): RecorderConfig {
   let config: RecorderConfig | undefined
   let error: string | undefined
 
-  const cli = createCLI('tiktok-live-recorder', '0.2.1').description(
+  const cli = createCLI('tiktok-live-recorder', pkg.version).description(
     'Minimal TikTok live stream recorder — Bun + TypeScript',
   )
 
   cli.command('', 'Record a TikTok live stream', (cmd) => {
-    cmd.option('-u, --user <name>', 'TikTok username (required)')
+    cmd.option('-u, --user <name>', 'TikTok username (or pass as first argument)')
     cmd.option('-o, --output <dir>', 'Output directory', { default: './recordings' })
     cmd.option('-i, --interval <minutes>', 'Polling interval in minutes', { default: '3' })
     cmd.option('-d, --duration <minutes>', 'Max recording duration in minutes')
@@ -30,7 +31,7 @@ export function parseArgs(argv: string[] = process.argv): RecorderConfig {
       try {
         const user = opts.user as string | undefined
         if (!user) {
-          throw new TikTokError('config-error', '--user is required')
+          throw new TikTokError('config-error', '<user> is required (positional or --user)')
         }
 
         const parsed: RecorderConfig = {
@@ -79,6 +80,13 @@ export function parseArgs(argv: string[] = process.argv): RecorderConfig {
     })
   })
 
+  // If the first bare argument (not a flag or flag value) looks like a username,
+  // convert it to --user for cac (which only handles options on the default command).
+  const positionalUser = extractPositional(argv)
+  if (positionalUser) {
+    argv.push('--user', positionalUser)
+  }
+
   cli.parse(argv)
 
   if (error) {
@@ -86,8 +94,39 @@ export function parseArgs(argv: string[] = process.argv): RecorderConfig {
   }
 
   if (!config) {
-    throw new TikTokError('config-error', '--user is required. Use --help for usage.')
+    throw new TikTokError(
+      'config-error',
+      '<user> is required (positional or --user). Use --help for usage.',
+    )
   }
 
   return config
+}
+
+/**
+ * Scan argv for the first bare argument that is neither a flag nor a flag's value.
+ * Returns the value and removes it from the array, or null if none found.
+ */
+function extractPositional(argv: string[]): string | null {
+  for (let i = 2; i < argv.length; i++) {
+    const arg = argv[i]!
+    // -- signals end of options; anything after is a positional
+    if (arg === '--') {
+      const pos = argv.splice(i, 1)[0]!
+      return pos
+    }
+    // If this arg is a flag (-*) the next arg is its value
+    if (arg.startsWith('-')) {
+      // Skip the value if this flag takes one (not a boolean flag like --help/--version)
+      const next = argv[i + 1]
+      if (next && !next.startsWith('-') && arg !== '--help' && arg !== '--version') {
+        i++ // skip the value
+      }
+      continue
+    }
+    // Found a bare positional — remove it and return
+    argv.splice(i, 1)
+    return arg
+  }
+  return null
 }
