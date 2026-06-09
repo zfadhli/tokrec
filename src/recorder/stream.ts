@@ -22,6 +22,7 @@ export interface StreamDownloader {
     outputDir: string,
     maxDuration?: number,
     segmentMinutes?: number,
+    onSegment?: (result: DownloadResult) => void | Promise<void>,
   ) => Promise<DownloadResult[]>
   /** Abort an active download */
   abort: () => void
@@ -42,6 +43,7 @@ export function createStreamDownloader(logger?: Logger): StreamDownloader {
     outputDir: string,
     maxDuration = 0,
     segmentMinutes = 20,
+    onSegment?: (result: DownloadResult) => void | Promise<void>,
   ): Promise<DownloadResult[]> {
     abortFlag = false
     ensureDir(outputDir)
@@ -61,7 +63,9 @@ export function createStreamDownloader(logger?: Logger): StreamDownloader {
     const reader = streamReader
 
     try {
-      while (!abortFlag) {
+      let streamEnded = false
+
+      while (!abortFlag && !streamEnded) {
         const segmentStartTime = Date.now()
         const filename = formatFilename(user, 'flv', segmentIndex)
         const filepath = join(outputDir, filename)
@@ -75,6 +79,7 @@ export function createStreamDownloader(logger?: Logger): StreamDownloader {
         while (!abortFlag && !segmentDone) {
           const { done, value } = await reader.read()
           if (done) {
+            streamEnded = true
             segmentDone = true
             break
           }
@@ -110,7 +115,15 @@ export function createStreamDownloader(logger?: Logger): StreamDownloader {
           `Segment ${segmentIndex} finished: ${filename} (${formatDuration(segDuration)}, ${bytesToHuman(segmentBytes)})`,
         )
 
-        results.push({ file: filepath, duration: segDuration, size: segmentBytes })
+        const result: DownloadResult = {
+          file: filepath,
+          duration: segDuration,
+          size: segmentBytes,
+        }
+        results.push(result)
+
+        // Fire callback so orchestrator can convert while next segment downloads
+        await onSegment?.(result)
 
         // Check total duration limit
         if (maxDuration > 0 && totalElapsed >= maxDuration) {
@@ -118,13 +131,10 @@ export function createStreamDownloader(logger?: Logger): StreamDownloader {
           break
         }
 
-        // If the stream ended, don't start another segment
-        if (segmentDone && !abortFlag) {
-          segmentIndex++
-        }
+        segmentIndex++
       }
 
-      // Log progress every ~10 MB across all segments
+      // Log summary across all segments
       const totalBytes = results.reduce((sum, r) => sum + r.size, 0)
       const totalDuration = results.reduce((sum, r) => sum + r.duration, 0)
       logger?.info(

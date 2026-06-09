@@ -129,38 +129,35 @@ export function createRecorder(config: RecorderConfig): RecorderController {
           cfg.outputDir,
           cfg.duration,
           cfg.segmentMinutes,
+          // Convert each segment to MP4 immediately as it finishes
+          async (result) => {
+            emit('recording:end', {
+              file: result.file,
+              duration: result.duration,
+              size: result.size,
+            })
+
+            if (result.size > 0) {
+              setState({ state: 'converting' })
+              try {
+                const mp4File = await converter!.convert(result.file)
+                emit('converted', { input: result.file, output: mp4File })
+              } catch (err) {
+                const tkErr =
+                  err instanceof TikTokError ? err : new TikTokError('unknown', String(err))
+                logger.error(`Conversion failed: ${tkErr.message}`)
+                emit('error', tkErr)
+              }
+            }
+          },
         )
 
-        let sessionDuration = 0
-        for (const result of results) {
-          if (stopRequested) break
-
-          sessionDuration += result.duration
-          setState({
-            currentFile: result.file,
-            sessionDuration,
-          })
-          emit('recording:end', {
-            file: result.file,
-            duration: result.duration,
-            size: result.size,
-          })
-
-          // Convert each segment to MP4
-          if (result.size > 0) {
-            setState({ state: 'converting' })
-            try {
-              const mp4File = await converter!.convert(result.file)
-              emit('converted', { input: result.file, output: mp4File })
-            } catch (err) {
-              const tkErr =
-                err instanceof TikTokError ? err : new TikTokError('unknown', String(err))
-              logger.error(`Conversion failed: ${tkErr.message}`)
-              emit('error', tkErr)
-            }
-          }
-        }
-
+        // Update session state after all segments are done
+        const sessionDuration = results.reduce((s, r) => s + r.duration, 0)
+        setState({
+          currentFile: results.at(-1)?.file,
+          sessionDuration,
+        })
         setState({ state: 'polling' })
       },
     })
