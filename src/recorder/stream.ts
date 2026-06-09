@@ -28,9 +28,12 @@ export interface StreamDownloader {
 
 export function createStreamDownloader(logger?: Logger): StreamDownloader {
   let abortFlag = false
+  let streamReader: ReadableStreamDefaultReader<Uint8Array> | null = null
 
   function abort(): void {
     abortFlag = true
+    // Cancel the in-flight reader.read() so the download loop exits immediately
+    streamReader?.cancel().catch(() => {})
   }
 
   async function download(
@@ -58,7 +61,8 @@ export function createStreamDownloader(logger?: Logger): StreamDownloader {
     const writer: WriteStream = createWriteStream(filepath)
 
     try {
-      const reader = response.body.getReader()
+      streamReader = response.body.getReader()
+      const reader = streamReader
       const bufferSize = 512 * 1024 // 512 KB buffer
       let buffer = Buffer.alloc(0)
 
@@ -113,6 +117,7 @@ export function createStreamDownloader(logger?: Logger): StreamDownloader {
       logger?.error(`Recording error: ${err instanceof Error ? err.message : String(err)}`)
       return { file: filepath, duration, size: totalBytes }
     } finally {
+      streamReader = null
       writer.close()
     }
   }
