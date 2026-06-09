@@ -22,10 +22,18 @@ export async function createHttpClient(config: RecorderConfig): Promise<HttpClie
   // Seed cookies into the session jar so all subsequent requests are authenticated.
   // NOTE: Using a Cookie header does NOT populate wreq-js's cookie jar —
   // we must use session.setCookie() instead.
+  // Seed for all TikTok domains since cookies may not propagate across
+  // subdomains automatically in wreq-js's cookie jar.
   if (config.cookies?.sessionid_ss) {
-    session.setCookie("sessionid_ss", config.cookies.sessionid_ss, "https://www.tiktok.com")
-    if (config.cookies["tt-target-idc"]) {
-      session.setCookie("tt-target-idc", config.cookies["tt-target-idc"], "https://www.tiktok.com")
+    for (const domain of [
+      "https://www.tiktok.com",
+      "https://webcast.tiktok.com",
+      "https://m.tiktok.com",
+    ]) {
+      session.setCookie("sessionid_ss", config.cookies.sessionid_ss, domain)
+      if (config.cookies["tt-target-idc"]) {
+        session.setCookie("tt-target-idc", config.cookies["tt-target-idc"], domain)
+      }
     }
   }
 

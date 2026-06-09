@@ -115,8 +115,14 @@ export function createTikTokApi(http: HttpClient): TikTokApi {
     // ── New fallback: TikTok's unified page structure ──
     // TikTok migrated from SIGI_STATE to __UNIVERSAL_DATA_FOR_REHYDRATION__.
     // The /live page may not have it, so try the main profile page.
-    const userId = extractUserIdFromUniversalData(html)
+    const { userId, roomId } = extractUserFromUniversalData(html)
+    if (roomId) {
+      // If the /live page has the roomId, use room/info (reliable)
+      const result = await fetchRoomInfoFromRoomApi(roomId)
+      if (result) return result
+    }
     if (userId) {
+      // Fallback: try room/enter with the numeric user ID
       const result = await fetchRoomInfoFromApi(userId)
       if (result) return result
     }
@@ -127,8 +133,10 @@ export function createTikTokApi(http: HttpClient): TikTokApi {
 
   /**
    * Fetch the main profile page to extract user info from
-   * __UNIVERSAL_DATA_FOR_REHYDRATION__, then use the Webcast API
-   * to determine live status and stream URL.
+   * __UNIVERSAL_DATA_FOR_REHYDRATION__. When the user is live, their
+   * roomId is embedded in the data, allowing us to fetch room info and
+   * stream URL via the /webcast/room/info/ endpoint (which works
+   * reliably). Falls back to room/enter/ via the numeric userId.
    */
   async function fetchLiveInfoFromProfile(user: string): Promise<LiveInfo | null> {
     try {
@@ -136,10 +144,48 @@ export function createTikTokApi(http: HttpClient): TikTokApi {
       if (!res.ok) return null
 
       const html = await res.text()
-      const userId = extractUserIdFromUniversalData(html)
+      const { userId, roomId } = extractUserFromUniversalData(html)
       if (!userId) return null
 
+      // If roomId is embedded in the profile page, the user is live.
+      // Use room/info which works reliably for both live and offline rooms.
+      if (roomId) {
+        return fetchRoomInfoFromRoomApi(roomId)
+      }
+
+      // Fallback: try Webcast room/enter with the numeric userId
       return fetchRoomInfoFromApi(userId)
+    } catch {
+      return null
+    }
+  }
+
+  /**
+   * Fetch room info from the Webcast room/info API (reliable, works
+   * for both live and offline rooms). Requires a known roomId.
+   */
+  async function fetchRoomInfoFromRoomApi(roomId: string): Promise<LiveInfo | null> {
+    try {
+      const url = `${WEBCAST_BASE}/webcast/room/info/?aid=1988&room_id=${roomId}&type=live`
+      const res = await http.get(url)
+      if (!res.ok) return null
+
+      const text = await res.text()
+      if (text.length === 0) return null
+
+      const data = JSON.parse(text) as Record<string, unknown>
+
+      // status_code 4003110 = live restriction / room not found
+      if ((data as any).status_code === 4003110) return null
+
+      const roomData = (data as any).data
+      if (!roomData) return null
+
+      const status = roomData.status ?? 4
+      const isLive = status === 2
+      const streamUrl = isLive ? findStreamUrlRecursively(roomData) : null
+
+      return { roomId, isLive, streamUrl, title: roomData.title ?? null }
     } catch {
       return null
     }
@@ -290,28 +336,34 @@ function extractSigiState(html: string): SigiState | null {
 }
 
 /**
- * Extract the numeric user ID from TikTok's new page structure.
+ * Extract the numeric user ID and optional room ID from TikTok's new
+ * page structure (__UNIVERSAL_DATA_FOR_REHYDRATION__).
  *
- * TikTok migrated from SIGI_STATE to __UNIVERSAL_DATA_FOR_REHYDRATION__.
- * The data is embedded as a JSON script tag in both the /live and profile
- * pages, but the profile page also includes "webapp.user-detail" which
- * contains the user's numeric ID.
+ * The profile page (/@user) includes "webapp.user-detail" which
+ * contains the user's numeric ID. When the user is live, the roomId
+ * is also embedded here.
  *
- * Returns null if the data isn't found or can't be parsed.
+ * Returns { userId, roomId } where userId is always set when the data
+ * is found, and roomId is set only when the user is currently live.
  */
-function extractUserIdFromUniversalData(html: string): string | null {
+function extractUserFromUniversalData(html: string): {
+  userId: string | null
+  roomId: string | null
+} {
   const match = html.match(
     /<script\s+id="__UNIVERSAL_DATA_FOR_REHYDRATION__"\s+type="application\/json">(.*?)<\/script>/,
   )
-  if (!match?.[1]) return null
+  if (!match?.[1]) return { userId: null, roomId: null }
   try {
     const data = JSON.parse(match[1])
     const scope = (data as any).__DEFAULT_SCOPE__ ?? data
     const userDetail = scope?.["webapp.user-detail"]
-    const userId = userDetail?.userInfo?.user?.id
-    return userId ? String(userId) : null
+    const user = userDetail?.userInfo?.user
+    const userId = user?.id ? String(user.id) : null
+    const roomId = user?.roomId ? String(user.roomId) : null
+    return { userId, roomId }
   } catch {
-    return null
+    return { userId: null, roomId: null }
   }
 }
 
