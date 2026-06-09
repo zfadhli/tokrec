@@ -87,6 +87,7 @@ async function main(): Promise<void> {
 
   process.on('SIGINT', handleSignal)
   process.on('SIGTERM', handleSignal)
+  process.on('SIGHUP', handleSignal)
 
   // Start the recorder
   try {
