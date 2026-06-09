@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 /**
  * Entry point — parses CLI args, creates the recorder, and handles signals.
+ * Uses the terminal Display manager for beautiful console output.
  */
 
 import { existsSync, readFileSync } from 'node:fs'
@@ -10,7 +11,8 @@ import { parseArgs } from './cli'
 import { TikTokError, validateConfig } from './config'
 import type { RecorderConfig } from './config'
 import { createRecorder } from './lib'
-import { createLogger } from './logger'
+import { createDisplay } from './ui'
+import { bytesToHuman } from './utils'
 
 async function loadCookies(
   cookiesPath?: string,
@@ -51,37 +53,79 @@ async function main(): Promise<void> {
     config.cookies = cookies
   }
 
-  const logger = createLogger({ level: config.logLevel })
+  // Suppress internal logger's console output — the Display owns the terminal
+  config.logConsole = false
+
+  // Beautiful terminal display
+  const display = createDisplay()
 
   const recorder = createRecorder(config)
 
-  // Subscribe to events for console output
-  recorder.on('recording:start', (info) => {
-    logger.info(`Recording started for @${info.user}`)
+  // Subscribe to events for beautiful console output
+  recorder.on('checking', (info) => {
+    display.checkingUser(info.user)
   })
 
-  recorder.on('recording:end', (info) => {
-    logger.info(`Recording saved: ${info.file} (${info.duration.toFixed(1)}s, ${info.size} bytes)`)
+  recorder.on('tick', (info) => {
+    if (info.isLive) {
+      display.userLive(info.user, info.roomId ?? '?')
+    } else {
+      display.userOffline(info.user)
+    }
   })
 
-  recorder.on('converted', (info) => {
-    logger.info(`Converted to MP4: ${info.output}`)
+  recorder.on('recording:start', () => {
+    display.startRecording()
+  })
+
+  recorder.on('download:progress', (info) => {
+    display.updateProgress(info.bytes, info.elapsed, info.speed)
+  })
+
+  recorder.on('download:end', (info) => {
+    const parsed = info.file.split('/').pop() ?? info.file
+    const sizeStr = bytesToHuman(info.size)
+    display.finishRecording(parsed, info.duration, sizeStr)
+  })
+
+  recorder.on('segmenting:start', () => {
+    display.startSegmenting()
+  })
+
+  recorder.on('segmenting:end', (info) => {
+    display.segmentsCreated(info.segments)
+  })
+
+  recorder.on('converting:start', () => {
+    display.startConverting()
+  })
+
+  recorder.on('converted', () => {
+    // Individual conversion results acknowledged via segmenting:end or recording:end
+  })
+
+  recorder.on('recording:end', () => {
+    // For simple conversion (no segmenting), recording:end fires once.
+    // For segmenting path, segmenting:end already acknowledges the result.
+    // This is a no-op since we handle the terminal output through download:end
+    // and segmenting:end / converted events.
   })
 
   recorder.on('error', (err) => {
-    logger.error(`[${err.kind}] ${err.message}`)
+    display.showError(`[${err.kind}] ${err.message}`)
   })
 
   // Signal handling
   let stopping = false
   const handleSignal = async () => {
     if (stopping) {
-      logger.warn('Force stopping...')
+      process.stdout.write('  Force stopping...\n')
       process.exit(1)
     }
     stopping = true
-    logger.info('Shutting down gracefully...')
+    display.showInfo('Shutting down gracefully...')
     await recorder.stop()
+    display.stop()
     process.exit(0)
   }
 
@@ -89,16 +133,18 @@ async function main(): Promise<void> {
   process.on('SIGTERM', handleSignal)
   process.on('SIGHUP', handleSignal)
 
-  // Start the recorder
+  // Show initial status and start the recorder
+  display.pollingStarted(config.interval ?? 3)
   try {
     await recorder.start()
   } catch (err) {
     if (err instanceof TikTokError) {
-      logger.error(`[${err.kind}] ${err.message}`)
+      display.showError(`[${err.kind}] ${err.message}`)
     } else {
-      logger.error(`Unexpected error: ${err instanceof Error ? err.message : String(err)}`)
+      display.showError(`Unexpected error: ${err instanceof Error ? err.message : String(err)}`)
     }
     await recorder.stop()
+    display.stop()
     process.exit(1)
   }
 }

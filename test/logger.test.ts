@@ -20,6 +20,20 @@ describe('createLogger', () => {
     try { unlinkSync(testLog) } catch {}
   })
 
+  test('console: false still writes to file', () => {
+    try { unlinkSync(testLog) } catch {}
+
+    const log = createLogger({ level: 'info', logFile: testLog, console: false })
+    log.info('file only message')
+
+    expect(existsSync(testLog)).toBe(true)
+    const content = readFileSync(testLog, 'utf-8')
+    expect(content).toContain('file only message')
+    expect(content).toContain('[INFO]')
+
+    try { unlinkSync(testLog) } catch {}
+  })
+
   test('respects log level filtering', () => {
     try { unlinkSync(testLog) } catch {}
 

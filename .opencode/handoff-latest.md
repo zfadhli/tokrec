@@ -1,90 +1,69 @@
-# Session Handoff — 2026-06-09 08:35
+# Session Handoff — 2026-06-09 09:45
 
 ## Goal
 
-Build a minimal, lean Bun + TypeScript version of the TikTok Live Recorder Python project
-(https://github.com/Michele0303/tiktok-live-recorder) with function-based Composition API style,
-zero runtime deps (except wreq-js for TLS fingerprinting), and CLI + library dual entry point.
+Build a robust TikTok live stream recorder in Bun + TypeScript that handles:
+- Long recordings by segmenting into 20-min chunks (via FFmpeg post-processing, not manual FLV splitting)
+- Network drops (60s read timeout, auto-recover on next poll)
+- Accidental terminal close (SIGHUP handler)
+- Clean CLI UX with shorthand options and consistent units
 
 ## Files Modified/Created
 
-### Core library (`src/`)
-- `src/lib.ts` **created** — Library entry point; exports `createRecorder` + all types
-- `src/config.ts` — `RecorderConfig`, `RecorderController`, `RecorderStatus`, `TikTokError`, `AppErrorKind` types + normalization/validation
-- `src/api/client.ts` — `createHttpClient()` — wraps wreq-js `createSession()` with cookie seeding via `setCookie()`, 15s `AbortSignal.timeout`
-- `src/api/tiktok.ts` — `createTikTokApi()` — SIGI_STATE HTML scraping (primary) → recursive FLV URL search → Webcast API fallback (`/webcast/room/info/?aid=1988`)
-- `src/recorder/stream.ts` — `createStreamDownloader()` — FLV download with 512KB buffer, reader.cancel() on abort for immediate shutdown
-- `src/recorder/convert.ts` — `createConverter()` — `Bun.spawn(['ffmpeg', '-c', 'copy'])`, deletes FLV on success
-- `src/recorder/index.ts` — `createRecorder()` — orchestrator wiring API + monitor + downloader + converter into `{ start, stop, getStatus, on }`
-- `src/monitor.ts` — `createPollingMonitor()` — interval-based tick loop with proper `currentTick` tracking for stop()
-- `src/logger.ts` — `createLogger()` — rotating file logger (5MB, 3 backups) + color console
+### Core Library
+- `src/config.ts` — Added `cookiesPath`, `segmentMinutes` fields; changed interval default 5→3
+- `src/utils.ts` — `formatFilename()` now uses `{user}={date}_{time}_part{part}.flv` format (e.g. `vierstinrovve=20260609_171234_part1.flv`)
 
-### CLI (`src/`)
-- `src/cli.ts` — Rewritten from manual `Bun.argv` to `@zfadhli/koko-cli` `createCLI()` wrapping `cac`
-- `src/index.ts` — Entry point with signal handlers (SIGINT/SIGTERM), graceful shutdown, uses `color.red()` from koko-cli
+### Recording Pipeline
+- `src/recorder/stream.ts` — Single-file FLV download with 512KB buffer, 60s read timeout (`timeout()` helper), `writer.end()` for proper flush, abort support
+- `src/recorder/convert.ts` — Unchanged (FLV→MP4 via FFmpeg `-c copy`)
+- `src/recorder/index.ts` — Orchestrator: download raw FLV → FFmpeg segment muxer splits into timed MP4 segments (`-f segment -segment_time N -reset_timestamps 1`). Falls back to simple conversion if segmenting fails. Scans output dir for generated `_partN.mp4` files.
 
-### Config & Build
-- `package.json` — Dependencies: `wreq-js` (TLS fingerprinting), `@zfadhli/koko-cli` (CLI framework). Exports map for lib + CLI
-- `tsdown.config.ts` — Builds both `src/lib.ts` and `src/index.ts`
-- `tsconfig.json` — TypeScript strict mode, ESNext, bundler resolution
-- `biome.json` — Lint + format config, semicolons as-needed, single quotes
-- `CHANGELOG.md` — Keep a Changelog format (v0.1.0, v0.1.1)
-
-### CI/CD & Release
-- `.github/workflows/ci.yml` — Build + test on push/PR
-- `.github/workflows/publish.yml` — GitHub release on tag
+### CLI
+- `src/cli.ts` — All 7 options have shorthand aliases: `-u`, `-o`, `-i`, `-d`, `-p`, `-l`, `-c`, `-s`; `--duration` accepts minutes (multiplied by 60 internally)
+- `src/index.ts` — Added `SIGHUP` handler for terminal close
 
 ### Tests
-- `test/config.test.ts` — Config normalization + validation (6 tests)
-- `test/cli.test.ts` — CLI arg parsing (11 tests)
-- `test/logger.test.ts` — Logger file output + level filtering (2 tests)
-- `test/utils.test.ts` — `formatFilename`, `sanitizeUser`, `bytesToHuman` (4 tests)
-- `test/tiktok.test.ts` — `findStreamUrlRecursively` recursive search (9 tests)
-- **35 tests total, all passing**
+- `test/cli.test.ts` — 7 shorthand tests + `--duration` minutes→seconds conversion
+- `test/config.test.ts` — Updated interval default from 5→3
+- `test/utils.test.ts` — Updated regex patterns for new filename format
 
 ## Key Decisions
 
-1. **SIGI_STATE HTML scraping as primary** — Instead of relying on TikTok's Webcast API (which requires request signing), extract room ID, live status, and stream URLs from the `<script id="SIGI_STATE">` JSON embedded in `tiktok.com/@user/live`. Webcast API is fallback only.
+1. **FFmpeg handles segmenting, not manual FLV splitting** — Manual splitting at arbitrary byte positions produces invalid FLV files (missing header, mid-tag data). Instead, download the whole stream as raw FLV, then use `ffmpeg -i input.flv -c copy -f segment -segment_time N -reset_timestamps 1 output_part%d.mp4`. This produces valid, playable MP4 segments because FFmpeg properly parses FLV tag boundaries.
 
-2. **Recursive stream URL search** — Brute-force searches the entire SIGI_STATE JSON for any `.flv` or `.m3u8` URL, plus parses JSON-encoded strings (e.g. `stream_data`) and recurses into them. Survives TikTok renaming keys.
+2. **`writer.end()` over `writer.close()`** — `close()` doesn't wait for pending writes; `end()` flushes all buffered data to disk before the promise resolves. Critical for preventing FFmpeg from seeing truncated files on disk.
 
-3. **wreq-js for TLS fingerprinting** — Uses `createSession({ browser: 'chrome_142' })` to impersonate Chrome. Critical lesson: `Cookie` header does NOT populate session jar — must use `session.setCookie()`.
+3. **60-second read timeout** — `reader.read()` can hang forever if TCP connection drops silently. A `timeout()` helper races a timer against each read. On timeout, the partial FLV is returned, FFmpeg segments what it can, and the polling loop continues checking for live.
 
-4. **15-second request timeout** — Uses `AbortSignal.timeout(15000)` on all `session.fetch()` calls to prevent hanging.
+4. **`--duration` in minutes (CLI), seconds (internal)** — Users type `--duration 5` for 5 minutes; the CLI action multiplies by 60 and stores seconds in config. Consistent with `--interval` which also uses minutes.
 
-5. **Proper abort → convert → stop sequence** — `stop()` calls `downloader.abort()` → `reader.cancel()` first, then `monitor.stop()`, so the in-flight tick finishes (flush buffer → convert to MP4) before cleanup.
-
-6. **Lib + CLI split** — `src/lib.ts` exports `createRecorder` + types for programmatic use; `src/index.ts` is the CLI wrapper. Exports map in package.json supports both `'.'` and `'./cli'`.
-
-7. **koko-cli for CLI framework** — Replaced manual `Bun.argv` parsing with `@zfadhli/koko-cli` (wraps `cac`). Provides auto-generated `--help`, `--version`, and `color` functions.
+5. **Filename format** — `username=20250609_143000_part1.flv`. Compact date/time (no separators), `_partN` suffix. The `formatFilename()` utility accepts an optional `part` parameter.
 
 ## Current State
 
-- **Working**: Full recording pipeline — detect live → get FLV URL → download with buffering → convert to MP4 via FFmpeg → delete FLV
-- **Working**: Automatic polling mode with configurable interval
-- **Working**: Cookie-based auth (`cookies.json` with `sessionid_ss`) bypasses TikTok WAF
-- **Working**: Graceful Ctrl-C with immediate abort and conversion
-- **Working**: 15s timeout on all HTTP requests
-- **Working**: Recursive stream URL search handles JSON-encoded strings and all quality keys
-- **Working**: Lib + CLI dual entry, koko-cli CLI framework
-- **Working**: 35 tests across 5 files, all passing
-- **Working**: CI (build + test on push/PR) and publish (GitHub release on tag) workflows
-- **Working**: Two tagged releases (v0.1.0, v0.1.1) with auto-generated release notes
+- **Working**: Full recording pipeline — detect live → download FLV → FFmpeg segment → MP4 segments
+- **Working**: Cookie-based auth via `cookies.json` (with `sessionid_ss`)
+- **Working**: Graceful shutdown on SIGINT, SIGTERM, SIGHUP (terminal close)
+- **Working**: 60s read timeout on stream download, auto-recover on next poll tick
+- **Working**: Segment duration configurable via `-s`/`--segment-minutes` (default 20)
+- **Working**: Lib + CLI dual entry, koko-cli CLI framework with shorthand options
+- **Working**: 44 tests across 5 files, all passing
+- **Known limitation**: If FFmpeg segmentation fails (e.g. truncated FLV from network drop), the raw FLV is kept as fallback but no MP4 is produced for that session
 
 ## Next Steps / Pending
 
-- [ ] Test Webcast API fallback with a live user (SIGI_STATE primary path is working but the `aid=1988` fallback hasn't been tested end-to-end while live)
-- [ ] The `stream_data` field is sometimes absent from SIGI_STATE even when user is live (async-loaded room info) — need to verify Webcast API fallback catches this
-- [ ] Consider adding `createSpinner` or `createProgress` from koko-cli for better download UX (currently uses static `[INFO]` logs)
-- [ ] Consider handling HLS (`.m3u8`) streams if TikTok ever returns those instead of FLV
-- [ ] Consider adding `--cookies` flag support to koko-cli option set (currently reads from `./cookies.json` only)
+- [ ] Test Webcast API fallback (`aid=1988`) with a live user — SIGI_STATE primary path works but the fallback hasn't been tested end-to-end
+- [ ] The `stream_data` field is sometimes absent from SIGI_STATE even when user is live (async-loaded room info) — verify Webcast API catches this
+- [ ] Consider adding `createSpinner`/`createProgress` from koko-cli for better download UX (currently static `[INFO]` logs)
+- [ ] Consider handling HLS (`.m3u8`) streams if TikTok returns those instead of FLV
 
 ## Important Context
 
 - **WAF bypass requires valid cookies** — Without `sessionid_ss` in `cookies.json`, TikTok's Slardar WAF returns a 1155-byte challenge page instead of the real profile page. The tool will report "offline" for any user.
 - **wreq-js cookie jar** — `session.fetch()` with a `Cookie` header does NOT populate the session's internal cookie jar. Always use `session.setCookie(name, value, url)`.
-- **FFmpeg required** — The converter spawns `ffmpeg` as a subprocess. Must be installed on `$PATH`.
-- **`TikTokError` class** — Tagged error with `kind: AppErrorKind` — used for all expected errors. Network errors return `null` instead of throwing (logged as "offline").
-- **Recursive search exported** — `findStreamUrlRecursively` is exported from `src/api/tiktok.ts` for testing purposes.
-- **`invalidateCache()`** — Must be called at the start of each poll tick to ensure fresh SIGI_STATE data.
-- **Nested JSON string parsing** — The recursive search handles `stream_data` (a JSON string) by parsing it and recursing inside. This is critical because `stream_data.data.hd.main.flv` contains the actual URL.
+- **FFmpeg required** — Required for both simple FLV→MP4 conversion AND segmenting. Must be on `$PATH`.
+- **`--duration` vs `--segment-minutes`** — `--duration` limits total recording time (in minutes, converted to seconds internally). `--segment-minutes` controls each segment's length (default 20, also in minutes). After the stream ends, `ffmpeg -c copy -f segment` splits the FLV using `-segment_time`.
+- **`invalidateCache()`** — Must be called at the start of each poll tick to ensure fresh SIGI_STATE data from TikTok.
+- **Read timeout** — The `timeout()` helper in `stream.ts` wraps `reader.read()` with a 60s deadline. On timeout, the catch block aborts and returns whatever data was buffered. The orchestrator's onTick resumes polling on the next interval.
+- **Signal handling** — `SIGINT`, `SIGTERM`, and `SIGHUP` all trigger the same graceful shutdown: abort download → reader.cancel → return partial data → FFmpeg segment → exit.

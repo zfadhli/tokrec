@@ -26,7 +26,11 @@ import { type StreamDownloader, createStreamDownloader } from './stream'
 
 export function createRecorder(config: RecorderConfig): RecorderController {
   const cfg = normalizeConfig(config)
-  const logger = createLogger({ level: cfg.logLevel, logFile: 'tiktok-recorder.log' })
+  const logger = createLogger({
+    level: cfg.logLevel,
+    logFile: 'tiktok-recorder.log',
+    console: cfg.logConsole,
+  })
 
   // Internal event registry
   const eventHandlers = new Map<string, Array<(...args: any[]) => void>>()
@@ -132,6 +136,7 @@ export function createRecorder(config: RecorderConfig): RecorderController {
         const user = cfg.user
         api!.invalidateCache()
 
+        emit('checking', { user })
         logger.info(`Checking @${user}...`)
 
         const roomId = await api!.getRoomId(user)
@@ -144,19 +149,50 @@ export function createRecorder(config: RecorderConfig): RecorderController {
         const liveUrl = await api!.getLiveUrl(roomId)
         if (!liveUrl) {
           logger.warn(`@${user} is live but no stream URL found`)
-          emit('tick', { user, isLive: false })
+          emit('tick', { user, isLive: false, roomId })
           return
         }
 
         logger.info(`@${user} is LIVE! (room: ${roomId})`)
-        emit('tick', { user, isLive: true })
+        emit('tick', { user, isLive: true, roomId })
 
         // Record the stream
         setState({ state: 'recording' })
         emit('recording:start', { user, file: '' })
 
-        const result = await downloader!.download(liveUrl, user, cfg.outputDir, cfg.duration)
+        // Create a reconnection callback that fetches a fresh stream URL
+        // when the current segment ends. This handles TikTok's short-lived
+        // stream URLs (typically 30-60s per segment).
+        let reconnectCount = 0
+        const getNextUrl = async (): Promise<string | null> => {
+          reconnectCount++
+          if (reconnectCount > 100) {
+            // Safety valve: don't reconnect indefinitely
+            logger.warn(`Reconnection limit reached (${reconnectCount} attempts)`)
+            return null
+          }
+          // Invalidate cache so we get fresh data from TikTok
+          api!.invalidateCache()
+          // Check if the user is still live with the same room
+          const stillLive = await api!.getRoomId(user)
+          if (!stillLive) {
+            logger.info(`@${user} is no longer live — stopping`)
+            return null
+          }
+          // Get a fresh stream URL for the continuing stream
+          return api!.getLiveUrl(stillLive)
+        }
 
+        const result = await downloader!.download(
+          liveUrl,
+          user,
+          cfg.outputDir,
+          cfg.duration,
+          (info) => emit('download:progress', info),
+          getNextUrl,
+        )
+
+        emit('download:end', { file: result.file, duration: result.duration, size: result.size })
         setState({ state: 'converting' })
 
         if (result.size > 0 && cfg.segmentMinutes >= 1) {
@@ -168,6 +204,8 @@ export function createRecorder(config: RecorderConfig): RecorderController {
           logger.info(
             `Segmenting: ${parsed.base} → ${parsed.name}_partN.mp4 (${cfg.segmentMinutes} min each)`,
           )
+
+          emit('segmenting:start', { input: result.file, outputPattern })
 
           try {
             await runFfmpeg([
@@ -226,6 +264,8 @@ export function createRecorder(config: RecorderConfig): RecorderController {
               })
             }
 
+            emit('segmenting:end', { segments: segmentFiles.length })
+
             setState({
               currentFile:
                 segmentFiles.length > 0 ? join(parsed.dir, segmentFiles.at(-1)!) : result.file,
@@ -235,6 +275,7 @@ export function createRecorder(config: RecorderConfig): RecorderController {
             const msg = err instanceof Error ? err.message : String(err)
             logger.error(`Segmenting failed: ${msg}`)
             // Fallback: try simple conversion of the whole FLV
+            emit('converting:start', { input: result.file })
             try {
               const mp4File = await converter!.convert(result.file)
               emit('converted', { input: result.file, output: mp4File })
@@ -249,6 +290,7 @@ export function createRecorder(config: RecorderConfig): RecorderController {
           }
         } else if (result.size > 0) {
           // No segmenting — simple FLV → MP4 conversion
+          emit('converting:start', { input: result.file })
           try {
             const mp4File = await converter!.convert(result.file)
             emit('recording:end', {
