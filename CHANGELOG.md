@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] — 2026-06-09
+
+### Added
+
+- **Positional username** — `tokrec vierstinrovve` now works in addition to
+  `--user vierstinrovve` and `-u vierstinrovve`. The first bare argument is
+  treated as the TikTok username.
+- **Comprehensive README** — full documentation covering CLI options, library
+  API, authentication setup, pipeline architecture, event system, FAQ, and
+  troubleshooting.
+
+### Changed
+
+- **Version source of truth** — the CLI tool now reads its version dynamically
+  from `package.json` via `pkg.version`, instead of a hardcoded string. One
+  less thing to update on release.
+
 ## [0.2.1] — 2026-06-09
 
 ### Changed
