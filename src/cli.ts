@@ -12,7 +12,7 @@ export function parseArgs(argv: string[] = process.argv): RecorderConfig {
   let config: RecorderConfig | undefined
   let error: string | undefined
 
-  const cli = createCLI('tiktok-live-recorder', '0.2.0').description(
+  const cli = createCLI('tiktok-live-recorder', '0.2.1').description(
     'Minimal TikTok live stream recorder — Bun + TypeScript',
   )
 
