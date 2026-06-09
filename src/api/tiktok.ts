@@ -185,11 +185,17 @@ function extractStreamUrlFast(
     const raw = liveRoom?.streamData?.pull_data?.stream_data
     if (!raw) return null
     const parsed = JSON.parse(raw) as Record<string, unknown>
-    const data = (
-      parsed as { data?: { hd?: { main?: { flv?: string } }; ld?: { main?: { flv?: string } } } }
-    ).data
-    // Prefer HD (720p), fall back to LD (360p)
-    return data?.hd?.main?.flv ?? data?.ld?.main?.flv ?? null
+    const data = (parsed as Record<string, unknown>)?.data as Record<string, unknown> | undefined
+    if (!data) return null
+
+    // Try all known quality keys, preferring higher quality
+    const qualities = ['origin', 'fhd', 'uhd', 'hd', 'sd', 'ld']
+    for (const q of qualities) {
+      const entry = data[q] as { main?: { flv?: string } } | undefined
+      const url = entry?.main?.flv
+      if (url) return url
+    }
+    return null
   } catch {
     return null
   }
@@ -201,14 +207,23 @@ function extractStreamUrlFast(
  *
  * Inspired by PR #430 (Michele0303/tiktok-live-recorder).
  */
-function findStreamUrlRecursively(obj: unknown): string | null {
-  // Base case: a string — check if it looks like a stream URL
+export function findStreamUrlRecursively(obj: unknown): string | null {
+  // Base case: a string
   if (typeof obj === 'string') {
+    // Direct URL match
     if (
       (obj.startsWith('http://') || obj.startsWith('https://')) &&
       (obj.includes('.flv') || obj.includes('.m3u8'))
     ) {
       return obj
+    }
+    // JSON-encoded string — parse and recurse (covers stream_data, etc.)
+    if (obj.startsWith('{') || obj.startsWith('[')) {
+      try {
+        return findStreamUrlRecursively(JSON.parse(obj))
+      } catch {
+        return null
+      }
     }
     return null
   }
