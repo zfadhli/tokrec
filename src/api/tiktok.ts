@@ -4,14 +4,17 @@
  * Primary path: parse SIGI_STATE from the user's /live page (fast path for
  * older TikTok pages).  When SIGI_STATE is absent (TikTok's new unified page
  * structure), falls back to __UNIVERSAL_DATA_FOR_REHYDRATION__ on the profile
- * page to extract the numeric user ID, then calls the Webcast API
- * (room/enter/) for live status and stream URL.
+ * page to extract the room ID, then calls the Webcast room/info API for live
+ * status and stream URL.
  *
  * Architecture:
  *   createTikTokApi(httpClient) → { getRoomId, isRoomAlive, getLiveUrl }
  *
  * All public methods share a per-tick cache so the page is fetched at most once
  * per poll cycle.
+ *
+ * Note: The room/enter Webcast endpoint has been deprecated due to frequent
+ * 403 errors. All lookups go through room/info (reliable for live + offline).
  */
 
 import type { HttpClient } from "./client"
@@ -115,17 +118,14 @@ export function createTikTokApi(http: HttpClient): TikTokApi {
     // ── New fallback: TikTok's unified page structure ──
     // TikTok migrated from SIGI_STATE to __UNIVERSAL_DATA_FOR_REHYDRATION__.
     // The /live page may not have it, so try the main profile page.
-    const { userId, roomId } = extractUserFromUniversalData(html)
+    const { roomId } = extractUserFromUniversalData(html)
     if (roomId) {
       // If the /live page has the roomId, use room/info (reliable)
       const result = await fetchRoomInfoFromRoomApi(roomId)
       if (result) return result
     }
-    if (userId) {
-      // Fallback: try room/enter with the numeric user ID
-      const result = await fetchRoomInfoFromApi(userId)
-      if (result) return result
-    }
+    // No roomId available — fall through to profile page to check for
+    // __UNIVERSAL_DATA_FOR_REHYDRATION__ which may have the roomId when live.
 
     // Final fallback: fetch the main profile page for webapp.user-detail
     return fetchLiveInfoFromProfile(user)
@@ -136,7 +136,7 @@ export function createTikTokApi(http: HttpClient): TikTokApi {
    * __UNIVERSAL_DATA_FOR_REHYDRATION__. When the user is live, their
    * roomId is embedded in the data, allowing us to fetch room info and
    * stream URL via the /webcast/room/info/ endpoint (which works
-   * reliably). Falls back to room/enter/ via the numeric userId.
+   * reliably). If no roomId is present the user is offline.
    */
   async function fetchLiveInfoFromProfile(user: string): Promise<LiveInfo | null> {
     try {
@@ -153,8 +153,8 @@ export function createTikTokApi(http: HttpClient): TikTokApi {
         return fetchRoomInfoFromRoomApi(roomId)
       }
 
-      // Fallback: try Webcast room/enter with the numeric userId
-      return fetchRoomInfoFromApi(userId)
+      // No roomId means the user is offline (room/enter was unreliable).
+      return null
     } catch {
       return null
     }
@@ -218,43 +218,8 @@ export function createTikTokApi(http: HttpClient): TikTokApi {
       return { roomId, isLive, streamUrl, title: null }
     }
 
-    // Final fallback: Webcast room/enter API using the numeric user ID
-    if (userModule?.id && isLive) {
-      return fetchRoomInfoFromApi(userModule.id)
-    }
-
-    return null // truly offline / unknown
-  }
-
-  /**
-   * Fallback: fetch room info + stream URL from the Webcast API.
-   * This covers cases where SIGI_STATE has no room data at all
-   * (fully async-loaded page).
-   */
-  async function fetchRoomInfoFromApi(userId: string): Promise<LiveInfo | null> {
-    try {
-      const url = `${WEBCAST_BASE}/webcast/room/enter/?aid=1988&user_id=${userId}`
-      const res = await http.get(url)
-      if (!res.ok) return null
-
-      const text = await res.text()
-      if (text.length === 0) return null
-
-      const data = JSON.parse(text) as Record<string, unknown>
-      const roomData = (data as any)?.data?.room
-      if (!roomData) return null
-
-      const roomId = String(roomData.roomId ?? "")
-      if (!roomId) return null
-
-      const roomStatus = roomData.status // 2 = live
-      const isLive = roomStatus === 2
-      const streamUrl = isLive ? findStreamUrlRecursively(roomData) : null
-
-      return { roomId, isLive, streamUrl, title: roomData.title ?? null }
-    } catch {
-      return null
-    }
+    // No roomId available — treat as offline (room/enter was unreliable).
+    return null
   }
 
   /**
@@ -325,7 +290,10 @@ interface SigiState {
 
 // ─── HTML parsing ──────────────────────────────────────────
 
-function extractSigiState(html: string): SigiState | null {
+/**
+ * @public Exported for testing.
+ */
+export function extractSigiState(html: string): SigiState | null {
   const match = html.match(/<script\s+id="SIGI_STATE"\s+type="application\/json">(.*?)<\/script>/)
   if (!match?.[1]) return null
   try {
@@ -345,8 +313,10 @@ function extractSigiState(html: string): SigiState | null {
  *
  * Returns { userId, roomId } where userId is always set when the data
  * is found, and roomId is set only when the user is currently live.
+ *
+ * @public Exported for testing and fixture capture.
  */
-function extractUserFromUniversalData(html: string): {
+export function extractUserFromUniversalData(html: string): {
   userId: string | null
   roomId: string | null
 } {
@@ -372,6 +342,8 @@ function extractUserFromUniversalData(html: string): {
 /**
  * Fast-path: extract stream URL from the known SIGI_STATE location.
  * This covers ~95% of cases without needing a full recursive search.
+ *
+ * Prefers FLV (lower latency) over HLS/other protocols.
  */
 function extractStreamUrlFast(
   liveRoom: NonNullable<NonNullable<SigiState["LiveRoom"]>["liveRoomUserInfo"]>["liveRoom"],
@@ -383,11 +355,13 @@ function extractStreamUrlFast(
     const data = (parsed as Record<string, unknown>)?.data as Record<string, unknown> | undefined
     if (!data) return null
 
-    // Try all known quality keys, preferring higher quality
+    // Try all known quality keys, preferring higher quality.
+    // FLV is preferred (lower latency); HLS is the fallback.
     const qualities = ["origin", "fhd", "uhd", "hd", "sd", "ld"]
     for (const q of qualities) {
-      const entry = data[q] as { main?: { flv?: string } } | undefined
-      const url = entry?.main?.flv
+      const entry = data[q] as { main?: { flv?: string; hls?: string } } | undefined
+      // Prefer FLV over HLS when both are available
+      const url = entry?.main?.flv ?? entry?.main?.hls
       if (url) return url
     }
     return null
@@ -400,45 +374,57 @@ function extractStreamUrlFast(
  * Brute-force recursive search for a stream URL anywhere in a JSON value.
  * Survives TikTok changing key names or nesting structure.
  *
+ * Prefers FLV over HLS when both are present in the response.
+ *
  * Inspired by PR #430 (Michele0303/tiktok-live-recorder).
  */
 export function findStreamUrlRecursively(obj: unknown): string | null {
-  // Base case: a string
-  if (typeof obj === "string") {
-    // Direct URL match
-    if (
-      (obj.startsWith("http://") || obj.startsWith("https://")) &&
-      (obj.includes(".flv") || obj.includes(".m3u8"))
-    ) {
-      return obj
+  // Collect all candidate URLs with their preference
+  const flvUrls: string[] = []
+  const m3u8Urls: string[] = []
+
+  function walk(value: unknown): void {
+    if (typeof value === "string") {
+      // Direct URL match
+      if (
+        (value.startsWith("http://") || value.startsWith("https://")) &&
+        (value.includes(".flv") || value.includes(".m3u8"))
+      ) {
+        if (value.includes(".flv")) {
+          flvUrls.push(value)
+        } else {
+          m3u8Urls.push(value)
+        }
+        return
+      }
+      // JSON-encoded string — parse and recurse
+      if (value.startsWith("{") || value.startsWith("[")) {
+        try {
+          walk(JSON.parse(value))
+        } catch {
+          // skip
+        }
+      }
+      return
     }
-    // JSON-encoded string — parse and recurse (covers stream_data, etc.)
-    if (obj.startsWith("{") || obj.startsWith("[")) {
-      try {
-        return findStreamUrlRecursively(JSON.parse(obj))
-      } catch {
-        return null
+
+    if (value && typeof value === "object") {
+      if (Array.isArray(value)) {
+        for (const item of value) {
+          walk(item)
+        }
+      } else {
+        for (const val of Object.values(value as Record<string, unknown>)) {
+          walk(val)
+        }
       }
     }
-    return null
   }
 
-  // Dict: recurse into all values
-  if (obj && typeof obj === "object" && !Array.isArray(obj)) {
-    for (const val of Object.values(obj as Record<string, unknown>)) {
-      const found = findStreamUrlRecursively(val)
-      if (found) return found
-    }
-    return null
-  }
+  walk(obj)
 
-  // Array: recurse into all elements
-  if (Array.isArray(obj)) {
-    for (const item of obj) {
-      const found = findStreamUrlRecursively(item)
-      if (found) return found
-    }
-  }
-
+  // Prefer FLV (lower latency) over HLS
+  if (flvUrls.length > 0) return flvUrls[0]!
+  if (m3u8Urls.length > 0) return m3u8Urls[0]!
   return null
 }
