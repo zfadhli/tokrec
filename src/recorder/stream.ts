@@ -65,7 +65,7 @@ export function createStreamDownloader(logger?: Logger): StreamDownloader {
       let buffer = Buffer.alloc(0)
 
       while (!abortFlag) {
-        const { done, value } = await reader.read()
+        const { done, value } = await timeout(reader.read(), 60_000, 'Stream read timed out')
         if (done) break
 
         // Accumulate into buffer
@@ -135,4 +135,21 @@ function formatDuration(seconds: number): string {
   const m = Math.floor(seconds / 60)
   const s = Math.floor(seconds % 60)
   return `${m}m ${s}s`
+}
+
+/** Race a promise against a timeout. The losing promise is ignored (no unhandled rejection). */
+function timeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(label)), ms)
+    promise.then(
+      (result) => {
+        clearTimeout(timer)
+        resolve(result)
+      },
+      (err) => {
+        clearTimeout(timer)
+        reject(err)
+      },
+    )
+  })
 }
