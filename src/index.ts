@@ -13,7 +13,7 @@ import { TikTokError, validateConfig } from "./config"
 import type { RecorderConfig } from "./config"
 import { createRecorder } from "./lib"
 import { createDisplay } from "./ui"
-import { bytesToHuman } from "./utils"
+import { bytesToHuman, relativeTime } from "./utils"
 
 async function loadCookies(
   cookiesPath?: string,
@@ -68,6 +68,9 @@ async function main(): Promise<void> {
 
   const recorder = createRecorder(config)
 
+  let lastWasLive: boolean | null = null
+  let lastCheckTime = Date.now()
+
   // Subscribe to events for beautiful console output
   recorder.on("checking", (info) => {
     display.checkingUser(info.user)
@@ -76,9 +79,14 @@ async function main(): Promise<void> {
   recorder.on("tick", (info) => {
     if (info.isLive) {
       display.userLive(info.user, info.roomId ?? "?")
-    } else {
+    } else if (lastWasLive === null || lastWasLive === true) {
       display.userOffline(info.user)
+    } else {
+      const elapsed = Date.now() - lastCheckTime
+      display.userOfflineRepeat(info.user, relativeTime(elapsed))
     }
+    lastWasLive = info.isLive
+    lastCheckTime = Date.now()
   })
 
   recorder.on("recording:start", () => {
