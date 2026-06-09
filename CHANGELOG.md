@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] — 2026-06-10
+
+### Added
+
+- **HLS (.m3u8) stream support** — TikTok returns both FLV and HLS stream URLs.
+  The recorder now detects HLS playlists and downloads them via FFmpeg directly
+  (which handles the M3U8 playlist + .ts segments natively). FLV remains the
+  preferred format (lower latency); HLS is used as a fallback.
+- **Fixture-based test suite** — 17 new tests covering the full live detection
+  chain (Tier 1/2/3), Firefox cookie extraction, INI parsing, and SQLite cookie
+  queries. Uses real captured TikTok HTML/API responses as fixtures.
+
+### Changed
+
+- **`fetchRoomInfoFromApi` (room/enter endpoint) removed** — The Webcast
+  `/webcast/room/enter/` endpoint frequently returns 403 errors, even when
+  the user is live. All lookups now go through the reliable `/webcast/room/info/`
+  endpoint (`fetchRoomInfoFromRoomApi`), which works for both live (status=2)
+  and offline (status=4) rooms.
+- **`findStreamUrlRecursively` now prefers FLV over HLS** — When both formats
+  exist in the response, FLV URLs are collected first and returned preferentially.
+
+### Fixed
+
+- **Stream URL extraction for room/info API** — The `extractStreamUrlFast`
+  function now falls back to `main.hls` when `main.flv` is absent at a given
+  quality level, covering edge cases where FLV URLs are missing.
+
 ## [0.4.2] — 2026-06-09
 
 ### Fixed

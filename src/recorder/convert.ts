@@ -1,6 +1,6 @@
 /**
- * Converter — spawns FFmpeg to convert FLV → MP4 (stream copy by default).
- * Deletes the original FLV on success.
+ * Converter — spawns FFmpeg to convert FLV/TS → MP4 (stream copy by default).
+ * Deletes the original file on success.
  */
 
 import { spawn } from "node:child_process"
@@ -8,13 +8,13 @@ import { statSync, unlinkSync } from "node:fs"
 import type { Logger } from "../logger"
 
 export interface Converter {
-  /** Convert a FLV file to MP4. Returns the output filepath. */
+  /** Convert a FLV or TS file to MP4. Returns the output filepath. */
   convert: (input: string) => Promise<string>
 }
 
 export function createConverter(logger?: Logger): Converter {
   async function convert(input: string): Promise<string> {
-    const output = input.replace(/\.flv$/i, ".mp4")
+    const output = input.replace(/\.(flv|ts)$/i, ".mp4")
 
     logger?.info(`Converting: ${input} → ${output}`)
 
