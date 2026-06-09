@@ -159,8 +159,10 @@ export function createRecorder(config: RecorderConfig): RecorderController {
   async function stop(): Promise<void> {
     stopRequested = true
     logger.info('Stopping recorder...')
-    if (monitor) await monitor.stop()
+    // Signal download to stop FIRST so the in-flight tick can finish
+    // and proceed to convert the recording. Then wait for the tick.
     if (downloader) downloader.abort()
+    if (monitor) await monitor.stop()
     if (httpClient) await httpClient.close()
     setState({ state: 'stopped' })
     logger.info('Recorder stopped')
