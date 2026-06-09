@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.2] — 2026-06-09
+
+### Fixed
+
+- **Support TikTok's new page structure** — TikTok migrated from `SIGI_STATE`
+  to `__UNIVERSAL_DATA_FOR_REHYDRATION__` for embedding page data. The `/live`
+  page no longer contains room info, causing all users to be reported as
+  offline. Fixed by extracting the numeric user ID from the profile page's
+  `webapp.user-detail` and using the Webcast API (`/room/info/`) for live
+  status and stream URL.
+- **Webcast API cookie propagation** — cookies are now seeded for
+  `webcast.tiktok.com` and `m.tiktok.com` in addition to `www.tiktok.com`,
+  fixing 403 errors from the Webcast API.
+
 ## [0.4.1] — 2026-06-09
 
 ### Fixed
