@@ -81,7 +81,7 @@ export function createRecorder(config: RecorderConfig): RecorderController {
     api = createTikTokApi(httpClient)
 
     // Initialize recorder components
-    downloader = createStreamDownloader(api, logger)
+    downloader = createStreamDownloader(logger)
     converter = createConverter(logger)
 
     // Start polling
@@ -92,9 +92,13 @@ export function createRecorder(config: RecorderConfig): RecorderController {
         if (stopRequested) return
 
         const user = cfg.user
+
+        // Invalidate cache so we get fresh data from TikTok
+        api!.invalidateCache()
+
         logger.info(`Checking @${user}...`)
 
-        // 1. Resolve room ID
+        // Single call fetches SIGI_STATE and extracts everything
         const roomId = await api!.getRoomId(user)
         if (!roomId) {
           logger.info(`@${user} is offline`)
@@ -102,10 +106,12 @@ export function createRecorder(config: RecorderConfig): RecorderController {
           return
         }
 
-        // 2. Check if room is alive
-        const alive = await api!.isRoomAlive(roomId)
-        if (!alive) {
-          logger.info(`@${user} has room but is not streaming`)
+        // `getRoomId` only returns a roomId when the user is live (status 2),
+        // so no separate liveness check is needed.
+
+        const liveUrl = await api!.getLiveUrl(roomId)
+        if (!liveUrl) {
+          logger.warn(`@${user} is live but no stream URL found`)
           emit('tick', { user, isLive: false })
           return
         }
@@ -113,24 +119,11 @@ export function createRecorder(config: RecorderConfig): RecorderController {
         logger.info(`@${user} is LIVE! (room: ${roomId})`)
         emit('tick', { user, isLive: true })
 
-        // 3. Get stream URL
-        const liveUrl = await api!.getLiveUrl(roomId)
-        if (!liveUrl) {
-          logger.warn(`Could not get stream URL for @${user}`)
-          return
-        }
-
-        // 4. Record
+        // Record the stream
         setState({ state: 'recording' })
         emit('recording:start', { user, file: '' })
 
-        const result = await downloader!.download(
-          liveUrl,
-          roomId,
-          user,
-          cfg.outputDir,
-          cfg.duration,
-        )
+        const result = await downloader!.download(liveUrl, user, cfg.outputDir, cfg.duration)
 
         setState({
           currentFile: result.file,
