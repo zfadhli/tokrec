@@ -6,14 +6,14 @@
  * login session is found.
  */
 
-import { Database } from "bun:sqlite";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
+import { Database } from "bun:sqlite"
+import { existsSync, readFileSync, readdirSync } from "node:fs"
+import { homedir } from "node:os"
+import { join } from "node:path"
 
 export interface TikTokCookies {
-  sessionid_ss: string;
-  "tt-target-idc"?: string;
+  sessionid_ss: string
+  "tt-target-idc"?: string
 }
 
 /**
@@ -26,11 +26,11 @@ export interface TikTokCookies {
  * TikTok login session exists.
  */
 export function extractTikTokCookiesFromFirefox(): TikTokCookies | null {
-  const dbPath = findFirefoxCookieDb();
-  if (!dbPath) return null;
+  const dbPath = findFirefoxCookieDb()
+  if (!dbPath) return null
 
   try {
-    const db = new Database(dbPath, { readonly: true });
+    const db = new Database(dbPath, { readonly: true })
     try {
       const rows = db
         .query(
@@ -38,21 +38,21 @@ export function extractTikTokCookiesFromFirefox(): TikTokCookies | null {
            WHERE host LIKE '%.tiktok.com'
            AND name IN ('sessionid_ss', 'tt-target-idc')`,
         )
-        .all() as Array<{ name: string; value: string }>;
+        .all() as Array<{ name: string; value: string }>
 
-      const session = rows.find((r) => r.name === "sessionid_ss");
-      if (!session?.value) return null;
+      const session = rows.find((r) => r.name === "sessionid_ss")
+      if (!session?.value) return null
 
-      const result: TikTokCookies = { sessionid_ss: session.value };
-      const idc = rows.find((r) => r.name === "tt-target-idc");
-      if (idc?.value) result["tt-target-idc"] = idc.value;
+      const result: TikTokCookies = { sessionid_ss: session.value }
+      const idc = rows.find((r) => r.name === "tt-target-idc")
+      if (idc?.value) result["tt-target-idc"] = idc.value
 
-      return result;
+      return result
     } finally {
-      db.close();
+      db.close()
     }
   } catch {
-    return null;
+    return null
   }
 }
 
@@ -65,17 +65,17 @@ export function extractTikTokCookiesFromFirefox(): TikTokCookies | null {
  *      (contain a cookies.sqlite file).
  */
 function findFirefoxCookieDb(): string | null {
-  const firefoxDir = join(homedir(), ".mozilla", "firefox");
-  if (!existsSync(firefoxDir)) return null;
+  const firefoxDir = join(homedir(), ".mozilla", "firefox")
+  if (!existsSync(firefoxDir)) return null
 
   // Try profiles.ini first for a reliable default-profile path
-  const iniPath = join(firefoxDir, "profiles.ini");
+  const iniPath = join(firefoxDir, "profiles.ini")
   if (existsSync(iniPath)) {
     try {
-      const profilePath = parseFirefoxProfilesIni(iniPath, firefoxDir);
+      const profilePath = parseFirefoxProfilesIni(iniPath, firefoxDir)
       if (profilePath) {
-        const dbPath = join(profilePath, "cookies.sqlite");
-        if (existsSync(dbPath)) return dbPath;
+        const dbPath = join(profilePath, "cookies.sqlite")
+        if (existsSync(dbPath)) return dbPath
       }
     } catch {
       // fall through to directory scan
@@ -83,14 +83,14 @@ function findFirefoxCookieDb(): string | null {
   }
 
   // Fallback: scan for any directory containing cookies.sqlite
-  const entries = readdirSync(firefoxDir, { withFileTypes: true });
+  const entries = readdirSync(firefoxDir, { withFileTypes: true })
   for (const entry of entries) {
-    if (!entry.isDirectory() && !entry.isSymbolicLink()) continue;
-    const dbPath = join(firefoxDir, entry.name, "cookies.sqlite");
-    if (existsSync(dbPath)) return dbPath;
+    if (!entry.isDirectory() && !entry.isSymbolicLink()) continue
+    const dbPath = join(firefoxDir, entry.name, "cookies.sqlite")
+    if (existsSync(dbPath)) return dbPath
   }
 
-  return null;
+  return null
 }
 
 /**
@@ -103,45 +103,42 @@ function findFirefoxCookieDb(): string | null {
  *   Path=1pese0rl.default-release
  *   Default=1
  */
-function parseFirefoxProfilesIni(
-  iniPath: string,
-  firefoxDir: string,
-): string | null {
-  const text = readFileSync(iniPath, "utf-8");
+function parseFirefoxProfilesIni(iniPath: string, firefoxDir: string): string | null {
+  const text = readFileSync(iniPath, "utf-8")
 
-  let defaultPath: string | null = null;
-  let isRelative = true;
-  let inProfile = false;
+  let defaultPath: string | null = null
+  let isRelative = true
+  let inProfile = false
 
   for (const line of text.split("\n")) {
-    const trimmed = line.trim();
+    const trimmed = line.trim()
 
     // Section header
     if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
-      if (inProfile && defaultPath) break; // found it
-      inProfile = trimmed.toLowerCase().startsWith("[profile");
+      if (inProfile && defaultPath) break // found it
+      inProfile = trimmed.toLowerCase().startsWith("[profile")
       if (inProfile) {
-        defaultPath = null;
-        isRelative = true;
+        defaultPath = null
+        isRelative = true
       }
-      continue;
+      continue
     }
 
-    if (!inProfile) continue;
+    if (!inProfile) continue
 
     if (trimmed.startsWith("path=")) {
-      defaultPath = trimmed.slice(5);
+      defaultPath = trimmed.slice(5)
     } else if (trimmed.startsWith("isrelative=")) {
-      isRelative = trimmed.slice(11).trim() !== "0";
+      isRelative = trimmed.slice(11).trim() !== "0"
     } else if (trimmed.startsWith("default=")) {
       if (trimmed.slice(8).trim() !== "1") {
         // Not the default profile — skip
-        inProfile = false;
-        defaultPath = null;
+        inProfile = false
+        defaultPath = null
       }
     }
   }
 
-  if (!defaultPath) return null;
-  return isRelative ? join(firefoxDir, defaultPath) : defaultPath;
+  if (!defaultPath) return null
+  return isRelative ? join(firefoxDir, defaultPath) : defaultPath
 }

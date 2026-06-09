@@ -4,84 +4,81 @@
  */
 
 export interface CookieAuth {
-  sessionid_ss: string;
-  "tt-target-idc"?: string;
+  sessionid_ss: string
+  "tt-target-idc"?: string
 }
 
-export type LogLevel = "debug" | "info" | "warn" | "error";
+export type LogLevel = "debug" | "info" | "warn" | "error"
 
 export interface RecorderConfig {
   /** TikTok username (required) */
-  user: string;
+  user: string
   /** Output directory for recordings (default: ./recordings) */
-  outputDir?: string;
+  outputDir?: string
   /** Polling interval in minutes (default: 3) */
-  interval?: number;
+  interval?: number
   /** Max recording duration in seconds (default: 0 — unlimited). CLI accepts minutes, converted internally. */
-  duration?: number;
+  duration?: number
   /** HTTP proxy URL (e.g. http://127.0.0.1:8080) */
-  proxy?: string;
+  proxy?: string
   /** Path to cookies.json (default: ./cookies.json) */
-  cookiesPath?: string;
+  cookiesPath?: string
   /** Cookie auth loaded from cookies.json */
-  cookies?: CookieAuth;
+  cookies?: CookieAuth
   /** Log level (default: info) */
-  logLevel?: LogLevel;
+  logLevel?: LogLevel
   /** Whether to print logs to console (default: true). Set false when using Display-based UI. */
-  logConsole?: boolean;
+  logConsole?: boolean
   /** Segment duration in minutes (default: 20). Stream is cut into segments of this length. */
-  segmentMinutes?: number;
+  segmentMinutes?: number
 }
 
 export interface RecorderController {
   /** Start the polling loop */
-  start(): Promise<void>;
+  start(): Promise<void>
   /** Gracefully stop (joins active recording, then exits) */
-  stop(): Promise<void>;
+  stop(): Promise<void>
   /** Snapshot of current state */
-  getStatus(): RecorderStatus;
+  getStatus(): RecorderStatus
   /** Subscribe to events */
-  on<E extends keyof RecorderEventHandler>(
-    event: E,
-    handler: RecorderEventHandler[E],
-  ): void;
+  on<E extends keyof RecorderEventHandler>(event: E, handler: RecorderEventHandler[E]): void
 }
 
 export interface RecorderStatus {
-  state: "idle" | "polling" | "recording" | "converting" | "stopped";
-  user: string;
-  currentFile?: string;
-  sessionDuration?: number;
-  lastPollTime?: string;
-  lastError?: string;
+  state: "idle" | "polling" | "recording" | "converting" | "stopped"
+  user: string
+  currentFile?: string
+  sessionDuration?: number
+  lastPollTime?: string
+  lastError?: string
 }
 
-export type RecorderEvent = keyof RecorderEventHandler;
+export type RecorderEvent = keyof RecorderEventHandler
 
 export interface RecorderEventHandler {
-  checking: (info: { user: string }) => void;
-  tick: (info: { user: string; isLive: boolean; roomId?: string }) => void;
-  "recording:start": (info: { user: string; file: string }) => void;
+  checking: (info: { user: string }) => void
+  tick: (info: { user: string; isLive: boolean; roomId?: string }) => void
+  "recording:start": (info: { user: string; file: string }) => void
   "download:progress": (info: {
-    bytes: number;
-    elapsed: number;
-    speed: number;
-  }) => void;
+    bytes: number
+    elapsed: number
+    speed: number
+  }) => void
   "download:end": (info: {
-    file: string;
-    duration: number;
-    size: number;
-  }) => void;
+    file: string
+    duration: number
+    size: number
+  }) => void
   "recording:end": (info: {
-    file: string;
-    duration: number;
-    size: number;
-  }) => void;
-  "segmenting:start": (info: { input: string; outputPattern: string }) => void;
-  "segmenting:end": (info: { segments: number }) => void;
-  "converting:start": (info: { input: string }) => void;
-  converted: (info: { input: string; output: string }) => void;
-  error: (err: TikTokError) => void;
+    file: string
+    duration: number
+    size: number
+  }) => void
+  "segmenting:start": (info: { input: string; outputPattern: string }) => void
+  "segmenting:end": (info: { segments: number }) => void
+  "converting:start": (info: { input: string }) => void
+  converted: (info: { input: string; output: string }) => void
+  error: (err: TikTokError) => void
 }
 
 export type AppErrorKind =
@@ -93,7 +90,7 @@ export type AppErrorKind =
   | "network-error"
   | "ffmpeg-not-found"
   | "config-error"
-  | "unknown";
+  | "unknown"
 
 export class TikTokError extends Error {
   constructor(
@@ -101,8 +98,8 @@ export class TikTokError extends Error {
     message: string,
     public readonly cause?: unknown,
   ) {
-    super(message);
-    this.name = "TikTokError";
+    super(message)
+    this.name = "TikTokError"
   }
 }
 
@@ -113,7 +110,7 @@ const DEFAULTS = {
   logLevel: "info" as LogLevel,
   logConsole: true,
   segmentMinutes: 20,
-};
+}
 
 export function normalizeConfig(
   config: RecorderConfig,
@@ -130,17 +127,17 @@ export function normalizeConfig(
     cookies: config.cookies,
     cookiesPath: config.cookiesPath,
     segmentMinutes: config.segmentMinutes ?? DEFAULTS.segmentMinutes,
-  };
+  }
 }
 
 export function validateConfig(config: RecorderConfig): void {
   if (!config.user || config.user.trim().length === 0) {
-    throw new TikTokError("config-error", "--user is required");
+    throw new TikTokError("config-error", "--user is required")
   }
   if (config.interval !== undefined && config.interval < 1) {
-    throw new TikTokError("config-error", "--interval must be >= 1 minute");
+    throw new TikTokError("config-error", "--interval must be >= 1 minute")
   }
   if (config.duration !== undefined && config.duration < 0) {
-    throw new TikTokError("config-error", "--duration must be >= 0 seconds");
+    throw new TikTokError("config-error", "--duration must be >= 0 seconds")
   }
 }
