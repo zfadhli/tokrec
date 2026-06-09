@@ -5,6 +5,46 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] — 2026-06-09
+
+### Added
+
+- **Terminal Display Manager** (`src/ui.ts`) — replaces cluttered `[TIMESTAMP] [LEVEL]`
+  console output with a beautiful spinner-driven terminal UI using koko-cli's
+  `createSpinner`, `ICON_*`, and `color` utilities.
+- **Live progress during recording** — spinner shows current bytes downloaded, elapsed
+  time, and download speed (e.g. `150.2 MB • 1m 23s • 1.8 MB/s`), updated every second.
+- **Automatic stream reconnection** — TikTok stream segments are short-lived (30-60s).
+  When one ends, the downloader transparently fetches a fresh URL and continues writing
+  to the same file. `--duration` limits work correctly across reconnections.
+- **Reconnection safety limits** — max 100 reconnects per recording session prevents
+  infinite loops if TikTok returns endless redirects.
+- **New recorder events** — `checking`, `download:progress`, `download:end`,
+  `segmenting:start`, `segmenting:end`, `converting:start` for fine-grained lifecycle
+  tracking.
+- **`logConsole` config option** — set `false` to suppress internal logger console output
+  (used automatically by the CLI when the Display is active).
+
+### Changed
+
+- **CLI output** — replaced all `[INFO]`/`[WARN]`/`[ERROR]` log lines with clean
+  one-liners using ✔/✘/⚠/ℹ icons and colored text. File logs remain fully detailed with
+  timestamps and levels for debugging.
+- **Logger `console` option** — `createLogger()` now accepts `console: boolean` (default
+  `true`). When `false`, writes to file only, allowing the Display to own the terminal.
+- **Stream downloader signature** — `download()` accepts an optional `getNextUrl`
+  callback and `ProgressInfo` callback. Existing callers using 4 params continue to work.
+
+### Fixed
+
+- **Premature end of recording** — TikTok delivers live streams as short FLV segments
+  (30-60s). Previously, the downloader stopped at the end of the first segment and
+  waited 3+ minutes for the next poll. Now it reconnects transparently and keeps
+  recording to the same file.
+- **Spinner/label interleaving** — the internal logger was writing to stdout while the
+  Display was also using the terminal, causing raw `[INFO]` lines between spinner
+  frames. Now the Display is the sole owner of stdout/stderr in CLI mode.
+
 ## [0.1.1] — 2026-06-09
 
 ### Changed

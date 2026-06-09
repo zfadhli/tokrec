@@ -36,11 +36,14 @@ export function createLogger(opts: {
   logFile?: string
   maxSize?: number
   backups?: number
+  /** When true (default), writes to stdout/stderr. Set false for file-only logging. */
+  console?: boolean
 }): Logger {
   const level = opts.level ?? 'info'
   const logFile = opts.logFile ?? 'tiktok-recorder.log'
   const maxSize = opts.maxSize ?? 5 * 1024 * 1024 // 5 MB
   const backups = opts.backups ?? 3
+  const showConsole = opts.console !== false // default true
 
   // Ensure parent directory exists
   const logDir = dirname(logFile)
@@ -102,11 +105,13 @@ export function createLogger(opts: {
     const line = `[${ts}] [${level.toUpperCase()}] ${msg}${suffix}`
     const formatted = `[${ts}] [${level.toUpperCase()}] ${msg}${suffix}`
 
-    // Console
-    if (level === 'error') {
-      process.stderr.write(`${LEVEL_COLORS[level]}${formatted}${RESET}\n`)
-    } else {
-      process.stdout.write(`${LEVEL_COLORS[level]}${formatted}${RESET}\n`)
+    // Console (optional — can be suppressed for file-only logging)
+    if (showConsole) {
+      if (level === 'error') {
+        process.stderr.write(`${LEVEL_COLORS[level]}${formatted}${RESET}\n`)
+      } else {
+        process.stdout.write(`${LEVEL_COLORS[level]}${formatted}${RESET}\n`)
+      }
     }
 
     // File
