@@ -83,7 +83,15 @@ export function createTikTokApi(http: HttpClient): TikTokApi {
 
       const roomId = String(userInfo.roomId)
       const isLive = liveRoom.status === 2 // 2 = live, 4 = offline
-      const streamUrl = isLive ? extractStreamUrl(liveRoom) : null
+
+      // Extract stream URL: try fast known path first, then brute-force SIGI_STATE
+      let streamUrl: string | null = null
+      if (isLive) {
+        streamUrl = extractStreamUrlFast(liveRoom)
+        if (!streamUrl) {
+          streamUrl = findStreamUrlRecursively(sigi)
+        }
+      }
 
       return { roomId, isLive, streamUrl, title: liveRoom.title ?? null }
     } catch (err) {
@@ -137,26 +145,59 @@ function extractSigiState(html: string): SigiState | null {
 
 // ─── Stream URL extraction ─────────────────────────────────
 
-interface StreamDataPayload {
-  data?: {
-    hd?: { main?: { flv?: string } }
-    ld?: { main?: { flv?: string } }
-    [key: string]: { main?: { flv?: string } } | undefined
-  }
-}
-
-function extractStreamUrl(
+/**
+ * Fast-path: extract stream URL from the known SIGI_STATE location.
+ * This covers ~95% of cases without needing a full recursive search.
+ */
+function extractStreamUrlFast(
   liveRoom: NonNullable<NonNullable<SigiState['LiveRoom']>['liveRoomUserInfo']>['liveRoom'],
 ): string | null {
   try {
     const raw = liveRoom?.streamData?.pull_data?.stream_data
     if (!raw) return null
-
-    const parsed = JSON.parse(raw) as StreamDataPayload
-
+    const parsed = JSON.parse(raw) as Record<string, unknown>
+    const data = (parsed as { data?: { hd?: { main?: { flv?: string } }; ld?: { main?: { flv?: string } } } }).data
     // Prefer HD (720p), fall back to LD (360p)
-    return parsed?.data?.hd?.main?.flv ?? parsed?.data?.ld?.main?.flv ?? null
+    return data?.hd?.main?.flv ?? data?.ld?.main?.flv ?? null
   } catch {
     return null
   }
+}
+
+/**
+ * Brute-force recursive search for a stream URL anywhere in a JSON value.
+ * Survives TikTok changing key names or nesting structure.
+ *
+ * Inspired by PR #430 (Michele0303/tiktok-live-recorder).
+ */
+function findStreamUrlRecursively(obj: unknown): string | null {
+  // Base case: a string — check if it looks like a stream URL
+  if (typeof obj === 'string') {
+    if (
+      (obj.startsWith('http://') || obj.startsWith('https://')) &&
+      (obj.includes('.flv') || obj.includes('.m3u8'))
+    ) {
+      return obj
+    }
+    return null
+  }
+
+  // Dict: recurse into all values
+  if (obj && typeof obj === 'object' && !Array.isArray(obj)) {
+    for (const val of Object.values(obj as Record<string, unknown>)) {
+      const found = findStreamUrlRecursively(val)
+      if (found) return found
+    }
+    return null
+  }
+
+  // Array: recurse into all elements
+  if (Array.isArray(obj)) {
+    for (const item of obj) {
+      const found = findStreamUrlRecursively(item)
+      if (found) return found
+    }
+  }
+
+  return null
 }
