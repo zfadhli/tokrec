@@ -1,6 +1,10 @@
 /**
- * TikTok API — resolves room IDs, live status, and stream URLs from a single
- * SIGI_STATE HTML scrape. No webcast API calls needed.
+ * TikTok API — resolves room IDs, live status, and stream URLs.
+ *
+ * Primary path: parse SIGI_STATE from the user's /live page (fast, ~95% of
+ * cases).  Fallback paths handle async-loaded room info by reading
+ * UserModule / LiveRoom.liveRoomStatus from SIGI_STATE and, when needed,
+ * calling the Webcast API (room/info/ or room/enter/).
  *
  * Architecture:
  *   createTikTokApi(httpClient) → { getRoomId, isRoomAlive, getLiveUrl }
@@ -68,37 +72,111 @@ export function createTikTokApi(http: HttpClient): TikTokApi {
   // ─── Internal: fetch and parse SIGI_STATE ─────────────────
 
   async function fetchLiveInfo(user: string): Promise<LiveInfo | null> {
+    // Track whether SIGI_STATE actually existed (for retry decisions)
+    let sigi: SigiState | null = null
+
     try {
       const res = await http.get(`${TIKTOK_BASE}/@${user}/live`)
       if (!res.ok) return null
 
       const html = await res.text()
-      const sigi = extractSigiState(html)
+      sigi = extractSigiState(html)
       if (!sigi) return null
 
+      // ── Primary path: room info in LiveRoom.liveRoomUserInfo ──
       const liveRoom = sigi.LiveRoom?.liveRoomUserInfo?.liveRoom
       const userInfo = sigi.LiveRoom?.liveRoomUserInfo?.user
 
-      if (!liveRoom || !userInfo?.roomId) return null
+      if (liveRoom && userInfo?.roomId) {
+        const roomId = String(userInfo.roomId)
+        const isLive = liveRoom.status === 2 // 2 = live, 4 = offline
 
-      const roomId = String(userInfo.roomId)
-      const isLive = liveRoom.status === 2 // 2 = live, 4 = offline
+        // Extract stream URL: try SIGI_STATE first, then Webcast API fallback
+        let streamUrl: string | null = null
+        if (isLive) {
+          streamUrl = extractStreamUrlFast(liveRoom)
+          if (!streamUrl) streamUrl = findStreamUrlRecursively(sigi)
+          if (!streamUrl) streamUrl = await fetchStreamUrlFromApi(roomId)
+        }
 
-      // Extract stream URL: try SIGI_STATE first, then Webcast API fallback
-      let streamUrl: string | null = null
-      if (isLive) {
-        streamUrl = extractStreamUrlFast(liveRoom)
-        if (!streamUrl) {
-          streamUrl = findStreamUrlRecursively(sigi)
-        }
-        if (!streamUrl) {
-          streamUrl = await fetchStreamUrlFromApi(roomId)
-        }
+        return { roomId, isLive, streamUrl, title: liveRoom.title ?? null }
       }
-
-      return { roomId, isLive, streamUrl, title: liveRoom.title ?? null }
     } catch (_err) {
       // Timeout (15s) or network error → treat as offline
+      return null
+    }
+
+    // ── Fallback path: async-loaded room info ──
+    // When LiveRoom.liveRoomUserInfo is absent, check LiveRoom.liveRoomStatus
+    // and UserModule.users[user].roomId, then use the Webcast API for stream URL.
+    return fetchLiveInfoFallback(sigi, user)
+  }
+
+  /**
+   * Secondary live-info extraction when SIGI_STATE's LiveRoom data is
+   * async-loaded.  Uses LiveRoom.liveRoomStatus for the live flag and
+   * UserModule.users[user].roomId for the room ID.  Stream URL is obtained
+   * from the Webcast API (room/info/) as a final fallback.
+   */
+  async function fetchLiveInfoFallback(
+    sigi: SigiState,
+    user: string,
+  ): Promise<LiveInfo | null> {
+    const liveRoomStatus = sigi.LiveRoom?.liveRoomStatus
+    const isLive = liveRoomStatus === 2 // 2 = live
+
+    // Try to get roomId from UserModule (usually populated even when LiveRoom is not)
+    const userModule = sigi.UserModule?.users?.[user]
+    let roomId: string | null = null
+
+    if (userModule?.roomId) {
+      roomId =
+        typeof userModule.roomId === 'object'
+          ? String((userModule.roomId as { id: string }).id ?? '')
+          : String(userModule.roomId)
+    }
+
+    // If we have a roomId, use Webcast room/info for the stream URL
+    if (roomId) {
+      const streamUrl = isLive ? await fetchStreamUrlFromApi(roomId) : null
+      return { roomId, isLive, streamUrl, title: null }
+    }
+
+    // Final fallback: Webcast room/enter API using the numeric user ID
+    if (userModule?.id && isLive) {
+      return fetchRoomInfoFromApi(userModule.id)
+    }
+
+    return null // truly offline / unknown
+  }
+
+  /**
+   * Fallback: fetch room info + stream URL from the Webcast API.
+   * This covers cases where SIGI_STATE has no room data at all
+   * (fully async-loaded page).
+   */
+  async function fetchRoomInfoFromApi(userId: string): Promise<LiveInfo | null> {
+    try {
+      const url = `${WEBCAST_BASE}/webcast/room/enter/?aid=1988&user_id=${userId}`
+      const res = await http.get(url)
+      if (!res.ok) return null
+
+      const text = await res.text()
+      if (text.length === 0) return null
+
+      const data = JSON.parse(text) as Record<string, unknown>
+      const roomData = (data as any)?.data?.room
+      if (!roomData) return null
+
+      const roomId = String(roomData.roomId ?? '')
+      if (!roomId) return null
+
+      const roomStatus = roomData.status // 2 = live
+      const isLive = roomStatus === 2
+      const streamUrl = isLive ? findStreamUrlRecursively(roomData) : null
+
+      return { roomId, isLive, streamUrl, title: roomData.title ?? null }
+    } catch {
       return null
     }
   }
@@ -143,6 +221,7 @@ interface SigiState {
     liveRoomStatus?: number
     liveRoomUserInfo?: {
       user?: {
+        id?: string | number
         roomId?: string | number
       }
       liveRoom?: {
@@ -154,6 +233,15 @@ interface SigiState {
             stream_data?: string // JSON string with FLV/HLS URLs
           }
         }
+      }
+    }
+  }
+  UserModule?: {
+    users?: {
+      [username: string]: {
+        id?: string // numeric user ID
+        uniqueId?: string
+        roomId?: string | { id: string }
       }
     }
   }
