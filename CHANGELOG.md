@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] — 2026-06-09
+
+### Fixed
+
+- **False-offline detection** — when TikTok asynchronously loads room info,
+  `LiveRoom.liveRoomUserInfo` could be absent from SIGI_STATE, causing the tool
+  to incorrectly report a live user as offline. Added a three-tier fallback:
+  `UserModule.users[user].roomId` for the room ID, `LiveRoom.liveRoomStatus`
+  for live status, and Webcast API (`room/enter/` and `room/info/`) as the final
+  resort for stream URL extraction.
+- **TypeScript `process` global not found** — `tsconfig.json` was missing the
+  `"types": ["bun"]` field, so VS Code and standalone `tsc` could not resolve
+  Bun-provided Node.js globals without installing `@types/node`.
+
 ## [0.3.0] — 2026-06-09
 
 ### Added
