@@ -7,7 +7,7 @@
  */
 
 import { spawn } from "node:child_process"
-import { readdirSync, statSync, unlinkSync } from "node:fs"
+import { readdirSync, statSync, unlinkSync, utimesSync } from "node:fs"
 import { join, parse } from "node:path"
 import { createHttpClient } from "../api/client"
 import { type TikTokApi, createTikTokApi } from "../api/tiktok"
@@ -228,6 +228,10 @@ export function createRecorder(config: RecorderConfig): RecorderController {
               outputPattern,
             ])
 
+            // Capture FLV timestamp before deletion (used to timestamp segments)
+            const flvMtimeMs = statSync(result.file).mtimeMs
+            const recStartMs = flvMtimeMs - (result.duration ?? 0) * 1000
+
             // Delete the original FLV
             try {
               unlinkSync(result.file)
@@ -268,6 +272,13 @@ export function createRecorder(config: RecorderConfig): RecorderController {
                 input: result.file,
                 output: filePath,
               })
+            }
+
+            // Set file modification times so segments sort chronologically
+            for (let i = 0; i < segmentFiles.length; i++) {
+              const fp = join(parsed.dir, segmentFiles[i]!)
+              const segStart = recStartMs + i * segmentDurationSec * 1000
+              utimesSync(fp, new Date(segStart), new Date(segStart))
             }
 
             emit("segmenting:end", { segments: segmentFiles.length })
