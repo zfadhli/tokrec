@@ -4,12 +4,22 @@ import { formatFilename, sanitizeUser, bytesToHuman } from '../src/utils'
 describe('formatFilename', () => {
   test('produces correct format', () => {
     const name = formatFilename('testuser')
-    expect(name).toMatch(/^TK_testuser_\d{4}\.\d{2}\.\d{2}_\d{2}-\d{2}-\d{2}\.flv$/)
+    expect(name).toMatch(/^testuser=\d{8}_\d{6}\.flv$/)
   })
 
   test('accepts custom extension', () => {
     const name = formatFilename('u', 'mp4')
     expect(name).toMatch(/\.mp4$/)
+  })
+
+  test('includes _part1 when part is provided', () => {
+    const name = formatFilename('testuser', 'flv', 1)
+    expect(name).toMatch(/^testuser=\d{8}_\d{6}_part1\.flv$/)
+  })
+
+  test('increments part suffix', () => {
+    const name2 = formatFilename('u', 'flv', 2)
+    expect(name2).toMatch(/_part2\.flv$/)
   })
 })
 

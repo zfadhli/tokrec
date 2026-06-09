@@ -4,13 +4,14 @@
 
 import { mkdirSync } from 'node:fs'
 
-/** Format a filename like TK_username_2025.06.09_14-30-00.flv */
-export function formatFilename(user: string, ext = 'flv'): string {
+/** Format a filename like username=2025.06.09_14-30-00_1.flv */
+export function formatFilename(user: string, ext = 'flv', part?: number): string {
   const now = new Date()
   const pad = (n: number) => String(n).padStart(2, '0')
-  const date = `${now.getFullYear()}.${pad(now.getMonth() + 1)}.${pad(now.getDate())}`
-  const time = `${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`
-  return `TK_${user}_${date}_${time}.${ext}`
+  const date = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}`
+  const time = `${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`
+  const partSuffix = part !== undefined ? `_part${part}` : ''
+  return `${user}=${date}_${time}${partSuffix}.${ext}`
 }
 
 /** Ensure a directory exists (recursive) */

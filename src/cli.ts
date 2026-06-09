@@ -12,18 +12,19 @@ export function parseArgs(argv: string[] = process.argv): RecorderConfig {
   let config: RecorderConfig | undefined
   let error: string | undefined
 
-  const cli = createCLI('tiktok-live-recorder', '0.1.1').description(
+  const cli = createCLI('tiktok-live-recorder', '0.2.0').description(
     'Minimal TikTok live stream recorder — Bun + TypeScript',
   )
 
   cli.command('', 'Record a TikTok live stream', (cmd) => {
-    cmd.option('--user <name>', 'TikTok username (required)')
-    cmd.option('--output <dir>', 'Output directory', { default: './recordings' })
-    cmd.option('--interval <minutes>', 'Polling interval in minutes', { default: '5' })
-    cmd.option('--duration <seconds>', 'Max recording duration in seconds')
-    cmd.option('--proxy <url>', 'HTTP proxy (e.g. http://127.0.0.1:8080)')
-    cmd.option('--log-level <level>', 'Log level: debug | info | warn | error')
-    cmd.option('--cookies <path>', 'Path to cookies.json')
+    cmd.option('-u, --user <name>', 'TikTok username (required)')
+    cmd.option('-o, --output <dir>', 'Output directory', { default: './recordings' })
+    cmd.option('-i, --interval <minutes>', 'Polling interval in minutes', { default: '3' })
+    cmd.option('-d, --duration <minutes>', 'Max recording duration in minutes')
+    cmd.option('-p, --proxy <url>', 'HTTP proxy (e.g. http://127.0.0.1:8080)')
+    cmd.option('-l, --log-level <level>', 'Log level: debug | info | warn | error')
+    cmd.option('-c, --cookies <path>', 'Path to cookies.json')
+    cmd.option('-s, --segment-minutes <minutes>', 'Segment duration in minutes', { default: '20' })
 
     cmd.action((opts: Record<string, unknown>) => {
       try {
@@ -47,9 +48,9 @@ export function parseArgs(argv: string[] = process.argv): RecorderConfig {
         if (opts.duration !== undefined) {
           const n = Number(opts.duration)
           if (!Number.isFinite(n) || n < 0) {
-            throw new TikTokError('config-error', '--duration must be a number >= 0')
+            throw new TikTokError('config-error', '--duration must be a number >= 0 (minutes)')
           }
-          parsed.duration = n
+          parsed.duration = n * 60
         }
         if (opts.proxy) parsed.proxy = opts.proxy as string
         if (opts.logLevel) {
@@ -61,6 +62,14 @@ export function parseArgs(argv: string[] = process.argv): RecorderConfig {
             )
           }
           parsed.logLevel = opts.logLevel as LogLevel
+        }
+        if (opts.cookies) parsed.cookiesPath = opts.cookies as string
+        if (opts.segmentMinutes !== undefined) {
+          const n = Number(opts.segmentMinutes)
+          if (!Number.isFinite(n) || n < 1) {
+            throw new TikTokError('config-error', '--segment-minutes must be a number >= 1')
+          }
+          parsed.segmentMinutes = n
         }
 
         config = parsed

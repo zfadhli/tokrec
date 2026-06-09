@@ -6,7 +6,7 @@ describe('normalizeConfig', () => {
     const cfg = normalizeConfig({ user: 'testuser' })
     expect(cfg.user).toBe('testuser')
     expect(cfg.outputDir).toBe('./recordings')
-    expect(cfg.interval).toBe(5)
+    expect(cfg.interval).toBe(3)
     expect(cfg.duration).toBe(0)
     expect(cfg.logLevel).toBe('info')
   })

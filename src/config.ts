@@ -15,16 +15,22 @@ export interface RecorderConfig {
   user: string
   /** Output directory for recordings (default: ./recordings) */
   outputDir?: string
-  /** Polling interval in minutes (default: 5) */
+  /** Polling interval in minutes (default: 3) */
   interval?: number
-  /** Max recording duration in seconds (default: 0 — unlimited) */
+  /** Max recording duration in seconds (default: 0 — unlimited). CLI accepts minutes, converted internally. */
   duration?: number
   /** HTTP proxy URL (e.g. http://127.0.0.1:8080) */
   proxy?: string
+  /** Path to cookies.json (default: ./cookies.json) */
+  cookiesPath?: string
   /** Cookie auth loaded from cookies.json */
   cookies?: CookieAuth
   /** Log level (default: info) */
   logLevel?: LogLevel
+  /** Whether to print logs to console (default: true). Set false when using Display-based UI. */
+  logConsole?: boolean
+  /** Segment duration in minutes (default: 20). Stream is cut into segments of this length. */
+  segmentMinutes?: number
 }
 
 export interface RecorderController {
@@ -50,9 +56,15 @@ export interface RecorderStatus {
 export type RecorderEvent = keyof RecorderEventHandler
 
 export interface RecorderEventHandler {
-  tick: (info: { user: string; isLive: boolean }) => void
+  checking: (info: { user: string }) => void
+  tick: (info: { user: string; isLive: boolean; roomId?: string }) => void
   'recording:start': (info: { user: string; file: string }) => void
+  'download:progress': (info: { bytes: number; elapsed: number; speed: number }) => void
+  'download:end': (info: { file: string; duration: number; size: number }) => void
   'recording:end': (info: { file: string; duration: number; size: number }) => void
+  'segmenting:start': (info: { input: string; outputPattern: string }) => void
+  'segmenting:end': (info: { segments: number }) => void
+  'converting:start': (info: { input: string }) => void
   converted: (info: { input: string; output: string }) => void
   error: (err: TikTokError) => void
 }
@@ -81,22 +93,28 @@ export class TikTokError extends Error {
 
 const DEFAULTS = {
   outputDir: './recordings',
-  interval: 5,
+  interval: 3,
   duration: 0,
   logLevel: 'info' as LogLevel,
+  logConsole: true,
+  segmentMinutes: 20,
 }
 
 export function normalizeConfig(
   config: RecorderConfig,
-): Required<Omit<RecorderConfig, 'cookies' | 'proxy'>> & Pick<RecorderConfig, 'cookies' | 'proxy'> {
+): Required<Omit<RecorderConfig, 'cookies' | 'cookiesPath' | 'proxy'>> &
+  Pick<RecorderConfig, 'cookies' | 'cookiesPath' | 'proxy'> {
   return {
     user: config.user,
     outputDir: config.outputDir ?? DEFAULTS.outputDir,
     interval: config.interval ?? DEFAULTS.interval,
     duration: config.duration ?? DEFAULTS.duration,
     logLevel: config.logLevel ?? DEFAULTS.logLevel,
+    logConsole: config.logConsole ?? DEFAULTS.logConsole,
     proxy: config.proxy,
     cookies: config.cookies,
+    cookiesPath: config.cookiesPath,
+    segmentMinutes: config.segmentMinutes ?? DEFAULTS.segmentMinutes,
   }
 }
 
