@@ -113,7 +113,7 @@ export function createDisplay(): Display {
 
     checkingUser(user: string): void {
       clearSpinner()
-      activeSpinner = createSpinner(color.cyan(`Checking @${user}...`))
+      activeSpinner = createSpinner(color.cyan(`  Checking @${user}...`))
       activeSpinner.start()
     },
 
@@ -148,13 +148,13 @@ export function createDisplay(): Display {
 
     startRecording(): void {
       clearSpinner()
-      activeSpinner = createSpinner(color.cyan("Recording stream..."))
+      activeSpinner = createSpinner(color.cyan("  Recording stream..."))
       activeSpinner.start()
     },
 
     updateProgress(bytes: number, elapsed: number, speed: number): void {
       if (!activeSpinner?.isSpinning) return
-      activeSpinner.text = ` ${fmtBytes(bytes)} ${color.dim("•")} ${fmtDuration(elapsed)} ${color.dim("•")} ${fmtSpeed(speed)}`
+      activeSpinner.text = `  ${fmtBytes(bytes)} ${color.dim("•")} ${fmtDuration(elapsed)} ${color.dim("•")} ${fmtSpeed(speed)}`
     },
 
     finishRecording(filename: string, duration: number, size: string): void {
@@ -170,7 +170,7 @@ export function createDisplay(): Display {
 
     startSegmenting(): void {
       clearSpinner()
-      activeSpinner = createSpinner(color.cyan("Segmenting..."))
+      activeSpinner = createSpinner(color.cyan("  Segmenting..."))
       activeSpinner.start()
     },
 
@@ -180,7 +180,7 @@ export function createDisplay(): Display {
 
     startConverting(): void {
       clearSpinner()
-      activeSpinner = createSpinner(color.cyan("Converting to MP4..."))
+      activeSpinner = createSpinner(color.cyan("  Converting to MP4..."))
       activeSpinner.start()
     },
 
@@ -190,14 +190,14 @@ export function createDisplay(): Display {
 
     normalizeStart(): void {
       clearSpinner()
-      activeSpinner = createSpinner(color.cyan("Normalizing audio..."))
+      activeSpinner = createSpinner(color.cyan("  Normalizing audio..."))
       activeSpinner.start()
     },
 
     normalizeProgress(percent: number, phase: string): void {
       if (!activeSpinner?.isSpinning) return
       const label = phase === "analyzing" ? "Analyzing" : "Normalizing"
-      activeSpinner.text = ` ${label}... ${percent}%`
+      activeSpinner.text = `  ${label}... ${percent}%`
     },
 
     normalizeComplete(): void {
