@@ -69,7 +69,7 @@ async function main(): Promise<void> {
   const recorder = createRecorder(config)
 
   let lastWasLive: boolean | null = null
-  let lastCheckTime = Date.now()
+  let firstOfflineTime = 0
 
   // Subscribe to events for beautiful console output
   recorder.on("checking", (info) => {
@@ -81,12 +81,12 @@ async function main(): Promise<void> {
       display.userLive(info.user, info.roomId ?? "?")
     } else if (lastWasLive === null || lastWasLive === true) {
       display.userOffline(info.user)
+      firstOfflineTime = Date.now()
     } else {
-      const elapsed = Date.now() - lastCheckTime
+      const elapsed = Date.now() - firstOfflineTime
       display.userOfflineRepeat(info.user, relativeTime(elapsed))
     }
     lastWasLive = info.isLive
-    lastCheckTime = Date.now()
   })
 
   recorder.on("recording:start", () => {
