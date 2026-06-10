@@ -67,21 +67,9 @@ export interface RecorderEventHandler {
   checking: (info: { user: string }) => void
   tick: (info: { user: string; isLive: boolean; roomId?: string }) => void
   "recording:start": (info: { user: string; file: string }) => void
-  "download:progress": (info: {
-    bytes: number
-    elapsed: number
-    speed: number
-  }) => void
-  "download:end": (info: {
-    file: string
-    duration: number
-    size: number
-  }) => void
-  "recording:end": (info: {
-    file: string
-    duration: number
-    size: number
-  }) => void
+  "download:progress": (info: { bytes: number; elapsed: number; speed: number }) => void
+  "download:end": (info: { file: string; duration: number; size: number }) => void
+  "recording:end": (info: { file: string; duration: number; size: number }) => void
   "segmenting:start": (info: { input: string; outputPattern: string }) => void
   "segmenting:end": (info: { segments: number }) => void
   "converting:start": (info: { input: string }) => void

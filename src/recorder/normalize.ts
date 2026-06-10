@@ -3,8 +3,8 @@
  * Runs after conversion/segmenting to normalize the final MP4 audio.
  */
 
-import { normalizeFile } from "peaknorm"
 import type { NormalizeResult } from "peaknorm"
+import { normalizeFile } from "peaknorm"
 import type { Logger } from "../logger"
 
 export interface AudioNormalizer {

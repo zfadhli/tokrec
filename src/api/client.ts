@@ -3,7 +3,7 @@
  * Provides TLS fingerprint impersonation, cookie jar, and proxy support.
  */
 
-import { type Session, createSession } from "wreq-js"
+import { createSession, type Session } from "wreq-js"
 import type { RecorderConfig } from "../config"
 
 export interface HttpClient {
