@@ -31,6 +31,14 @@ export interface RecorderConfig {
   logConsole?: boolean
   /** Segment duration in minutes (default: 20). Stream is cut into segments of this length. */
   segmentMinutes?: number
+  /** Normalize audio loudness via EBU R128 (default: false). */
+  normalizeAudio?: boolean
+  /** Target loudness in LUFS (default: -14). */
+  normalizeLoudness?: number
+  /** Audio codec for normalized output (default: "aac"). */
+  normalizeCodec?: string
+  /** Audio bitrate for normalized output (default: "128k"). */
+  normalizeBitrate?: string
 }
 
 export interface RecorderController {
@@ -78,6 +86,14 @@ export interface RecorderEventHandler {
   "segmenting:end": (info: { segments: number }) => void
   "converting:start": (info: { input: string }) => void
   converted: (info: { input: string; output: string }) => void
+  "normalize:start": (info: { file: string }) => void
+  "normalize:progress": (info: {
+    file: string
+    percent: number
+    phase: "analyzing" | "normalizing"
+  }) => void
+  "normalize:end": (info: { input: string; output: string }) => void
+  "normalize:error": (info: { input: string; error: string }) => void
   error: (err: TikTokError) => void
 }
 
@@ -110,6 +126,10 @@ const DEFAULTS = {
   logLevel: "info" as LogLevel,
   logConsole: true,
   segmentMinutes: 20,
+  normalizeAudio: false,
+  normalizeLoudness: -14,
+  normalizeCodec: "aac",
+  normalizeBitrate: "128k",
 }
 
 export function normalizeConfig(
@@ -127,6 +147,10 @@ export function normalizeConfig(
     cookies: config.cookies,
     cookiesPath: config.cookiesPath,
     segmentMinutes: config.segmentMinutes ?? DEFAULTS.segmentMinutes,
+    normalizeAudio: config.normalizeAudio ?? DEFAULTS.normalizeAudio,
+    normalizeLoudness: config.normalizeLoudness ?? DEFAULTS.normalizeLoudness,
+    normalizeCodec: config.normalizeCodec ?? DEFAULTS.normalizeCodec,
+    normalizeBitrate: config.normalizeBitrate ?? DEFAULTS.normalizeBitrate,
   }
 }
 

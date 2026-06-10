@@ -22,6 +22,7 @@ import { TikTokError, normalizeConfig } from "../config"
 import { createLogger } from "../logger"
 import { type PollingMonitor, createPollingMonitor } from "../monitor"
 import { type Converter, createConverter } from "./convert"
+import { type AudioNormalizer, createAudioNormalizer } from "./normalize"
 import { type StreamDownloader, createStreamDownloader } from "./stream"
 
 export function createRecorder(config: RecorderConfig): RecorderController {
@@ -46,6 +47,7 @@ export function createRecorder(config: RecorderConfig): RecorderController {
   let monitor: PollingMonitor | null = null
   let downloader: StreamDownloader | null = null
   let converter: Converter | null = null
+  let audioNormalizer: AudioNormalizer | null = null
   let stopRequested = false
 
   function setState(partial: Partial<RecorderStatus>): void {
@@ -126,6 +128,27 @@ export function createRecorder(config: RecorderConfig): RecorderController {
     api = createTikTokApi(httpClient)
     downloader = createStreamDownloader(logger)
     converter = createConverter(logger)
+    audioNormalizer = cfg.normalizeAudio
+      ? createAudioNormalizer(
+          {
+            loudness: cfg.normalizeLoudness,
+            audioCodec: cfg.normalizeCodec,
+            audioBitrate: cfg.normalizeBitrate,
+            onStart: (file) => emit("normalize:start", { file }),
+            onProgress: (file, percent, phase) =>
+              emit("normalize:progress", {
+                file,
+                percent,
+                phase: phase as "analyzing" | "normalizing",
+              }),
+            onComplete: (result) =>
+              emit("normalize:end", { input: result.input, output: result.output }),
+            onError: (file, err) =>
+              emit("normalize:error", { input: file, error: err.message }),
+          },
+          logger,
+        )
+      : null
 
     monitor = createPollingMonitor({
       intervalMinutes: cfg.interval,
@@ -283,6 +306,18 @@ export function createRecorder(config: RecorderConfig): RecorderController {
 
             emit("segmenting:end", { segments: segmentFiles.length })
 
+            // Normalize audio for each segment if enabled
+            if (audioNormalizer) {
+              for (const segFile of segmentFiles) {
+                const segPath = join(parsed.dir, segFile)
+                try {
+                  await audioNormalizer.normalize(segPath)
+                } catch {
+                  // Error already emitted via onError callback — continue to next segment
+                }
+              }
+            }
+
             setState({
               currentFile:
                 segmentFiles.length > 0 ? join(parsed.dir, segmentFiles.at(-1)!) : result.file,
@@ -296,6 +331,13 @@ export function createRecorder(config: RecorderConfig): RecorderController {
             try {
               const mp4File = await converter!.convert(result.file)
               emit("converted", { input: result.file, output: mp4File })
+              if (audioNormalizer) {
+                try {
+                  await audioNormalizer.normalize(mp4File)
+                } catch {
+                  // Error already emitted via onError callback
+                }
+              }
             } catch (convErr) {
               const tkErr =
                 convErr instanceof TikTokError
@@ -310,6 +352,13 @@ export function createRecorder(config: RecorderConfig): RecorderController {
           emit("converting:start", { input: result.file })
           try {
             const mp4File = await converter!.convert(result.file)
+            if (audioNormalizer) {
+              try {
+                await audioNormalizer.normalize(mp4File)
+              } catch {
+                // Error already emitted via onError callback
+              }
+            }
             emit("recording:end", {
               file: mp4File,
               duration: result.duration,
