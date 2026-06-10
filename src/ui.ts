@@ -80,7 +80,7 @@ export function createDisplay(): Display {
   /** Stop the current spinner and print a one-liner with the given icon. */
   function finalize(icon: string, text: string): void {
     clearSpinner()
-    process.stdout.write(`  ${icon} ${text}\n`)
+    process.stdout.write(`${icon}${text}\n`)
   }
 
   /** Format seconds into a compact human-readable duration. */
@@ -113,7 +113,7 @@ export function createDisplay(): Display {
 
     checkingUser(user: string): void {
       clearSpinner()
-      activeSpinner = createSpinner(color.cyan(`  Checking @${user}...`))
+      activeSpinner = createSpinner(color.cyan(`Checking @${user}...`))
       activeSpinner.start()
     },
 
@@ -127,12 +127,12 @@ export function createDisplay(): Display {
       if (offlineLineShown) {
         // Move cursor up one line and overwrite the previous offline message
         process.stdout.write(
-          `\x1b[1A\r  ${ICON_INFO} ${color.dim(`@${user} is offline`)} ${color.dim(`[last check: ${lastCheck}]`)}\x1b[K\n`,
+          `\x1b[1A\r${ICON_INFO}${color.dim(`@${user} is offline`)} ${color.dim(`[last check: ${lastCheck}]`)}\x1b[K\n`,
         )
       } else {
         // Fallback if state is out of sync
         process.stdout.write(
-          `  ${ICON_INFO} ${color.dim(`@${user} is offline`)} ${color.dim(`[last check: ${lastCheck}]`)}\n`,
+          `${ICON_INFO}${color.dim(`@${user} is offline`)} ${color.dim(`[last check: ${lastCheck}]`)}\n`,
         )
         offlineLineShown = true
       }
@@ -142,19 +142,19 @@ export function createDisplay(): Display {
       clearSpinner()
       offlineLineShown = false
       process.stdout.write(
-        `  ${ICON_SUCCESS} ${color.green(`@${user} is LIVE!`)} ${color.dim(`(room: ${roomId})`)}\n`,
+        `${ICON_SUCCESS}${color.green(`@${user} is LIVE!`)} ${color.dim(`(room: ${roomId})`)}\n`,
       )
     },
 
     startRecording(): void {
       clearSpinner()
-      activeSpinner = createSpinner(color.cyan("  Recording stream..."))
+      activeSpinner = createSpinner(color.cyan("Recording stream..."))
       activeSpinner.start()
     },
 
     updateProgress(bytes: number, elapsed: number, speed: number): void {
       if (!activeSpinner?.isSpinning) return
-      activeSpinner.text = `  ${fmtBytes(bytes)} ${color.dim("•")} ${fmtDuration(elapsed)} ${color.dim("•")} ${fmtSpeed(speed)}`
+      activeSpinner.text = ` ${fmtBytes(bytes)} ${color.dim("•")} ${fmtDuration(elapsed)} ${color.dim("•")} ${fmtSpeed(speed)}`
     },
 
     finishRecording(filename: string, duration: number, size: string): void {
@@ -170,7 +170,7 @@ export function createDisplay(): Display {
 
     startSegmenting(): void {
       clearSpinner()
-      activeSpinner = createSpinner(color.cyan("  Segmenting..."))
+      activeSpinner = createSpinner(color.cyan("Segmenting..."))
       activeSpinner.start()
     },
 
@@ -180,7 +180,7 @@ export function createDisplay(): Display {
 
     startConverting(): void {
       clearSpinner()
-      activeSpinner = createSpinner(color.cyan("  Converting to MP4..."))
+      activeSpinner = createSpinner(color.cyan("Converting to MP4..."))
       activeSpinner.start()
     },
 
@@ -190,14 +190,14 @@ export function createDisplay(): Display {
 
     normalizeStart(): void {
       clearSpinner()
-      activeSpinner = createSpinner(color.cyan("  Normalizing audio..."))
+      activeSpinner = createSpinner(color.cyan("Normalizing audio..."))
       activeSpinner.start()
     },
 
     normalizeProgress(percent: number, phase: string): void {
       if (!activeSpinner?.isSpinning) return
       const label = phase === "analyzing" ? "Analyzing" : "Normalizing"
-      activeSpinner.text = `  ${label}... ${percent}%`
+      activeSpinner.text = ` ${label}... ${percent}%`
     },
 
     normalizeComplete(): void {
@@ -211,19 +211,19 @@ export function createDisplay(): Display {
     showError(message: string): void {
       clearSpinner()
       offlineLineShown = false
-      process.stdout.write(`  ${ICON_ERROR} ${color.red(message)}\n`)
+      process.stdout.write(`${ICON_ERROR}${color.red(message)}\n`)
     },
 
     showInfo(message: string): void {
       clearSpinner()
       offlineLineShown = false
-      process.stdout.write(`  ${ICON_INFO} ${color.dim(message)}\n`)
+      process.stdout.write(`${ICON_INFO}${color.dim(message)}\n`)
     },
 
     showWarning(message: string): void {
       clearSpinner()
       offlineLineShown = false
-      process.stdout.write(`  ${ICON_WARN} ${color.yellow(message)}\n`)
+      process.stdout.write(`${ICON_WARN}${color.yellow(message)}\n`)
     },
 
     stop(): void {
