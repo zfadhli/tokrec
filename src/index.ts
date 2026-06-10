@@ -149,10 +149,7 @@ async function main(): Promise<void> {
   // Signal handling
   let stopping = false
   const handleSignal = async () => {
-    if (stopping) {
-      process.stdout.write("Force stopping...\n")
-      process.exit(1)
-    }
+    if (stopping) return  // ignore duplicate signals (e.g. SIGINT + SIGTERM from one Ctrl-C)
     stopping = true
     display.showInfo("Shutting down gracefully...")
     await recorder.stop()
