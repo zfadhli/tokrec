@@ -30,6 +30,10 @@ export function parseArgs(argv: string[] = process.argv): RecorderConfig {
     cmd.option("-l, --log-level <level>", "Log level: debug | info | warn | error")
     cmd.option("-c, --cookies <path>", "Path to cookies.json")
     cmd.option("-s, --segment-minutes <minutes>", "Segment duration in minutes", { default: "20" })
+    cmd.option("--normalize", "Normalize audio loudness (EBU R128)")
+    cmd.option("--normalize-loudness <num>", "Target loudness in LUFS (default: -14)")
+    cmd.option("--normalize-codec <name>", "Audio codec for normalized output (default: aac)")
+    cmd.option("--normalize-bitrate <str>", "Audio bitrate for normalized output (default: 128k)")
 
     cmd.action((opts: Record<string, unknown>) => {
       try {
@@ -76,6 +80,17 @@ export function parseArgs(argv: string[] = process.argv): RecorderConfig {
           }
           parsed.segmentMinutes = n
         }
+
+        if (opts.normalize) parsed.normalizeAudio = true
+        if (opts.normalizeLoudness !== undefined) {
+          const n = Number(opts.normalizeLoudness)
+          if (!Number.isFinite(n)) {
+            throw new TikTokError("config-error", "--normalize-loudness must be a number")
+          }
+          parsed.normalizeLoudness = n
+        }
+        if (opts.normalizeCodec) parsed.normalizeCodec = opts.normalizeCodec as string
+        if (opts.normalizeBitrate) parsed.normalizeBitrate = opts.normalizeBitrate as string
 
         config = parsed
       } catch (err) {

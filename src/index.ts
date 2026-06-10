@@ -130,6 +130,22 @@ async function main(): Promise<void> {
     display.showError(`[${err.kind}] ${err.message}`)
   })
 
+  recorder.on("normalize:start", () => {
+    display.normalizeStart()
+  })
+
+  recorder.on("normalize:progress", (info) => {
+    display.normalizeProgress(info.percent, info.phase)
+  })
+
+  recorder.on("normalize:end", () => {
+    display.normalizeComplete()
+  })
+
+  recorder.on("normalize:error", (info) => {
+    display.normalizeError(info.error)
+  })
+
   // Signal handling
   let stopping = false
   const handleSignal = async () => {
