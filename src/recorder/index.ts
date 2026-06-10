@@ -143,8 +143,7 @@ export function createRecorder(config: RecorderConfig): RecorderController {
               }),
             onComplete: (result) =>
               emit("normalize:end", { input: result.input, output: result.output }),
-            onError: (file, err) =>
-              emit("normalize:error", { input: file, error: err.message }),
+            onError: (file, err) => emit("normalize:error", { input: file, error: err.message }),
           },
           logger,
         )
