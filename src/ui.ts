@@ -47,6 +47,15 @@ export interface Display {
   /** Simple conversion done. */
   conversionDone(output: string): void
 
+  /** Audio normalization starts (EBU R128 via peaknorm). */
+  normalizeStart(): void
+  /** Audio normalization progress update. */
+  normalizeProgress(percent: number, phase: string): void
+  /** Audio normalization completed successfully. */
+  normalizeComplete(): void
+  /** Audio normalization failed. */
+  normalizeError(message: string): void
+
   /** General-purpose status helpers. */
   showError(message: string): void
   showInfo(message: string): void
@@ -177,6 +186,26 @@ export function createDisplay(): Display {
 
     conversionDone(output: string): void {
       finalize(ICON_SUCCESS, color.green(`Converted: ${output}`))
+    },
+
+    normalizeStart(): void {
+      clearSpinner()
+      activeSpinner = createSpinner(color.cyan("Normalizing audio..."))
+      activeSpinner.start()
+    },
+
+    normalizeProgress(percent: number, phase: string): void {
+      if (!activeSpinner?.isSpinning) return
+      const label = phase === "analyzing" ? "Analyzing" : "Normalizing"
+      activeSpinner.text = ` ${label}... ${percent}%`
+    },
+
+    normalizeComplete(): void {
+      finalize(ICON_SUCCESS, color.green("Audio normalized"))
+    },
+
+    normalizeError(message: string): void {
+      finalize(ICON_ERROR, color.red(`Normalization failed: ${message}`))
     },
 
     showError(message: string): void {
