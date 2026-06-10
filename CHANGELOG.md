@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] — 2026-06-10
+
+### Added
+
+- **Audio normalization via peaknorm** — new `--normalize` flag applies EBU R128
+  two-pass loudness normalization using `peaknorm`. Configurable target loudness
+  (`--normalize-loudness`), audio codec (`--normalize-codec`), and bitrate
+  (`--normalize-bitrate`). Runs after conversion/segmenting on each MP4 file
+  sequentially with a live progress spinner (Analyzing / Normalizing phases).
+
+### Fixed
+
+- **Offline timestamp not updating** — the `[last check: ...]` timestamp now
+  correctly measures elapsed time from the first offline detection instead of
+  from the previous poll tick, so it shows an increasing duration (e.g. `3m ago`
+  → `6m ago` → `9m ago`) rather than always displaying the polling interval.
+
+### Changed
+
+- **Dependency upgrades** — TypeScript 5.9 → 6.0, Biome 1.9 → 2.4,
+  peaknorm 0.2.2 → 0.2.4.
+
 ## [0.6.0] — 2026-06-10
 
 ### Changed
