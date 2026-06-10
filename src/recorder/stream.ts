@@ -41,11 +41,13 @@ export interface StreamDownloader {
 
 export function createStreamDownloader(logger?: Logger): StreamDownloader {
   let abortFlag = false
+  let abortController = new AbortController()
   let streamReader: ReadableStreamDefaultReader<Uint8Array> | null = null
   let ffmpegProcess: ChildProcess | null = null
 
   function abort(): void {
     abortFlag = true
+    abortController.abort()
     streamReader?.cancel().catch(() => {})
     if (ffmpegProcess && !ffmpegProcess.killed) {
       ffmpegProcess.kill("SIGTERM")
@@ -97,10 +99,10 @@ export function createStreamDownloader(logger?: Logger): StreamDownloader {
       return (Date.now() - startTime) / 1000
     }
 
-    try {
-      const bufferSize = 512 * 1024 // 512 KB buffer
-      let buffer = Buffer.alloc(0)
+    const bufferSize = 512 * 1024 // 512 KB buffer
+    let buffer = Buffer.alloc(0)
 
+    try {
       function reportProgress(bytes: number): void {
         if (!onProgress) return
         const now = Date.now()
@@ -138,18 +140,35 @@ export function createStreamDownloader(logger?: Logger): StreamDownloader {
         }
       }
 
+      /** Resolves if the abort signal fires — used to break out of read waits instantly. */
+      function waitForAbort(): Promise<never> {
+        return new Promise((_, reject) => {
+          if (abortController.signal.aborted) {
+            reject(new Error("Aborted"))
+            return
+          }
+          abortController.signal.addEventListener("abort", () => reject(new Error("Aborted")), {
+            once: true,
+          })
+        })
+      }
+
       while (!abortFlag) {
         let chunk: { done: boolean; value?: Uint8Array }
 
         try {
-          const result = await timeout(reader.read(), 60_000, "Stream read timed out")
+          const result = await Promise.race([
+            timeout(reader.read(), 60_000, "Stream read timed out"),
+            waitForAbort(),
+          ])
           chunk = result
-        } catch (err) {
-          logger?.info("Read timed out, attempting reconnection...")
+        } catch (_err) {
+          if (abortFlag) break
+          logger?.info("Stream ended or timed out, attempting reconnection...")
           if (await tryReconnect()) {
             continue
           }
-          throw err
+          break
         }
 
         if (chunk.done) {
@@ -199,6 +218,16 @@ export function createStreamDownloader(logger?: Logger): StreamDownloader {
       return { file: filepath, duration, size: totalBytes }
     } catch (err) {
       abort()
+      // Flush remaining buffer and close the write stream so the partial file is valid
+      try {
+        if (buffer.length > 0) {
+          await writeBuffer(writer, buffer)
+          totalBytes += buffer.length
+        }
+        await new Promise<void>((resolve) => writer.end(resolve))
+      } catch {
+        // best effort — file may be truncated but readable
+      }
       const duration = elapsed()
       logger?.error(`Recording error: ${err instanceof Error ? err.message : String(err)}`)
       return { file: filepath, duration, size: totalBytes }
@@ -336,6 +365,7 @@ export function createStreamDownloader(logger?: Logger): StreamDownloader {
     getNextUrl?: () => Promise<string | null>,
   ): Promise<DownloadResult> {
     abortFlag = false
+    abortController = new AbortController()
     ensureDir(outputDir)
 
     if (isHlsUrl(liveUrl)) {
