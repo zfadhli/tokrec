@@ -150,7 +150,7 @@ async function main(): Promise<void> {
   let stopping = false
   const handleSignal = async () => {
     if (stopping) {
-      process.stdout.write("  Force stopping...\n")
+      process.stdout.write("Force stopping...\n")
       process.exit(1)
     }
     stopping = true
