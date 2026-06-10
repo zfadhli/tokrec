@@ -1,80 +1,71 @@
-# Session Handoff — 2026-06-09 15:30
+# Session Handoff — 2026-06-10 03:45
 
 ## Goal
 
-Transform the TikTok live stream recorder from a bare-bones CLI with cluttered `[TIMESTAMP] [LEVEL]` logs into a polished tool with beautiful terminal output, reliable stream reconnection, and published to npm as `@zfadhli/tokrec`.
+Improve the TikTok live stream recorder's CLI output, fix Ctrl-C shutdown to reliably convert partial downloads, and release both v0.6.0 and v0.7.0.
 
 ## Files Modified/Created
 
-### New Files
-- `src/ui.ts` — Terminal Display Manager using koko-cli's `createSpinner`, `ICON_*`, and `color`. Methods: `checkingUser()`, `userLive()`, `userOffline()`, `startRecording()`, `updateProgress()`, `finishRecording()`, `startSegmenting()`, `segmentsCreated()`, `startConverting()`, `conversionDone()`, `showError()`, `showInfo()`, `showWarning()`, `stop()`.
-- `README.md` — Comprehensive documentation: CLI reference, library API, authentication setup, pipeline architecture, event system, FAQ, troubleshooting.
+### CLI Output Improvements
+- `src/index.ts` — Track `firstOfflineTime` instead of `lastCheckTime` so the `[last check: ...]` timestamp increases over time rather than always showing the polling interval. Duplicate signals (SIGINT+SIGTERM from one Ctrl-C) are now silently ignored instead of force-exiting mid-conversion. Removed `  ` indent from force-stop message.
+- `src/ui.ts` — Removed the 2-space indent from all icon lines (`finalize`, `userLive`, `userOfflineRepeat`, `showError`/`Info`/`Warning`) so spinner output and icon output both start at column 0, fixing visual misalignment.
 
-### Core Library
-- `src/config.ts` — Added event types: `checking`, `download:progress`, `download:end`, `segmenting:start`, `segmenting:end`, `converting:start`. Added `logConsole` option to `RecorderConfig` (default `true`, `false` suppresses console output from internal logger).
-- `src/logger.ts` — Added `console?: boolean` option to `createLogger()` (default `true`). When `false`, skips stdout/stderr but still writes to file.
-- `src/utils.ts` — Unchanged.
+### Audio Normalization (peaknorm integration)
+- `package.json` — Added `"peaknorm": "^0.2.4"` dependency.
+- `src/config.ts` — Added `normalizeAudio`, `normalizeLoudness`, `normalizeCodec`, `normalizeBitrate` config fields, 4 new `normalize:*` events in `RecorderEventHandler`, and defaults.
+- `src/recorder/normalize.ts` — **NEW** module wrapping `peaknorm.normalizeFile()` with `backup: false`, progress callbacks, and event wiring.
+- `src/recorder/index.ts` — Wired normalization after segmenting/conversion. Normalizer created only when `cfg.normalizeAudio === true`. Errors don't crash the pipeline.
+- `src/cli.ts` — Added `--normalize`, `--normalize-loudness`, `--normalize-codec`, `--normalize-bitrate` flags.
+- `src/index.ts` — Subscribed to `normalize:*` events and mapped to display methods.
+- `src/ui.ts` — Added `normalizeStart()`, `normalizeProgress()`, `normalizeComplete()`, `normalizeError()` display methods with spinner + phase/percent.
 
-### CLI
-- `src/index.ts` — Rewired to use `Display` instead of bare `logger.info()`. Sets `config.logConsole = false` to suppress internal logger. Subscribes to all recorder events and maps them to `display.*()` calls.
-- `src/cli.ts` — Added `extractPositional()` helper to accept username as first positional arg (`tokrec username`). Now reads version dynamically from `package.json` via `pkg.version`. Error messages mention both positional and `--user` forms.
+### Ctrl-C Abort Fixes
+- `src/recorder/stream.ts` — Replaced unreliable `reader.cancel()` with `AbortController` signal that races against the 60s read timeout via `Promise.race()`, breaking out instantly on abort. Moved `buffer` variable outside the `try` scope so the catch block can flush remaining data and close the write stream, producing a valid partial file for conversion.
 
-### Recording Pipeline
-- `src/recorder/stream.ts` — Added `ProgressInfo` interface, `onProgress` callback to `download()`, `getNextUrl` callback for reconnection. On `done: true` or read timeout (60s), calls `tryReconnect()` which fetches a fresh stream URL and continues writing to the same file (max 100 reconnects). Progress is throttled to ~1s intervals.
-- `src/recorder/index.ts` — Wires `onProgress` → `download:progress` event, `getNextUrl` callback that re-checks live status via `invalidateCache()` + `getRoomId()` + `getLiveUrl()`. Emits `checking`, `download:end`, `segmenting:start`, `segmenting:end`, `converting:start` events. Includes `roomId` in `tick` event payload.
-- `src/recorder/convert.ts` — Unchanged.
+### Dependency Upgrades
+- `package.json` — `@biomejs/biome` `^1.9` → `^2.4`, `typescript` `^5.8` → `^6.0`, `peaknorm` `^0.2.2` → `^0.2.4`.
+- `biome.json` — Renamed `organizeImports` → `assist`, updated `$schema` to `2.4.16`.
 
-### DevOps
-- `package.json` — Renamed from `tiktok-live-recorder-bun` to `@zfadhli/tokrec`. Version bumped from `0.1.1` → `0.2.0` → `0.2.1` → `0.3.0`. Added `publishConfig.access`, `repository`, `bugs`, `homepage`. Fixed `main`/`exports`/`bin` from `.js` to `.mjs`.
-- `.github/workflows/publish.yml` — Added `id-token: write` permission, `actions/setup-node@v4`, `npm publish --provenance --access public` step. Triggers on `v*` tags.
-- `CHANGELOG.md` — Sections for v0.2.0, v0.2.1, v0.3.0.
-
-### Tests
-- `test/logger.test.ts` — Added test for `console: false` still writes to file.
-- `test/cli.test.ts` — All existing tests pass (positional + `--user`/`-u` forms).
+### Releases
+- `v0.6.0` — peaknorm integration, offline timestamp fix, dependency upgrades.
+- `v0.7.0` — CLI alignment fix, Ctrl-C abort fixes, duplicate signal handling.
 
 ## Key Decisions
 
-1. **Display owns the terminal, not the logger** — The `src/ui.ts` module is the sole writer to stdout/stderr in CLI mode. The internal `createRecorder()` logger defaults to `console: true` (for library consumers), but the CLI sets `logConsole: false` so the Display's spinners/icons don't interleave with raw `[INFO]` lines.
+1. **AbortController over reader.cancel()** — `reader.cancel()` didn't reliably resolve the pending `reader.read()`, causing a 60-second hang on Ctrl-C. Using `AbortController` + `Promise.race` breaks out instantly.
 
-2. **Stream reconnection, not HLS handling** — TikTok's live FLV segments are short-lived (30-60s). Rather than switching to HLS (.m3u8), the downloader transparently reconnects to fresh FLV URLs and writes to the same file. A `getNextUrl` callback (provided by the orchestrator) re-checks live status via the API cache-invalidate pattern. Limited to 100 reconnects per session.
+2. **Duplicate signal → no-op instead of force-exit** — Bun fires both SIGINT and SIGTERM for a single Ctrl-C. Previously the second signal force-exited with code 1, killing the process mid-conversion. Now it's a silent return, letting the graceful shutdown finish.
 
-3. **`npm publish --provenance` — requires repository field** — npm's Sigstore provenance attestation requires `package.json` to have a `repository.url` matching the GitHub repo. The publish workflow needs `id-token: write` permission and `actions/setup-node` with `registry-url`. Using `NODE_AUTH_TOKEN` (not `npm config set`) is the idiomatic GitHub Actions pattern.
+3. **No indent on icon lines** — The 2-space indent on all icon lines was removed instead of adding indent to spinner text, keeping the code simpler and making everything start at column 0.
 
-4. **Dynamic version from `package.json`** — `src/cli.ts` imports `pkg from '../package.json'` and uses `pkg.version` instead of a hardcoded string. Bun and `tsdown` handle JSON imports natively; no import assertions needed.
+4. **Normalization defaults to AAC@128k** — TikTok streams use AAC audio; `aac@128k` is chosen over peaknorm's default `libopus@96k` for maximum player compatibility.
 
-5. **Positional username via argv preprocessing** — `cac`'s default command (`command('')`) doesn't support positionals. Instead of switching to a subcommand pattern, `extractPositional()` scans `argv` for the first bare argument (skipping flags and their values) and injects `--user`. This keeps backward compatibility with `--user`/`-u`.
+5. **Normalization is opt-in** — `normalizeAudio: false` by default. Must pass `--normalize` to enable.
+
+6. **No backup for normalization** — `backup: false` in peaknorm calls. Pipeline has its own redundancy (FLV/TS is already deleted after conversion; if normalization fails, the un-normalized MP4 is preserved).
 
 ## Current State
 
-- **Working**: Beautiful spinner-driven terminal output (checking, recording progress with bytes/time/speed, segmenting, converting, errors)
-- **Working**: All three username formats: `tokrec user`, `tokrec --user user`, `tokrec -u user`
-- **Working**: Automatic stream reconnection when TikTok segments end (tested live)
-- **Working**: Cookie-based WAF bypass via `cookies.json`
-- **Working**: FFmpeg segmenting into configurable-length MP4 segments (default 20 min)
-- **Working**: Graceful shutdown (SIGINT, SIGTERM, SIGHUP)
-- **Working**: Configurable recording duration, polling interval, proxy, log level
-- **Working**: npm publish via GitHub Actions with Sigstore provenance
-- **Working**: CLI version matches package.json dynamically
-- **Published**: `@zfadhli/tokrec` v0.3.0 on npm
-- **Uploaded**: Comprehensive README on GitHub
+- **Working**: Flawless Ctrl-C graceful shutdown — abort is instant (~5ms), buffer is flushed, partial FLV is remuxed to MP4 (and optionally normalized), then exit.
+- **Working**: All icon lines and spinners start at column 0, no misalignment.
+- **Working**: Offline `[last check: ...]` timestamp increases over time (just now → 3m ago → 6m ago → ...).
+- **Working**: Audio normalization via `--normalize` with spinner progress (Analyzing/Normalizing phases + %).
+- **Working**: All three username input forms (`tokrec user`, `--user user`, `-u user`).
+- **Working**: Cookie-based WAF bypass, FFmpeg segmenting, graceful shutdown.
+- **Published**: `@zfadhli/tokrec` v0.6.0 and v0.7.0 on npm.
 
 ## Next Steps / Pending
 
-- [ ] The `fix/publish-action` remote branch still exists on GitHub (`origin/fix/publish-action`) — it can be cleaned up
-- [ ] Test Webcast API fallback (`aid=1988`) with a live user — SIGI_STATE primary path works but the fallback hasn't been tested end-to-end
-- [ ] The `stream_data` field is sometimes absent from SIGI_STATE even when user is live (async-loaded room info) — verify Webcast API catches this
-- [ ] Consider handling HLS (`.m3u8`) streams if TikTok returns those instead of FLV
+- [ ] The `--segment-minutes` flag defaults to 20 minutes — consider whether Ctrl-C partial files should skip segmenting and just do a simple `-c copy` conversion instead (since segmenting on a tiny file creates a single segment but still runs FFmpeg twice).
+- [ ] Test the `--normalize` path end-to-end with a live stream.
+- [ ] Consider adding a `--no-convert` flag to keep the raw FLV/TS.
 
 ## Important Context
 
-- **WAF bypass requires valid cookies** — Without `sessionid_ss` in `cookies.json`, TikTok's Slardar WAF returns a 1155-byte challenge page instead of the real profile page. The tool will report "offline" for any user.
-- **wreq-js cookie jar** — `session.fetch()` with a `Cookie` header does NOT populate the session's internal cookie jar. Always use `session.setCookie(name, value, url)`.
-- **FFmpeg required** — Required for both simple FLV→MP4 conversion AND segmenting. Must be on `$PATH`.
-- **`--duration` vs `--segment-minutes`** — Both accept minutes. `--duration` limits total recording time. `--segment-minutes` controls each MP4 segment's length. After the stream ends, `ffmpeg -c copy -f segment` splits the FLV using `-segment_time`.
-- **`invalidateCache()`** — Must be called at the start of each poll tick to ensure fresh SIGI_STATE data from TikTok. Also called in `getNextUrl()` before re-checking live status.
-- **Read timeout** — The `timeout()` helper in `stream.ts` wraps `reader.read()` with a 60s deadline. On timeout, the catch block tries to reconnect via `getNextUrl()`. If reconnection fails, it returns whatever data was buffered.
-- **Signal handling** — `SIGINT`, `SIGTERM`, and `SIGHUP` all trigger the same graceful shutdown: show shutdown message → abort download → reader.cancel → return partial data → FFmpeg segment → cleanup display → exit.
-- **Display auto-start in `updateProgress`** — removed in the final version. The recording spinner must be started by `startRecording()` before `updateProgress()` can update it. This prevents spinner re-creation during shutdown.
-- **npm publish config** — `--provenance` requires `repository.url` in `package.json` matching the GitHub repo. The workflow uses `actions/setup-node@v4` with `registry-url` + `NODE_AUTH_TOKEN`. The `NPM_TOKEN` secret must be a valid npm automation token with publish access to the `@zfadhli` scope.
-- **tsdown outputs `.mjs`** — The build tool `tsdown` outputs ESM files with `.mjs` extension. The `package.json` `main`, `exports`, and `bin` fields must point to `.mjs` files, not `.js`.
+- **AbortController instant abort** — The `waitForAbort()` helper races against the 60s read timeout via `Promise.race`. When `AbortController.abort()` fires, the race rejects immediately. The outer catch block flushes the buffer and closes the write stream before returning, ensuring partial files are valid.
+- **Duplicate signals** — Both SIGINT and SIGTERM are caught. If either fires while `stopping` is already true, the handler returns immediately. No more "Force stopping..." output or exit code 1.
+- **Icon alignment** — All icon lines use `process.stdout.write("${icon}${text}\n")` with no leading spaces. The icon constants (`ICON_SUCCESS = "✔ "`, etc.) already include a trailing space. Spinners render as `\r⠋ text` (no leading spaces either). Everything starts at column 0.
+- **Normalization config** — Pass `--normalize` to enable. Defaults: `aac@128k`, `-14 LUFS`. Use `--normalize-loudness -16`, `--normalize-codec libopus`, `--normalize-bitrate 96k` to customize.
+- **Biome 2.x migration** — `organizeImports` was renamed to `assist`. `--fix` was replaced by `--write` (safe) and `--unsafe` (unsafe fixes). The `$schema` URL was updated.
+- **TypeScript 6.x** — `tsc --noEmit` passes cleanly with TS 6.0.3. No code changes were needed.
+- **`-d 1` for quick tests** — `tokrec user -d 1` records for 1 minute then auto-converts. Useful for testing the full pipeline without waiting for a stream to end.
