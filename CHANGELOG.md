@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.1] — 2026-06-10
+
+### Fixed
+
+- **Ctrl-C graceful shutdown now converts partial downloads** — `reader.cancel()`
+  was unreliable at resolving the pending read, causing a 60-second hang on
+  Ctrl-C. Replaced with `AbortController` + `Promise.race` for instant abort
+  (~5ms). The download catch block now flushes the in-memory buffer and closes
+  the write stream so the partial FLV is valid for FFmpeg conversion.
+- **Duplicate signals no longer force-exit mid-conversion** — Bun fires both
+  SIGINT and SIGTERM for a single Ctrl-C. The second signal is now silently
+  ignored instead of calling `process.exit(1)`, letting the graceful shutdown
+  pipeline (abort → flush → convert → exit) finish.
+- **Offline `[last check: ...]` timestamp now increases over time** — the
+  elapsed time was incorrectly measured from the previous poll tick instead of
+  from the first offline detection, so it always showed the polling interval
+  (e.g. always `3m ago`) rather than growing (`3m ago` → `6m ago` → ...).
+
+### Changed
+
+- **CLI output alignment** — removed the 2-space indent from all icon lines so
+  spinners and icons both start at column 0, fixing visual misalignment.
+
 ## [0.7.0] — 2026-06-10
 
 ### Added
