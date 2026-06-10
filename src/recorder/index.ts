@@ -10,7 +10,7 @@ import { spawn } from "node:child_process"
 import { readdirSync, statSync, unlinkSync, utimesSync } from "node:fs"
 import { join, parse } from "node:path"
 import { createHttpClient } from "../api/client"
-import { type TikTokApi, createTikTokApi } from "../api/tiktok"
+import { createTikTokApi, type TikTokApi } from "../api/tiktok"
 import type {
   RecorderConfig,
   RecorderController,
@@ -18,12 +18,12 @@ import type {
   RecorderEventHandler,
   RecorderStatus,
 } from "../config"
-import { TikTokError, normalizeConfig } from "../config"
+import { normalizeConfig, TikTokError } from "../config"
 import { createLogger } from "../logger"
-import { type PollingMonitor, createPollingMonitor } from "../monitor"
+import { createPollingMonitor, type PollingMonitor } from "../monitor"
 import { type Converter, createConverter } from "./convert"
 import { type AudioNormalizer, createAudioNormalizer } from "./normalize"
-import { type StreamDownloader, createStreamDownloader } from "./stream"
+import { createStreamDownloader, type StreamDownloader } from "./stream"
 
 export function createRecorder(config: RecorderConfig): RecorderController {
   const cfg = normalizeConfig(config)

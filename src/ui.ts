@@ -6,15 +6,15 @@
  * stdout/stderr (the file logger handles persistent logs).
  */
 
+import type { SpinnerInstance } from "@zfadhli/koko-cli"
 import {
+  color,
+  createSpinner,
   ICON_ERROR,
   ICON_INFO,
   ICON_SUCCESS,
   ICON_WARN,
-  color,
-  createSpinner,
 } from "@zfadhli/koko-cli"
-import type { SpinnerInstance } from "@zfadhli/koko-cli"
 
 export interface Display {
   /** Called once when polling begins. */
@@ -153,7 +153,7 @@ export function createDisplay(): Display {
     },
 
     updateProgress(bytes: number, elapsed: number, speed: number): void {
-      if (!activeSpinner || !activeSpinner.isSpinning) return
+      if (!activeSpinner?.isSpinning) return
       activeSpinner.text = ` ${fmtBytes(bytes)} ${color.dim("•")} ${fmtDuration(elapsed)} ${color.dim("•")} ${fmtSpeed(speed)}`
     },
 
