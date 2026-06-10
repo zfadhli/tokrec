@@ -7,7 +7,7 @@
  */
 
 import { type ChildProcess, spawn } from "node:child_process"
-import { type WriteStream, createWriteStream, statSync } from "node:fs"
+import { createWriteStream, statSync, type WriteStream } from "node:fs"
 import { join } from "node:path"
 import type { Logger } from "../logger"
 import { bytesToHuman, ensureDir, formatFilename } from "../utils"
