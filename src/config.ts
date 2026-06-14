@@ -95,6 +95,8 @@ export type AppErrorKind =
   | "country-blocked"
   | "network-error"
   | "ffmpeg-not-found"
+  | "ffmpeg-error"
+  | "aborted"
   | "config-error"
   | "unknown"
 

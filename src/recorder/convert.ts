@@ -4,8 +4,10 @@
  */
 
 import { spawn } from "node:child_process"
-import { statSync, unlinkSync } from "node:fs"
+import { unlinkSync } from "node:fs"
+import { TikTokError } from "../config"
 import type { Logger } from "../logger"
+import { findFfmpegPath } from "./ffmpeg-utils"
 
 export interface Converter {
   /** Convert a FLV or TS file to MP4. Returns the output filepath. */
@@ -18,9 +20,10 @@ export function createConverter(logger?: Logger, signal?: AbortSignal): Converte
 
     logger?.info(`Converting: ${input} → ${output}`)
 
-    const ffmpegPath = findFfmpeg()
+    const ffmpegPath = findFfmpegPath()
     if (!ffmpegPath) {
-      throw new Error(
+      throw new TikTokError(
+        "ffmpeg-not-found",
         "FFmpeg not found. Install it:\n" +
           "  Linux:  apt install ffmpeg / brew install ffmpeg / pacman -S ffmpeg\n" +
           "  macOS:  brew install ffmpeg\n" +
@@ -43,27 +46,6 @@ export function createConverter(logger?: Logger, signal?: AbortSignal): Converte
   }
 
   return { convert }
-}
-
-function findFfmpeg(): string | null {
-  // Bun.which searches PATH like `which`
-  const bunWhich = (Bun as any)?.which
-  if (typeof bunWhich === "function") {
-    return bunWhich("ffmpeg") as string | null
-  }
-
-  // Fallback: manual PATH search
-  const paths = process.env.PATH?.split(":") ?? []
-  for (const dir of paths) {
-    try {
-      const full = `${dir}/ffmpeg`
-      statSync(full)
-      return full
-    } catch {
-      // eslint-disable-line no-empty
-    }
-  }
-  return null
 }
 
 function runFfmpeg(
@@ -96,19 +78,21 @@ function runFfmpeg(
 
     proc.on("close", (code) => {
       if (signal?.aborted) {
-        reject(new Error("Aborted by user"))
+        reject(new TikTokError("aborted", "Aborted by user"))
         return
       }
       if (code === 0) {
         resolve()
       } else {
-        reject(new Error(`FFmpeg exited with code ${code}\n${stderr.slice(-500)}`))
+        reject(
+          new TikTokError("ffmpeg-error", `FFmpeg exited with code ${code}\n${stderr.slice(-500)}`),
+        )
       }
     })
 
     proc.on("error", (err) => {
       if (err instanceof Error && err.name === "AbortError") return
-      reject(new Error(`Failed to spawn FFmpeg: ${err.message}`))
+      reject(new TikTokError("ffmpeg-error", `Failed to spawn FFmpeg: ${err.message}`))
     })
   })
 }

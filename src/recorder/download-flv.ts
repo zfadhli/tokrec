@@ -9,6 +9,7 @@
 import { type ChildProcess, spawn } from "node:child_process"
 import { createWriteStream } from "node:fs"
 import { join } from "node:path"
+import { TikTokError } from "../config"
 import type { Logger } from "../logger"
 import { bytesToHuman, formatFilename } from "../utils"
 import { FFMPEG_STARTUP_TIMEOUT, findFfmpegPath, formatDuration } from "./ffmpeg-utils"
@@ -34,7 +35,8 @@ export async function downloadFlv(
 
   const ffmpegPath = findFfmpegPath()
   if (!ffmpegPath) {
-    throw new Error(
+    throw new TikTokError(
+      "ffmpeg-not-found",
       "FFmpeg not found — required for stream download. Install it:\n" +
         "  Linux:  apt install ffmpeg\n  macOS:  brew install ffmpeg",
     )
@@ -104,7 +106,12 @@ export async function downloadFlv(
               if (!proc.killed) proc.kill("SIGKILL")
             }, 2000)
           }
-          reject(new Error(`FFmpeg startup timed out after ${FFMPEG_STARTUP_TIMEOUT / 1000}s`))
+          reject(
+            new TikTokError(
+              "ffmpeg-error",
+              `FFmpeg startup timed out after ${FFMPEG_STARTUP_TIMEOUT / 1000}s`,
+            ),
+          )
         }, FFMPEG_STARTUP_TIMEOUT)
 
         proc.on("close", (code) => {
@@ -117,7 +124,12 @@ export async function downloadFlv(
             resolve()
             return
           }
-          reject(new Error(`FFmpeg exited with code ${code}\n${stderr.slice(-500)}`))
+          reject(
+            new TikTokError(
+              "ffmpeg-error",
+              `FFmpeg exited with code ${code}\n${stderr.slice(-500)}`,
+            ),
+          )
         })
         proc.on("error", (err) => {
           if (firstDataTimer) clearTimeout(firstDataTimer)

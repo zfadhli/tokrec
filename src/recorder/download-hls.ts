@@ -8,6 +8,7 @@
 import { spawn } from "node:child_process"
 import { statSync } from "node:fs"
 import { join } from "node:path"
+import { TikTokError } from "../config"
 import type { Logger } from "../logger"
 import { bytesToHuman, formatFilename } from "../utils"
 import { FFMPEG_STARTUP_TIMEOUT, findFfmpegPath, formatDuration } from "./ffmpeg-utils"
@@ -31,7 +32,8 @@ export async function downloadHls(
 
   const ffmpegPath = findFfmpegPath()
   if (!ffmpegPath) {
-    throw new Error(
+    throw new TikTokError(
+      "ffmpeg-not-found",
       "FFmpeg not found — required for HLS streams. Install it:\n" +
         "  Linux:  apt install ffmpeg\n  macOS:  brew install ffmpeg",
     )
@@ -71,7 +73,8 @@ export async function downloadHls(
         }, 2000)
       }
       reject(
-        new Error(
+        new TikTokError(
+          "ffmpeg-error",
           `FFmpeg startup timed out after ${FFMPEG_STARTUP_TIMEOUT / 1000}s\n${stderr.slice(-500)}`,
         ),
       )
@@ -153,7 +156,7 @@ export async function downloadHls(
         resolve({ file: filepath, duration, size: stats.size })
       } catch {
         const msg = `FFmpeg exited with code ${code}\n${stderr.slice(-500)}`
-        reject(new Error(msg))
+        reject(new TikTokError("ffmpeg-error", msg))
       }
     })
 
@@ -163,7 +166,7 @@ export async function downloadHls(
       if (err instanceof Error && err.name === "AbortError") return
       clearInterval(progressTimer)
       if (maxDurationTimer) clearTimeout(maxDurationTimer)
-      reject(new Error(`Failed to spawn FFmpeg: ${err.message}`))
+      reject(new TikTokError("ffmpeg-error", `Failed to spawn FFmpeg: ${err.message}`))
     })
   })
 }
