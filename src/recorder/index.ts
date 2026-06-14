@@ -1,29 +1,22 @@
 /**
  * Recorder orchestrator — wires together the API, monitor, stream downloader,
  * and converter into a single RecorderController.
- *
- * Downloads the full stream (FLV via fetch, HLS via FFmpeg), then uses FFmpeg
- * to split it into time-aligned MP4 segments.
  */
 
 import { spawn } from "node:child_process"
-import { readdirSync, statSync, unlinkSync, utimesSync } from "node:fs"
-import { join, parse } from "node:path"
 import { createHttpClient } from "../api/client"
 import { createTikTokApi, type TikTokApi } from "../api/tiktok"
-import type {
-  RecorderConfig,
-  RecorderController,
-  RecorderEvent,
-  RecorderEventHandler,
-  RecorderStatus,
-} from "../config"
+import type { RecorderConfig, RecorderController } from "../config"
 import { normalizeConfig, TikTokError } from "../config"
 import { createLogger } from "../logger"
 import { createPollingMonitor, type PollingMonitor } from "../monitor"
 import { sleep } from "../utils"
 import { type Converter, createConverter } from "./convert"
 import { type AudioNormalizer, createAudioNormalizer } from "./normalize"
+import { processRecording } from "./post-processing"
+import { createEventEmitter } from "./recorder-events"
+import { createRecorderState } from "./recorder-state"
+import type { DownloadResult } from "./stream"
 import { createStreamDownloader, type StreamDownloader } from "./stream"
 
 export function createRecorder(config: RecorderConfig): RecorderController {
@@ -34,15 +27,10 @@ export function createRecorder(config: RecorderConfig): RecorderController {
     console: cfg.logConsole,
   })
 
-  // Internal event registry
-  const eventHandlers = new Map<string, Array<(...args: any[]) => void>>()
+  const emitter = createEventEmitter()
+  const stateManager = createRecorderState({ state: "idle" as const, user: cfg.user }, logger)
 
-  let state: RecorderStatus = {
-    state: "idle",
-    user: cfg.user,
-  }
-
-  // State machine
+  // State variables
   let httpClient: Awaited<ReturnType<typeof createHttpClient>> | null = null
   let api: TikTokApi | null = null
   let monitor: PollingMonitor | null = null
@@ -52,70 +40,6 @@ export function createRecorder(config: RecorderConfig): RecorderController {
   let stopRequested = false
   let stopAbortController = new AbortController()
   let pendingRemuxes: Promise<unknown>[] = []
-
-  // Valid state transitions: [from] → [to, to, ...]
-  const TRANSITIONS: Record<string, string[]> = {
-    idle: ["polling"],
-    polling: ["recording", "stopped"],
-    recording: ["converting", "stopped"],
-    converting: ["polling", "stopped"],
-    stopped: [],
-  }
-
-  function setState(partial: Partial<RecorderStatus>): void {
-    const prevState = state.state
-    const newState = partial.state
-
-    // Validate state transitions
-    if (newState && newState !== prevState) {
-      const allowed = TRANSITIONS[prevState]
-      if (!allowed?.includes(newState)) {
-        logger.error(`Invalid state transition: ${prevState} → ${newState} (ignored)`)
-        return
-      }
-      logger.info(`State: ${prevState} → ${newState}`)
-    }
-
-    state = { ...state, ...partial }
-
-    // Auto-track timestamps on state entry
-    if (newState === "polling" && newState !== prevState) {
-      state.lastPollTime = new Date().toISOString()
-    }
-  }
-
-  function getStatus(): RecorderStatus {
-    return { ...state }
-  }
-
-  function on<E extends RecorderEvent>(event: E, handler: RecorderEventHandler[E]): void {
-    const list = eventHandlers.get(event) ?? []
-    list.push(handler as (...args: any[]) => void)
-    eventHandlers.set(event, list)
-  }
-
-  function off<E extends RecorderEvent>(event: E, handler: RecorderEventHandler[E]): void {
-    const list = eventHandlers.get(event)
-    if (!list) return
-    const idx = list.indexOf(handler as (...args: any[]) => void)
-    if (idx !== -1) list.splice(idx, 1)
-  }
-
-  function emit<E extends RecorderEvent>(
-    event: E,
-    ...args: Parameters<RecorderEventHandler[E]>
-  ): void {
-    const list = eventHandlers.get(event)
-    if (list) {
-      for (const h of list) {
-        try {
-          h(...args)
-        } catch {
-          // Never let an event handler crash the recorder
-        }
-      }
-    }
-  }
 
   function getFfmpegPath(): string {
     const bunWhich = (Bun as any)?.which
@@ -165,8 +89,8 @@ export function createRecorder(config: RecorderConfig): RecorderController {
   }
 
   async function start(): Promise<void> {
-    if (state.state !== "idle") {
-      logger.warn(`start() ignored: already in state ${state.state}`)
+    if (stateManager.getStatus().state !== "idle") {
+      logger.warn(`start() ignored: already in state ${stateManager.getStatus().state}`)
       return
     }
     stopRequested = false
@@ -184,16 +108,17 @@ export function createRecorder(config: RecorderConfig): RecorderController {
             loudness: cfg.normalizeLoudness,
             audioCodec: cfg.normalizeCodec,
             audioBitrate: cfg.normalizeBitrate,
-            onStart: (file) => emit("normalize:start", { file }),
+            onStart: (file) => emitter.emit("normalize:start", { file }),
             onProgress: (file, percent, phase) =>
-              emit("normalize:progress", {
+              emitter.emit("normalize:progress", {
                 file,
                 percent,
                 phase: phase as "analyzing" | "normalizing",
               }),
             onComplete: (result) =>
-              emit("normalize:end", { input: result.input, output: result.output }),
-            onError: (file, err) => emit("normalize:error", { input: file, error: err.message }),
+              emitter.emit("normalize:end", { input: result.input, output: result.output }),
+            onError: (file, err) =>
+              emitter.emit("normalize:error", { input: file, error: err.message }),
           },
           logger,
         )
@@ -208,45 +133,36 @@ export function createRecorder(config: RecorderConfig): RecorderController {
         const user = cfg.user
         api!.invalidateCache()
 
-        emit("checking", { user })
+        emitter.emit("checking", { user })
         logger.info(`Checking @${user}...`)
 
         const roomId = await api!.getRoomId(user)
         if (!roomId) {
           logger.info(`@${user} is offline`)
-          emit("tick", { user, isLive: false })
+          emitter.emit("tick", { user, isLive: false })
           return
         }
 
         const liveUrl = await api!.getLiveUrl(roomId)
         if (!liveUrl) {
           logger.warn(`@${user} is live but no stream URL found`)
-          emit("tick", { user, isLive: false, roomId })
+          emitter.emit("tick", { user, isLive: false, roomId })
           return
         }
 
         logger.info(`@${user} is LIVE! (room: ${roomId})`)
-        emit("tick", { user, isLive: true, roomId })
+        emitter.emit("tick", { user, isLive: true, roomId })
 
-        // Record the stream
-        setState({ state: "recording" })
-        emit("recording:start", { user, file: "" })
+        stateManager.setState({ state: "recording" })
+        emitter.emit("recording:start", { user, file: "" })
 
-        // Create a callback that fetches a fresh stream URL when the
-        // current segment ends. TikTok stream URLs are short-lived
-        // (30-60s), so we need to refresh them for long recordings.
-        // The abort signal acts as the safety valve — if the user stops
-        // or the user goes offline, we stop reconnecting.
         const getNextUrl = async (): Promise<string | null> => {
-          // Invalidate cache so we get fresh data from TikTok
           api!.invalidateCache()
-          // Check if the user is still live with the same room
           const stillLive = await api!.getRoomId(user)
           if (!stillLive) {
             logger.info(`@${user} is no longer live — stopping`)
             return null
           }
-          // Get a fresh stream URL for the continuing stream
           return api!.getLiveUrl(stillLive)
         }
 
@@ -255,218 +171,62 @@ export function createRecorder(config: RecorderConfig): RecorderController {
           user,
           cfg.outputDir,
           cfg.duration,
-          (info) => emit("download:progress", info),
+          (info) => emitter.emit("download:progress", info),
           getNextUrl,
         )
 
-        emit("download:end", {
+        emitter.emit("download:end", {
           file: result.file,
           duration: result.duration,
           size: result.size,
         })
-        setState({ state: "converting" })
 
-        if (result.size > 0 && cfg.segmentMinutes >= 1) {
-          // Split the FLV into timed MP4 segments using FFmpeg
-          const parsed = parse(result.file)
-          const outputPattern = join(parsed.dir, `${parsed.name}_part%d.mp4`)
-          const segmentTime = Math.max(1, cfg.segmentMinutes * 60)
-
-          logger.info(
-            `Segmenting: ${parsed.base} → ${parsed.name}_partN.mp4 (${cfg.segmentMinutes} min each)`,
-          )
-
-          emit("segmenting:start", { input: result.file, outputPattern })
-
-          try {
-            const segmentPromise = runFfmpeg(
-              [
-                "-i",
-                result.file,
-                "-c",
-                "copy",
-                "-f",
-                "segment",
-                "-segment_time",
-                String(segmentTime),
-                "-reset_timestamps",
-                "1",
-                "-segment_start_number",
-                "1",
-                outputPattern,
-              ],
-              stopAbortController.signal,
-            )
-            pendingRemuxes.push(segmentPromise)
-            await segmentPromise
-
-            // Capture FLV timestamp before deletion (used to timestamp segments)
-            const flvMtimeMs = statSync(result.file).mtimeMs
-            const recStartMs = flvMtimeMs - (result.duration ?? 0) * 1000
-
-            // Delete the original FLV
-            try {
-              unlinkSync(result.file)
-              logger.info(`Deleted original: ${parsed.base}`)
-            } catch {
-              logger?.warn(`Could not delete original: ${parsed.base}`)
-            }
-
-            // Find generated segment files
-            const allFiles = readdirSync(parsed.dir)
-            const prefix = `${parsed.name}_part`
-            const segmentFiles = allFiles
-              .filter((f) => f.startsWith(prefix) && f.endsWith(".mp4"))
-              .sort((a, b) => {
-                const na = Number.parseInt(a.match(/_part(\d+)\.mp4$/)?.[1] ?? "0", 10)
-                const nb = Number.parseInt(b.match(/_part(\d+)\.mp4$/)?.[1] ?? "0", 10)
-                return na - nb
-              })
-
-            const segmentDurationSec = cfg.segmentMinutes * 60
-            const totalDuration = result.duration
-
-            for (let i = 0; i < segmentFiles.length; i++) {
-              const filePath = join(parsed.dir, segmentFiles[i]!)
-              const stats = statSync(filePath)
-              // Estimate duration: first N-1 are full segments, last is remainder
-              const isLast = i === segmentFiles.length - 1
-              const estDuration = isLast
-                ? Math.max(0, totalDuration - segmentDurationSec * (segmentFiles.length - 1))
-                : segmentDurationSec
-
-              emit("recording:end", {
-                file: filePath,
-                duration: estDuration,
-                size: stats.size,
-              })
-              emit("converted", {
-                input: result.file,
-                output: filePath,
-              })
-            }
-
-            // Set file modification times so segments sort chronologically
-            for (let i = 0; i < segmentFiles.length; i++) {
-              const fp = join(parsed.dir, segmentFiles[i]!)
-              const segStart = recStartMs + i * segmentDurationSec * 1000
-              utimesSync(fp, new Date(segStart), new Date(segStart))
-            }
-
-            emit("segmenting:end", { segments: segmentFiles.length })
-
-            // Normalize audio for each segment if enabled
-            // Run all normalizations concurrently for speed
-            if (audioNormalizer) {
-              const normalizer = audioNormalizer
-              const normalizePromises = segmentFiles.map(async (segFile) => {
-                const segPath = join(parsed.dir, segFile)
-                try {
-                  await normalizer.normalize(segPath)
-                } catch {
-                  // Error already emitted via onError callback
-                }
-              })
-              pendingRemuxes.push(...normalizePromises)
-              await Promise.allSettled(normalizePromises)
-            }
-
-            setState({
-              currentFile:
-                segmentFiles.length > 0 ? join(parsed.dir, segmentFiles.at(-1)!) : result.file,
-              sessionDuration: result.duration,
-            })
-          } catch (err) {
-            if (stopRequested) return
-            const msg = err instanceof Error ? err.message : String(err)
-            logger.error(`Segmenting failed: ${msg}`)
-            setState({ lastError: `Segmenting failed: ${msg}` })
-            // Fallback: try simple conversion of the whole FLV
-            emit("converting:start", { input: result.file })
-            try {
-              const convertPromise = converter!.convert(result.file)
-              pendingRemuxes.push(convertPromise)
-              const mp4File = await convertPromise
-              emit("converted", { input: result.file, output: mp4File })
-              if (audioNormalizer) {
-                const normalizePromise = audioNormalizer.normalize(mp4File).catch(() => {})
-                pendingRemuxes.push(normalizePromise)
-                await normalizePromise
-              }
-            } catch (convErr) {
-              const tkErr =
-                convErr instanceof TikTokError
-                  ? convErr
-                  : new TikTokError("unknown", String(convErr))
-              logger.error(`Conversion failed: ${tkErr.message}`)
-              setState({ lastError: `Conversion failed: ${tkErr.message}` })
-              emit("error", tkErr)
-            }
-          }
-        } else if (result.size > 0) {
-          // No segmenting — simple FLV → MP4 conversion
-          emit("converting:start", { input: result.file })
-          try {
-            const convertPromise = converter!.convert(result.file)
-            pendingRemuxes.push(convertPromise)
-            const mp4File = await convertPromise
-            if (audioNormalizer) {
-              const normalizePromise = audioNormalizer.normalize(mp4File).catch(() => {})
-              pendingRemuxes.push(normalizePromise)
-              await normalizePromise
-            }
-            emit("recording:end", {
-              file: mp4File,
-              duration: result.duration,
-              size: result.size,
-            })
-            emit("converted", { input: result.file, output: mp4File })
-          } catch (convErr) {
-            const tkErr =
-              convErr instanceof TikTokError ? convErr : new TikTokError("unknown", String(convErr))
-            logger.error(`Conversion failed: ${tkErr.message}`)
-            setState({ lastError: `Conversion failed: ${tkErr.message}` })
-            emit("error", tkErr)
-          }
-        }
-
-        setState({ state: "polling" })
+        await processRecording(result as DownloadResult, cfg, {
+          runFfmpeg,
+          converter: converter!,
+          audioNormalizer,
+          stopAbortController,
+          pendingRemuxes,
+          emit: (event: string, ...args: any[]) => (emitter as any).emit(event, ...args),
+          setState: stateManager.setState,
+          stopRequested,
+          logger,
+        })
       },
     })
 
-    setState({ state: "polling" })
+    stateManager.setState({ state: "polling" })
     await monitor.start()
   }
 
   async function stop(): Promise<void> {
-    if (state.state === "stopped") {
+    if (stateManager.getStatus().state === "stopped") {
       logger.warn(`stop() ignored: already stopped`)
       return
     }
     stopRequested = true
     logger.info("Stopping recorder...")
 
-    // Let in-flight conversions/remuxes finish within a reasonable window
     if (pendingRemuxes.length > 0) {
       logger.info(`Waiting for ${pendingRemuxes.length} pending conversion(s) (max 60s)...`)
       await Promise.race([Promise.allSettled(pendingRemuxes), sleep(60_000)])
-      pendingRemuxes = [] // release settled promises
+      pendingRemuxes = []
     }
 
     stopAbortController.abort()
     if (downloader) downloader.abort()
     if (monitor) await monitor.stop()
     if (httpClient) await httpClient.close()
-    eventHandlers.clear()
-    setState({ state: "stopped" })
+    emitter.clear()
+    stateManager.setState({ state: "stopped" })
     logger.info("Recorder stopped")
   }
 
   return {
     start,
     stop,
-    getStatus,
-    on,
-    off,
+    getStatus: stateManager.getStatus,
+    on: emitter.on,
+    off: emitter.off,
   }
 }
