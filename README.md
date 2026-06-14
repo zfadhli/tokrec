@@ -34,7 +34,7 @@
 - **Typed event system** — 15 events with typed payloads for lifecycle tracking
 - **Proxy support** — route traffic through an HTTP proxy for regional access
 - **FLV + HLS support** — automatically detects and handles both stream formats
-- **65+ passing tests** — unit tests with real TikTok HTML/API fixtures
+- **68+ passing tests** — unit tests with real TikTok HTML/API fixtures
 
 ---
 
@@ -123,10 +123,10 @@ tokrec -u username --normalize
 | `--proxy <url>` | `-p` | none | HTTP proxy URL |
 | `--cookies <path>` | `-c` | `./cookies.json` | Path to cookies JSON file |
 | `--log-level <level>` | `-l` | `info` | One of: `debug`, `info`, `warn`, `error` |
-| `--normalize` | _(none)_ | off | Enable EBU R128 audio normalization |
+| `--normalize` | _(none)_ | on | Enable EBU R128 audio normalization (enabled by default, pass `--no-normalize` to disable) |
 | `--normalize-loudness <num>` | _(none)_ | `-14` | Target loudness in LUFS |
-| `--normalize-codec <name>` | _(none)_ | `aac` | Audio codec for normalized output |
-| `--normalize-bitrate <str>` | _(none)_ | `128k` | Audio bitrate for normalized output |
+| `--normalize-codec <name>` | _(none)_ | `libopus` | Audio codec for normalized output (peaknorm default) |
+| `--normalize-bitrate <str>` | _(none)_ | `96k` | Audio bitrate for normalized output (peaknorm default) |
 | `--rate <n>` | _(none)_ | `5` | Max API requests/sec (0 = unlimited). Prevents WAF triggering |
 | `--debug` | _(none)_ | off | Show API debug logging on stderr |
 
@@ -144,7 +144,11 @@ If you're logged into TikTok in Firefox, `tokrec` automatically reads the cookie
 tokrec -u username
 ```
 
-You will see: `ℹ Firefox cookies loaded (30 cookies)`
+You will see:
+```
+tokrec v0.11.0
+ℹ Firefox cookies loaded (30 cookies)
+```
 
 ### Option 2: cookies.json
 
