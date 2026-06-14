@@ -1,6 +1,9 @@
 /**
  * Polling monitor — calls a tick function on a configurable interval.
  * Fires the first tick immediately, then every N minutes.
+ *
+ * Uses an AbortController so stop() can interrupt the sleep between
+ * ticks immediately, avoiding a busy 1-second polling loop.
  */
 
 import type { Logger } from "./logger"
@@ -17,14 +20,13 @@ export function createPollingMonitor(opts: {
   logger?: Logger
 }): PollingMonitor {
   const intervalMs = opts.intervalMinutes * 60 * 1000
-  let active = true
+  const stopSignal = new AbortController()
   let currentTick: Promise<void> | null = null
 
   async function start(): Promise<void> {
-    active = true
     opts.logger?.info(`Polling started (interval: ${opts.intervalMinutes} min)`)
 
-    while (active) {
+    while (!stopSignal.signal.aborted) {
       currentTick = opts.onTick()
       try {
         await currentTick
@@ -35,23 +37,18 @@ export function createPollingMonitor(opts: {
         currentTick = null
       }
 
-      if (!active) break
+      if (stopSignal.signal.aborted) break
 
-      // Wait for the interval, checking periodically if we should stop
-      const checkInterval = 1000 // check every second
-      let waited = 0
-      while (waited < intervalMs) {
-        if (!active) break
-        await sleep(Math.min(checkInterval, intervalMs - waited))
-        waited += checkInterval
-      }
+      // Sleep for the full interval — stop() aborts the signal to wake us up early
+      await sleep(intervalMs, stopSignal.signal)
     }
 
     opts.logger?.info("Polling stopped")
   }
 
   async function stop(): Promise<void> {
-    active = false
+    // Signal start() to exit the loop immediately
+    stopSignal.abort()
     // Wait for in-flight tick to finish (e.g. recording → converting → MP4)
     if (currentTick) {
       await currentTick

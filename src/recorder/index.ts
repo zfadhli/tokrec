@@ -157,13 +157,16 @@ export function createRecorder(config: RecorderConfig): RecorderController {
         emitter.emit("recording:start", { user, file: "" })
 
         const getNextUrl = async (): Promise<string | null> => {
-          api!.invalidateCache()
-          const stillLive = await api!.getRoomId(user)
-          if (!stillLive) {
+          // Use the lightweight check_alive endpoint first — avoids a full
+          // page re-scan + room/info call when the stream is still active.
+          const alive = await api!.isRoomAlive(roomId)
+          if (!alive) {
             logger.info(`@${user} is no longer live — stopping`)
             return null
           }
-          return api!.getLiveUrl(stillLive)
+          // Still alive — invalidate cache and get a fresh stream URL.
+          api!.invalidateCache()
+          return api!.getLiveUrl(roomId)
         }
 
         const result = await downloader!.download(

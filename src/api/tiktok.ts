@@ -67,8 +67,9 @@ export function createTikTokApi(http: HttpClient, logger?: Logger, showDebug?: b
       if (cached && String(cached.roomId) === String(roomId)) {
         return cached.isLive
       }
-      const info = await fetchLiveInfo(cachedUser || roomId)
-      return info?.isLive ?? false
+      // Use the lightweight check_alive endpoint instead of re-fetching
+      // the full room/info response.
+      return fetchCheckAlive(roomId)
     },
 
     async getLiveUrl(roomId: string): Promise<string | null> {
@@ -317,6 +318,40 @@ export function createTikTokApi(http: HttpClient, logger?: Logger, showDebug?: b
       return extract(data)
     } catch {
       return null
+    }
+  }
+
+  /**
+   * Check if a room is currently alive using the lightweight
+   * /webcast/room/check_alive/ endpoint.
+   *
+   * This is faster and cheaper than fetching the full room/info response.
+   * Returns `true` if the room is live, `false` otherwise (including errors).
+   *
+   * Endpoint: /webcast/room/check_alive/?aid=1988&region=CH&room_ids={id}&user_is_login=true
+   * Response: { "data": [{ "alive": true/false, "room_id": "..." }] }
+   */
+  async function fetchCheckAlive(roomId: string): Promise<boolean> {
+    try {
+      const url = `${WEBCAST_BASE}/webcast/room/check_alive/?aid=1988&region=CH&room_ids=${roomId}&user_is_login=true`
+      const res = await http.get(url)
+      debug(`fetchCheckAlive: roomId=${roomId} status=${res.status}, ok=${res.ok}`)
+      if (!res.ok) return false
+
+      const text = await res.text()
+      debug(`fetchCheckAlive: roomId=${roomId} returned ${text.length} bytes`)
+      if (text.length === 0) return false
+
+      const data = JSON.parse(text) as Record<string, unknown>
+      const items = data?.data as Array<Record<string, unknown>> | undefined
+      const alive = items?.[0]?.alive === true
+      debug(`fetchCheckAlive: roomId=${roomId} alive=${alive}`)
+      return alive
+    } catch (err) {
+      debug(
+        `fetchCheckAlive: roomId=${roomId} error — ${err instanceof Error ? err.message : String(err)}`,
+      )
+      return false
     }
   }
 
