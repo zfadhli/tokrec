@@ -19,9 +19,31 @@ export function ensureDir(dir: string): void {
   mkdirSync(dir, { recursive: true })
 }
 
-/** Sleep for ms milliseconds */
-export function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
+/**
+ * Sleep for `ms` milliseconds.
+ *
+ * When an `AbortSignal` is provided and fires before the timer elapses,
+ * the promise resolves immediately and the underlying timeout is cleared.
+ * This prevents orphaned timers in Promise.race patterns.
+ */
+export function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal?.aborted) {
+      resolve()
+      return
+    }
+    const timer = setTimeout(resolve, ms)
+    if (signal) {
+      signal.addEventListener(
+        "abort",
+        () => {
+          clearTimeout(timer)
+          resolve()
+        },
+        { once: true },
+      )
+    }
+  })
 }
 
 /** Format bytes to human-readable size */

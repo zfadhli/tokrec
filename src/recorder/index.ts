@@ -209,7 +209,11 @@ export function createRecorder(config: RecorderConfig): RecorderController {
 
     if (pendingRemuxes.length > 0) {
       logger.info(`Waiting for ${pendingRemuxes.length} pending conversion(s) (max 60s)...`)
-      await Promise.race([Promise.allSettled(pendingRemuxes), sleep(60_000)])
+      const abortTimeout = new AbortController()
+      await Promise.race([
+        Promise.allSettled(pendingRemuxes).finally(() => abortTimeout.abort()),
+        sleep(60_000, abortTimeout.signal),
+      ])
       pendingRemuxes = []
     }
 
