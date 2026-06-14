@@ -6,7 +6,7 @@
  * HLS streams: downloaded via FFmpeg (which handles M3U8 playlist + .ts segments).
  */
 
-import { type ChildProcess, spawn } from "node:child_process"
+import { spawn } from "node:child_process"
 import { createWriteStream, statSync, type WriteStream } from "node:fs"
 import { join } from "node:path"
 import type { Logger } from "../logger"
@@ -42,14 +42,11 @@ export interface StreamDownloader {
 export function createStreamDownloader(logger?: Logger): StreamDownloader {
   let abortController = new AbortController()
   let streamReader: ReadableStreamDefaultReader<Uint8Array> | null = null
-  let ffmpegProcess: ChildProcess | null = null
 
   function abort(): void {
     abortController.abort()
     streamReader?.cancel().catch(() => {})
-    if (ffmpegProcess && !ffmpegProcess.killed) {
-      ffmpegProcess.kill("SIGTERM")
-    }
+    // FFmpeg subprocess is killed automatically via spawn's `signal` option
   }
 
   /** Detect whether a URL is an HLS (.m3u8) playlist. */
@@ -267,8 +264,8 @@ export function createStreamDownloader(logger?: Logger): StreamDownloader {
     return new Promise<DownloadResult>((resolve, reject) => {
       const proc = spawn(ffmpegPath, args, {
         stdio: ["ignore", "pipe", "pipe"],
+        signal: abortController.signal,
       })
-      ffmpegProcess = proc
 
       let stderr = ""
 
@@ -307,7 +304,6 @@ export function createStreamDownloader(logger?: Logger): StreamDownloader {
       proc.on("close", (code) => {
         clearInterval(progressTimer)
         if (maxDurationTimer) clearTimeout(maxDurationTimer)
-        ffmpegProcess = null
 
         if (abortController.signal.aborted) {
           // Aborted by user — return whatever we have
@@ -346,9 +342,10 @@ export function createStreamDownloader(logger?: Logger): StreamDownloader {
       })
 
       proc.on("error", (err) => {
+        // Spawn emits AbortError when killed via signal — handled by close
+        if ((err as any)?.name === "AbortError") return
         clearInterval(progressTimer)
         if (maxDurationTimer) clearTimeout(maxDurationTimer)
-        ffmpegProcess = null
         reject(new Error(`Failed to spawn FFmpeg: ${err.message}`))
       })
     })
