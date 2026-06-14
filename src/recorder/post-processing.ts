@@ -163,12 +163,20 @@ async function processSegmenting(
   }
 }
 
-// ─── Conversion path (no segmenting) ─────────────────────────────
+// ─── Shared converter helper ────────────────────────────────────
 
-async function processConversion(
+/**
+ * Convert a downloaded file to MP4 and optionally normalize audio.
+ * Shared by the direct conversion and fallback paths.
+ *
+ * @param emitRecordingEnd  When true, also emit a `recording:end` event
+ *   (used by the direct conversion path; the segmenting path emits its
+ *   own `recording:end` events per segment).
+ */
+async function convertFile(
   result: DownloadResult,
-  _cfg: RecorderConfig,
   deps: ProcessingDeps,
+  emitRecordingEnd?: boolean,
 ): Promise<void> {
   deps.emit("converting:start", { input: result.file })
   try {
@@ -182,7 +190,9 @@ async function processConversion(
       await normalizePromise
     }
 
-    deps.emit("recording:end", { file: mp4File, duration: result.duration, size: result.size })
+    if (emitRecordingEnd) {
+      deps.emit("recording:end", { file: mp4File, duration: result.duration, size: result.size })
+    }
     deps.emit("converted", { input: result.file, output: mp4File })
   } catch (convErr) {
     const tkErr =
@@ -193,26 +203,18 @@ async function processConversion(
   }
 }
 
+// ─── Conversion path (no segmenting) ─────────────────────────────
+
+async function processConversion(
+  result: DownloadResult,
+  _cfg: RecorderConfig,
+  deps: ProcessingDeps,
+): Promise<void> {
+  return convertFile(result, deps, true)
+}
+
 // ─── Fallback conversion (when segmenting fails) ─────────────────
 
 async function runFallbackConversion(result: DownloadResult, deps: ProcessingDeps): Promise<void> {
-  deps.emit("converting:start", { input: result.file })
-  try {
-    const convertPromise = deps.converter.convert(result.file)
-    deps.pendingRemuxes.push(convertPromise)
-    const mp4File = await convertPromise
-    deps.emit("converted", { input: result.file, output: mp4File })
-
-    if (deps.audioNormalizer) {
-      const normalizePromise = deps.audioNormalizer.normalize(mp4File).catch(() => {})
-      deps.pendingRemuxes.push(normalizePromise)
-      await normalizePromise
-    }
-  } catch (convErr) {
-    const tkErr =
-      convErr instanceof TikTokError ? convErr : new TikTokError("unknown", String(convErr))
-    deps.logger.error(`Conversion failed: ${tkErr.message}`)
-    deps.setState({ lastError: `Conversion failed: ${tkErr.message}` })
-    deps.emit("error", tkErr)
-  }
+  return convertFile(result, deps)
 }
