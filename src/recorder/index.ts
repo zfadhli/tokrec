@@ -10,9 +10,8 @@ import type { RecorderConfig, RecorderController } from "../config"
 import { normalizeConfig, TikTokError } from "../config"
 import { createLogger } from "../logger"
 import { createPollingMonitor, type PollingMonitor } from "../monitor"
-import { sleep } from "../utils"
+import { findFfmpegPath, sleep } from "../utils"
 import { type Converter, createConverter } from "./convert"
-import { findFfmpegPath } from "./ffmpeg-utils"
 import { type AudioNormalizer, createAudioNormalizer } from "./normalize"
 import { processRecording } from "./post-processing"
 import { createEventEmitter } from "./recorder-events"
@@ -42,20 +41,18 @@ export function createRecorder(config: RecorderConfig): RecorderController {
   let stopAbortController = new AbortController()
   let pendingRemuxes: Promise<unknown>[] = []
 
-  function getFfmpegPath(): string {
-    const path = findFfmpegPath()
-    if (!path) {
-      throw new TikTokError(
-        "ffmpeg-not-found",
-        "FFmpeg not found. Install it:\n  Linux: apt install ffmpeg\n  macOS: brew install ffmpeg",
-      )
-    }
-    return path
-  }
-
   function runFfmpeg(args: string[], signal?: AbortSignal): Promise<void> {
     return new Promise((resolve, reject) => {
-      const ffmpegPath = getFfmpegPath()
+      const ffmpegPath = findFfmpegPath()
+      if (!ffmpegPath) {
+        reject(
+          new TikTokError(
+            "ffmpeg-not-found",
+            "FFmpeg not found. Install it:\n  Linux: apt install ffmpeg\n  macOS: brew install ffmpeg",
+          ),
+        )
+        return
+      }
       const proc = spawn(ffmpegPath, args, {
         stdio: ["ignore", "pipe", "pipe"],
         signal,

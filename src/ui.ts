@@ -15,6 +15,7 @@ import {
   ICON_SUCCESS,
   ICON_WARN,
 } from "@zfadhli/koko-cli"
+import { formatDuration } from "./utils"
 
 export interface Display {
   /** Called once when polling begins. */
@@ -30,8 +31,6 @@ export interface Display {
 
   /** Recording starts: spinner without filename (known only post-download). */
   startRecording(): void
-  /** Update the recording spinner with live counters. */
-  updateProgress(bytes: number, elapsed: number, speed: number): void
   /** Recording finished successfully. Shows filename from the result. */
   finishRecording(filename: string, duration: number, size: string): void
   /** Recording encountered a non-fatal error. */
@@ -91,14 +90,6 @@ export function createDisplay(): Display {
     process.stdout.write(`${icon}${text}\n`)
   }
 
-  /** Format seconds into a compact human-readable duration. */
-  function fmtDuration(seconds: number): string {
-    const m = Math.floor(seconds / 60)
-    const s = Math.floor(seconds % 60)
-    if (m > 0) return `${m}m ${s}s`
-    return `${s}s`
-  }
-
   return {
     pollingStarted(intervalMinutes: number): void {
       finalize(ICON_SUCCESS, color.dim(`Polling started (every ${intervalMinutes} min)`))
@@ -148,18 +139,14 @@ export function createDisplay(): Display {
       recordingTimer = setInterval(() => {
         if (!activeSpinner?.isSpinning || !recordingStartTime) return
         const elapsed = (Date.now() - recordingStartTime) / 1000
-        activeSpinner.text = `${color.cyan("Recording...")} ${color.dim(`[${fmtDuration(elapsed)}]`)}`
+        activeSpinner.text = `${color.cyan("Recording...")} ${color.dim(`[${formatDuration(elapsed)}]`)}`
       }, 1000)
-    },
-
-    updateProgress(_bytes: number, _elapsed: number, _speed: number): void {
-      // Timer is handled by the interval in startRecording()
     },
 
     finishRecording(filename: string, duration: number, size: string): void {
       finalize(
         ICON_SUCCESS,
-        `${color.green("Recording finished")} ${color.dim(`${filename} — ${size} in ${fmtDuration(duration)}`)}`,
+        `${color.green("Recording finished")} ${color.dim(`${filename} — ${size} in ${formatDuration(duration)}`)}`,
       )
     },
 
