@@ -35,8 +35,8 @@ export function parseArgs(argv: string[] = process.argv): RecorderConfig {
     )
     cmd.option("--normalize", "Normalize audio loudness (EBU R128)")
     cmd.option("--normalize-loudness <num>", "Target loudness in LUFS (default: -14)")
-    cmd.option("--normalize-codec <name>", "Audio codec for normalized output (default: aac)")
-    cmd.option("--normalize-bitrate <str>", "Audio bitrate for normalized output (default: 128k)")
+    cmd.option("--normalize-codec <name>", "Audio codec for normalized output (default: libopus)")
+    cmd.option("--normalize-bitrate <str>", "Audio bitrate for normalized output (default: 96k)")
     cmd.option("--rate <n>", "Max API requests per second (default: 5). Set 0 for unlimited.")
     cmd.option("--debug", "Show API debug logging on stderr for troubleshooting")
 

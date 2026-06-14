@@ -25,6 +25,22 @@ describe("normalizeConfig", () => {
     expect(cfg.logLevel).toBe("debug")
   })
 
+  test("normalizeCodec and normalizeBitrate are undefined when not set", () => {
+    const cfg = normalizeConfig({ user: "testuser" })
+    expect(cfg.normalizeCodec).toBeUndefined()
+    expect(cfg.normalizeBitrate).toBeUndefined()
+  })
+
+  test("normalizeCodec and normalizeBitrate pass through when set", () => {
+    const cfg = normalizeConfig({
+      user: "testuser",
+      normalizeCodec: "aac",
+      normalizeBitrate: "192k",
+    })
+    expect(cfg.normalizeCodec).toBe("aac")
+    expect(cfg.normalizeBitrate).toBe("192k")
+  })
+
   test("preserves cookies and proxy", () => {
     const cfg = normalizeConfig({
       user: "testuser",

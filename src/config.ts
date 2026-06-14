@@ -37,9 +37,9 @@ export interface RecorderConfig {
   normalizeAudio?: boolean
   /** Target loudness in LUFS (default: -14). */
   normalizeLoudness?: number
-  /** Audio codec for normalized output (default: "aac"). */
+  /** Audio codec for normalized output (default: peaknorm's default, "libopus"). */
   normalizeCodec?: string
-  /** Audio bitrate for normalized output (default: "128k"). */
+  /** Audio bitrate for normalized output (default: peaknorm's default, "96k"). */
   normalizeBitrate?: string
   /**
    * Max API requests per second (default: 5).
@@ -130,16 +130,19 @@ const DEFAULTS = {
   segmentMinutes: 0,
   normalizeAudio: true,
   normalizeLoudness: -14,
-  normalizeCodec: "aac",
-  normalizeBitrate: "128k",
   ratePerSecond: 5,
   debug: false,
 }
 
 export function normalizeConfig(
   config: RecorderConfig,
-): Required<Omit<RecorderConfig, "cookies" | "cookiesPath" | "proxy">> &
-  Pick<RecorderConfig, "cookies" | "cookiesPath" | "proxy"> {
+): Required<
+  Omit<RecorderConfig, "cookies" | "cookiesPath" | "proxy" | "normalizeCodec" | "normalizeBitrate">
+> &
+  Pick<
+    RecorderConfig,
+    "cookies" | "cookiesPath" | "proxy" | "normalizeCodec" | "normalizeBitrate"
+  > {
   return {
     user: config.user,
     outputDir: config.outputDir ?? DEFAULTS.outputDir,
@@ -153,8 +156,8 @@ export function normalizeConfig(
     segmentMinutes: config.segmentMinutes ?? DEFAULTS.segmentMinutes,
     normalizeAudio: config.normalizeAudio ?? DEFAULTS.normalizeAudio,
     normalizeLoudness: config.normalizeLoudness ?? DEFAULTS.normalizeLoudness,
-    normalizeCodec: config.normalizeCodec ?? DEFAULTS.normalizeCodec,
-    normalizeBitrate: config.normalizeBitrate ?? DEFAULTS.normalizeBitrate,
+    normalizeCodec: config.normalizeCodec,
+    normalizeBitrate: config.normalizeBitrate,
     ratePerSecond: config.ratePerSecond ?? DEFAULTS.ratePerSecond,
     debug: config.debug ?? DEFAULTS.debug,
   }

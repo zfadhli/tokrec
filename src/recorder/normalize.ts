@@ -3,7 +3,7 @@
  * Runs after conversion/segmenting to normalize the final MP4 audio.
  */
 
-import type { NormalizeResult } from "peaknorm"
+import type { NormalizeOptions, NormalizeResult } from "peaknorm"
 import { normalizeFile } from "peaknorm"
 import type { Logger } from "../logger"
 
@@ -15,10 +15,10 @@ export interface AudioNormalizer {
 export interface AudioNormalizerOptions {
   /** Target loudness in LUFS (default: -14). */
   loudness: number
-  /** Audio codec for output (default: "aac"). */
-  audioCodec: string
-  /** Audio bitrate for output (default: "128k"). */
-  audioBitrate: string
+  /** Audio codec for output (default: peaknorm's default, "libopus"). */
+  audioCodec?: string
+  /** Audio bitrate for output (default: peaknorm's default, "96k"). */
+  audioBitrate?: string
   /** Called when a file starts normalization. */
   onStart?: (file: string) => void
   /** Called with progress updates (percent 0-100, phase "analyzing"|"normalizing"). */
@@ -39,15 +39,16 @@ export function createAudioNormalizer(
       opts.onStart?.(file)
 
       try {
-        const result = await normalizeFile(file, {
+        const normalizeOpts: NormalizeOptions = {
           loudness: opts.loudness,
-          audioCodec: opts.audioCodec,
-          audioBitrate: opts.audioBitrate,
           backup: false,
           onFileProgress: (f, percent, phase) => {
             opts.onProgress?.(f, percent, phase)
           },
-        })
+        }
+        if (opts.audioCodec !== undefined) normalizeOpts.audioCodec = opts.audioCodec
+        if (opts.audioBitrate !== undefined) normalizeOpts.audioBitrate = opts.audioBitrate
+        const result = await normalizeFile(file, normalizeOpts)
 
         logger?.info(`Audio normalized: ${result.output}`)
         opts.onComplete?.(result)
