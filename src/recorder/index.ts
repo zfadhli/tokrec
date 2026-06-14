@@ -49,6 +49,7 @@ export function createRecorder(config: RecorderConfig): RecorderController {
   let converter: Converter | null = null
   let audioNormalizer: AudioNormalizer | null = null
   let stopRequested = false
+  let stopAbortController = new AbortController()
 
   function setState(partial: Partial<RecorderStatus>): void {
     state = { ...state, ...partial }
@@ -99,11 +100,12 @@ export function createRecorder(config: RecorderConfig): RecorderController {
     )
   }
 
-  function runFfmpeg(args: string[]): Promise<void> {
+  function runFfmpeg(args: string[], signal?: AbortSignal): Promise<void> {
     return new Promise((resolve, reject) => {
       const ffmpegPath = getFfmpegPath()
       const proc = spawn(ffmpegPath, args, {
         stdio: ["ignore", "pipe", "pipe"],
+        signal,
       })
 
       let stderr = ""
@@ -113,6 +115,10 @@ export function createRecorder(config: RecorderConfig): RecorderController {
       })
 
       proc.on("close", (code) => {
+        if (signal?.aborted) {
+          reject(new TikTokError("unknown", "Aborted by user"))
+          return
+        }
         if (code === 0) {
           resolve()
         } else {
@@ -123,6 +129,7 @@ export function createRecorder(config: RecorderConfig): RecorderController {
       })
 
       proc.on("error", (err) => {
+        if ((err as any)?.name === "AbortError") return
         reject(new TikTokError("unknown", `Failed to spawn FFmpeg: ${err.message}`))
       })
     })
@@ -130,12 +137,13 @@ export function createRecorder(config: RecorderConfig): RecorderController {
 
   async function start(): Promise<void> {
     stopRequested = false
+    stopAbortController = new AbortController()
 
     logger.info(`Starting recorder for @${cfg.user}`)
     httpClient = await createHttpClient(cfg)
     api = createTikTokApi(httpClient)
     downloader = createStreamDownloader(logger)
-    converter = createConverter(logger)
+    converter = createConverter(logger, stopAbortController.signal)
     audioNormalizer = cfg.normalizeAudio
       ? createAudioNormalizer(
           {
@@ -242,21 +250,24 @@ export function createRecorder(config: RecorderConfig): RecorderController {
           emit("segmenting:start", { input: result.file, outputPattern })
 
           try {
-            await runFfmpeg([
-              "-i",
-              result.file,
-              "-c",
-              "copy",
-              "-f",
-              "segment",
-              "-segment_time",
-              String(segmentTime),
-              "-reset_timestamps",
-              "1",
-              "-segment_start_number",
-              "1",
-              outputPattern,
-            ])
+            await runFfmpeg(
+              [
+                "-i",
+                result.file,
+                "-c",
+                "copy",
+                "-f",
+                "segment",
+                "-segment_time",
+                String(segmentTime),
+                "-reset_timestamps",
+                "1",
+                "-segment_start_number",
+                "1",
+                outputPattern,
+              ],
+              stopAbortController.signal,
+            )
 
             // Capture FLV timestamp before deletion (used to timestamp segments)
             const flvMtimeMs = statSync(result.file).mtimeMs
@@ -331,6 +342,7 @@ export function createRecorder(config: RecorderConfig): RecorderController {
               sessionDuration: result.duration,
             })
           } catch (err) {
+            if (stopRequested) return
             const msg = err instanceof Error ? err.message : String(err)
             logger.error(`Segmenting failed: ${msg}`)
             // Fallback: try simple conversion of the whole FLV
@@ -391,6 +403,7 @@ export function createRecorder(config: RecorderConfig): RecorderController {
   async function stop(): Promise<void> {
     stopRequested = true
     logger.info("Stopping recorder...")
+    stopAbortController.abort()
     if (downloader) downloader.abort()
     if (monitor) await monitor.stop()
     if (httpClient) await httpClient.close()

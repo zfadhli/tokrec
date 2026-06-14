@@ -4,3 +4,4 @@ recordings/
 *.log
 *.session
 .DS_Store
+scripts/

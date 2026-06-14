@@ -12,7 +12,7 @@ export interface Converter {
   convert: (input: string) => Promise<string>
 }
 
-export function createConverter(logger?: Logger): Converter {
+export function createConverter(logger?: Logger, signal?: AbortSignal): Converter {
   async function convert(input: string): Promise<string> {
     const output = input.replace(/\.(flv|ts)$/i, ".mp4")
 
@@ -28,7 +28,7 @@ export function createConverter(logger?: Logger): Converter {
       )
     }
 
-    await runFfmpeg(ffmpegPath, input, output)
+    await runFfmpeg(ffmpegPath, input, output, signal)
 
     // Delete original FLV
     try {
@@ -66,7 +66,12 @@ function findFfmpeg(): string | null {
   return null
 }
 
-function runFfmpeg(ffmpegPath: string, input: string, output: string): Promise<void> {
+function runFfmpeg(
+  ffmpegPath: string,
+  input: string,
+  output: string,
+  signal?: AbortSignal,
+): Promise<void> {
   return new Promise((resolve, reject) => {
     const args = [
       "-i",
@@ -79,6 +84,7 @@ function runFfmpeg(ffmpegPath: string, input: string, output: string): Promise<v
 
     const proc = spawn(ffmpegPath, args, {
       stdio: ["ignore", "pipe", "pipe"],
+      signal,
     })
 
     let stderr = ""
@@ -89,6 +95,10 @@ function runFfmpeg(ffmpegPath: string, input: string, output: string): Promise<v
     })
 
     proc.on("close", (code) => {
+      if (signal?.aborted) {
+        reject(new Error("Aborted by user"))
+        return
+      }
       if (code === 0) {
         resolve()
       } else {
@@ -97,6 +107,7 @@ function runFfmpeg(ffmpegPath: string, input: string, output: string): Promise<v
     })
 
     proc.on("error", (err) => {
+      if ((err as any)?.name === "AbortError") return
       reject(new Error(`Failed to spawn FFmpeg: ${err.message}`))
     })
   })
