@@ -50,7 +50,8 @@ export async function downloadFlv(
 
   try {
     while (!signal.aborted) {
-      const { bytes } = await pipeFfmpegSegment(ffmpegPath, liveUrl, writer, signal)
+      const remaining = maxDuration > 0 ? Math.max(1, maxDuration - elapsed()) : undefined
+      const { bytes } = await pipeFfmpegSegment(ffmpegPath, liveUrl, writer, signal, remaining)
       totalBytes += bytes
 
       // Report progress after each segment

@@ -195,6 +195,12 @@ export function createRecorder(config: RecorderConfig): RecorderController {
           stopRequested: () => stopRequested,
           logger,
         })
+
+        // One-shot mode: if a duration was set, stop after this recording
+        if (cfg.duration > 0) {
+          logger.info("Duration limit reached — exiting")
+          monitor!.stopAfterCurrentTick()
+        }
       },
     })
 
@@ -220,9 +226,9 @@ export function createRecorder(config: RecorderConfig): RecorderController {
       pendingRemuxes = []
     }
 
-    stopAbortController.abort()
     if (downloader) downloader.abort()
     if (monitor) await monitor.stop()
+    stopAbortController.abort()
     if (httpClient) await httpClient.close()
     emitter.clear()
     stateManager.setState({ state: "stopped" })

@@ -12,6 +12,8 @@ import { sleep } from "./utils"
 export interface PollingMonitor {
   start: () => Promise<void>
   stop: () => Promise<void>
+  /** Schedule the monitor to stop after the current tick completes. */
+  stopAfterCurrentTick: () => void
 }
 
 export function createPollingMonitor(opts: {
@@ -22,6 +24,7 @@ export function createPollingMonitor(opts: {
   const intervalMs = opts.intervalMinutes * 60 * 1000
   const stopSignal = new AbortController()
   let currentTick: Promise<void> | null = null
+  let stopAfterTick = false
 
   async function start(): Promise<void> {
     opts.logger?.info(`Polling started (interval: ${opts.intervalMinutes} min)`)
@@ -37,6 +40,9 @@ export function createPollingMonitor(opts: {
         currentTick = null
       }
 
+      if (stopAfterTick) {
+        stopSignal.abort()
+      }
       if (stopSignal.signal.aborted) break
 
       // Sleep for the full interval — stop() aborts the signal to wake us up early
@@ -55,5 +61,9 @@ export function createPollingMonitor(opts: {
     }
   }
 
-  return { start, stop }
+  function stopAfterCurrentTick(): void {
+    stopAfterTick = true
+  }
+
+  return { start, stop, stopAfterCurrentTick }
 }

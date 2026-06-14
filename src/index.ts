@@ -116,8 +116,9 @@ async function main(): Promise<void> {
     display.startConverting()
   })
 
-  recorder.on("converted", () => {
-    // Individual conversion results acknowledged via segmenting:end or recording:end
+  recorder.on("converted", (info) => {
+    const parsed = info.output.split("/").pop() ?? info.output
+    display.conversionDone(parsed)
   })
 
   recorder.on("recording:end", () => {

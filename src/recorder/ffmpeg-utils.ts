@@ -76,8 +76,10 @@ export async function pipeFfmpegSegment(
   url: string,
   writer: WriteStream,
   signal: AbortSignal,
+  maxDuration?: number,
 ): Promise<FfmpegSegmentResult> {
-  const proc = spawn(ffmpegPath, ["-i", url, ...FFMPEG_BASE_ARGS], {
+  const durationArgs = maxDuration ? ["-t", String(maxDuration)] : []
+  const proc = spawn(ffmpegPath, ["-i", url, ...durationArgs, ...FFMPEG_BASE_ARGS], {
     stdio: ["ignore", "pipe", "pipe"],
     signal,
   })
