@@ -200,6 +200,15 @@ export function createRecorder(config: RecorderConfig): RecorderController {
         if (cfg.duration > 0) {
           logger.info("Duration limit reached — exiting")
           monitor!.stopAfterCurrentTick()
+        } else if (!stopRequested && roomId) {
+          // Recording ended because the stream went offline (not user-initiated stop).
+          // Immediately re-check via lightweight check_alive endpoint instead of
+          // waiting for the next poll interval.
+          const alive = await api!.isRoomAlive(roomId)
+          if (!alive) {
+            logger.info(`@${user} is offline`)
+            emitter.emit("tick", { user, isLive: false })
+          }
         }
       },
     })
