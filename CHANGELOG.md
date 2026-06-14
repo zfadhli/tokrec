@@ -5,6 +5,80 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] — 2026-06-14
+
+### Added
+
+- **Lightweight live check via `/webcast/room/check_alive/`** — new
+  `fetchCheckAlive(roomId)` endpoint returns a tiny boolean response (~100 bytes)
+  vs the multi-kilobyte `room/info` response. `isRoomAlive()` uses it as a
+  cache-miss fallback. Down from kilobytes to ~100 bytes per check.
+- **`--debug` CLI flag** — gates `[API_DEBUG]` log output to stderr for
+  troubleshooting without spamming the console by default.
+- **Token-bucket rate limiter** — limits API requests to `--rate` per second
+  (default 5). Prevents WAF triggering on rapid polling or URL refresh loops.
+- **Formal state machine** — validated `setState()` transitions enforce the
+  lifecycle: `idle → polling → recording → converting → polling | stopped`.
+  Prevents invalid state transitions with clear error messages.
+- **`pendingRemuxes` background queue** — the `stop()` method now awaits
+  in-flight conversion/segmenting promises with a 60-second timeout, ensuring
+  they complete before the process exits.
+- **Crash-safe MPEG-TS intermediate format** — switched download output from
+  raw FLV to MPEG-TS. TS is fully repair-able and append-friendly. The file
+  survives even if FFmpeg is killed mid-write.
+- **Segmenting disabled by default** — `segmentMinutes` now defaults to 0
+  (disabled). Simple TS→MP4 conversion is the default post-processing path.
+- **Cookie source feedback** — startup now logs which cookie source was used
+  (`ℹ Firefox cookies loaded` or `ℹ cookies.json loaded`).
+- **Auto-exit after `-d` recording** — when a duration limit completes, the
+  recorder now exits instead of going back to polling mode.
+- **MP4 conversion result shown in terminal** — the `converted` event is now
+  wired to the display, showing `✔ Converted: filename.mp4` on success.
+
+### Fixed
+
+- **Slardar WAF bypass** — the HTML page scrape on `www.tiktok.com` was blocked
+  by the WAF. The detection now falls through to the `/api-live/user/room/`
+  endpoint which is not behind the WAF, using a Firefox TLS fingerprint for
+  the HTTP session.
+- **`-d` duration limit ignored during long segments** — a single TikTok stream
+  URL can stay alive for 90+ seconds. The duration check only ran between
+  segments, so `-d 1` could overshoot by 30+ seconds. Fixed by passing
+  `-t <remaining>` to FFmpeg for per-segment enforcement.
+- **AbortSignal listener memory leak** — each `sleep()` call that used an
+  `AbortSignal` added a new `abort` listener but never removed it. Fixed by
+  cleaning up the listener in both the resolve and abort paths.
+- **Race condition in FFmpeg abort** — `proc.kill()` could lose the race
+  against `proc.on("close")`. Replaced with `spawn()` `signal` option which
+  guarantees atomic cleanup.
+- **Missing abort signal in some FFmpeg spawns** — not all FFmpeg invocations
+  received the abort signal, leaving orphaned processes on Ctrl-C. Fixed by
+  threading the signal to every spawn call.
+- **FFmpeg startup hang** — a bad URL would cause FFmpeg to hang indefinitely.
+  Added a 30-second startup timeout that escalates from SIGTERM to SIGKILL.
+- **Process signal handlers accumulation** — `process.on("SIGINT", ...)` was
+  called multiple times without `process.off()`, causing duplicate handlers.
+  Fixed by removing handlers before re-registering.
+- **Ctrl-C during recording left `.ts` unconverted** — `stop()` aborted the
+  converter signal before awaiting the in-flight tick, so the conversion
+  skipped. Reordered `stop()` to let conversion complete first.
+- **Memory leak from HTTP client + stream references** — the download loop
+  held references to HTTP responses that prevented GC. Fixed by draining and
+  destroying stale sockets.
+
+### Changed
+
+- **Download output format: FLV → MPEG-TS** — FFMpeg now writes MPEG-TS
+  (`-f mpegts`) instead of raw FLV. The `.ts` file is crash-safe: even if
+  FFmpeg is killed mid-write, all data before the last complete TS packet is
+  valid and playable.
+- **Default segmenting disabled** — `segmentMinutes` defaults to 0. Existing
+  users who rely on segmenting should pass `-s 20` (or their preferred value).
+- **Architectural refactoring** — the monolithic `recorder.ts` was split into
+  9 focused files under `src/recorder/`. Shared utilities were extracted to
+  `ffmpeg-utils.ts`. No behavioral changes.
+- **Dependency bumps** — various dependencies updated to latest versions.
+
 ## [0.7.1] — 2026-06-10
 
 ### Fixed
