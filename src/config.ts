@@ -136,8 +136,13 @@ const DEFAULTS = {
 
 export function normalizeConfig(
   config: RecorderConfig,
-): Required<Omit<RecorderConfig, "cookies" | "cookiesPath" | "proxy" | "normalizeCodec" | "normalizeBitrate">> &
-  Pick<RecorderConfig, "cookies" | "cookiesPath" | "proxy" | "normalizeCodec" | "normalizeBitrate"> {
+): Required<
+  Omit<RecorderConfig, "cookies" | "cookiesPath" | "proxy" | "normalizeCodec" | "normalizeBitrate">
+> &
+  Pick<
+    RecorderConfig,
+    "cookies" | "cookiesPath" | "proxy" | "normalizeCodec" | "normalizeBitrate"
+  > {
   return {
     user: config.user,
     outputDir: config.outputDir ?? DEFAULTS.outputDir,
