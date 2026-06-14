@@ -29,11 +29,16 @@ export function parseArgs(argv: string[] = process.argv): RecorderConfig {
     cmd.option("-p, --proxy <url>", "HTTP proxy (e.g. http://127.0.0.1:8080)")
     cmd.option("-l, --log-level <level>", "Log level: debug | info | warn | error")
     cmd.option("-c, --cookies <path>", "Path to cookies.json")
-    cmd.option("-s, --segment-minutes <minutes>", "Segment duration in minutes", { default: "20" })
+    cmd.option(
+      "-s, --segment-minutes <minutes>",
+      "Segment duration in minutes (default: disabled). Split recording into segments of this length.",
+    )
     cmd.option("--normalize", "Normalize audio loudness (EBU R128)")
     cmd.option("--normalize-loudness <num>", "Target loudness in LUFS (default: -14)")
     cmd.option("--normalize-codec <name>", "Audio codec for normalized output (default: aac)")
     cmd.option("--normalize-bitrate <str>", "Audio bitrate for normalized output (default: 128k)")
+    cmd.option("--rate <n>", "Max API requests per second (default: 5). Set 0 for unlimited.")
+    cmd.option("--debug", "Show API debug logging on stderr for troubleshooting")
 
     cmd.action((opts: Record<string, unknown>) => {
       try {
@@ -75,8 +80,8 @@ export function parseArgs(argv: string[] = process.argv): RecorderConfig {
         if (opts.cookies) parsed.cookiesPath = opts.cookies as string
         if (opts.segmentMinutes !== undefined) {
           const n = Number(opts.segmentMinutes)
-          if (!Number.isFinite(n) || n < 1) {
-            throw new TikTokError("config-error", "--segment-minutes must be a number >= 1")
+          if (!Number.isFinite(n) || n < 0) {
+            throw new TikTokError("config-error", "--segment-minutes must be a number >= 0")
           }
           parsed.segmentMinutes = n
         }
@@ -91,6 +96,14 @@ export function parseArgs(argv: string[] = process.argv): RecorderConfig {
         }
         if (opts.normalizeCodec) parsed.normalizeCodec = opts.normalizeCodec as string
         if (opts.normalizeBitrate) parsed.normalizeBitrate = opts.normalizeBitrate as string
+        if (opts.rate !== undefined) {
+          const n = Number(opts.rate)
+          if (!Number.isFinite(n) || n < 0) {
+            throw new TikTokError("config-error", "--rate must be a number >= 0")
+          }
+          parsed.ratePerSecond = n
+        }
+        if (opts.debug) parsed.debug = true
 
         config = parsed
       } catch (err) {

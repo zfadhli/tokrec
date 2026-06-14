@@ -3,10 +3,12 @@
  * The single source of truth for every user-facing option.
  */
 
-export interface CookieAuth {
-  sessionid_ss: string
-  "tt-target-idc"?: string
-}
+/**
+ * TikTok cookie key-value pairs extracted from Firefox or cookies.json.
+ * Includes session cookies (sessionid_ss, tt-target-idc) and any WAF
+ * bypass cookies needed to avoid Slardar challenges on www.tiktok.com.
+ */
+export type CookieAuth = Record<string, string>
 
 export type LogLevel = "debug" | "info" | "warn" | "error"
 
@@ -29,7 +31,7 @@ export interface RecorderConfig {
   logLevel?: LogLevel
   /** Whether to print logs to console (default: true). Set false when using Display-based UI. */
   logConsole?: boolean
-  /** Segment duration in minutes (default: 20). Stream is cut into segments of this length. */
+  /** Segment duration in minutes (default: 0 — disabled). When >= 1, the recording is split into segments of this length. */
   segmentMinutes?: number
   /** Normalize audio loudness via EBU R128 (default: false). */
   normalizeAudio?: boolean
@@ -39,6 +41,14 @@ export interface RecorderConfig {
   normalizeCodec?: string
   /** Audio bitrate for normalized output (default: "128k"). */
   normalizeBitrate?: string
+  /**
+   * Max API requests per second (default: 5).
+   * Prevents TikTok WAF triggering on rapid polling or URL refresh loops.
+   * Set to 0 for unlimited (not recommended).
+   */
+  ratePerSecond?: number
+  /** Show API debug logging on stderr (default: false). */
+  debug?: boolean
 }
 
 export interface RecorderController {
@@ -50,6 +60,8 @@ export interface RecorderController {
   getStatus(): RecorderStatus
   /** Subscribe to events */
   on<E extends keyof RecorderEventHandler>(event: E, handler: RecorderEventHandler[E]): void
+  /** Unsubscribe a previously registered event handler */
+  off<E extends keyof RecorderEventHandler>(event: E, handler: RecorderEventHandler[E]): void
 }
 
 export interface RecorderStatus {
@@ -93,6 +105,8 @@ export type AppErrorKind =
   | "country-blocked"
   | "network-error"
   | "ffmpeg-not-found"
+  | "ffmpeg-error"
+  | "aborted"
   | "config-error"
   | "unknown"
 
@@ -113,11 +127,13 @@ const DEFAULTS = {
   duration: 0,
   logLevel: "info" as LogLevel,
   logConsole: true,
-  segmentMinutes: 20,
+  segmentMinutes: 0,
   normalizeAudio: false,
   normalizeLoudness: -14,
   normalizeCodec: "aac",
   normalizeBitrate: "128k",
+  ratePerSecond: 5,
+  debug: false,
 }
 
 export function normalizeConfig(
@@ -139,6 +155,8 @@ export function normalizeConfig(
     normalizeLoudness: config.normalizeLoudness ?? DEFAULTS.normalizeLoudness,
     normalizeCodec: config.normalizeCodec ?? DEFAULTS.normalizeCodec,
     normalizeBitrate: config.normalizeBitrate ?? DEFAULTS.normalizeBitrate,
+    ratePerSecond: config.ratePerSecond ?? DEFAULTS.ratePerSecond,
+    debug: config.debug ?? DEFAULTS.debug,
   }
 }
 
