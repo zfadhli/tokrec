@@ -26,7 +26,7 @@ export interface ProcessingDeps {
   pendingRemuxes: Promise<unknown>[]
   emit: (event: string, ...args: any[]) => void
   setState: (partial: Record<string, unknown>) => void
-  stopRequested: boolean
+  stopRequested: () => boolean
   logger: Logger
 }
 
@@ -154,7 +154,7 @@ async function processSegmenting(
       sessionDuration: result.duration,
     })
   } catch (err) {
-    if (deps.stopRequested) return
+    if (deps.stopRequested()) return
     const msg = err instanceof Error ? err.message : String(err)
     deps.logger.error(`Segmenting failed: ${msg}`)
     deps.setState({ lastError: `Segmenting failed: ${msg}` })

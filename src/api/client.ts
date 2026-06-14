@@ -17,7 +17,7 @@ export async function createHttpClient(config: RecorderConfig): Promise<HttpClie
     browser: "chrome_142",
     os: "windows",
     proxy: config.proxy,
-  } as any)
+  })
 
   // Seed cookies into the session jar so all subsequent requests are authenticated.
   // NOTE: Using a Cookie header does NOT populate wreq-js's cookie jar —
@@ -42,9 +42,7 @@ export async function createHttpClient(config: RecorderConfig): Promise<HttpClie
       const controller = new AbortController()
       const timeout = setTimeout(() => controller.abort(), 15000)
       try {
-        const res = await session.fetch(url, {
-          signal: controller.signal,
-        } as any)
+        const res = await session.fetch(url, { signal: controller.signal })
         return res as unknown as Response
       } finally {
         clearTimeout(timeout)
@@ -56,13 +54,13 @@ export async function createHttpClient(config: RecorderConfig): Promise<HttpClie
       try {
         const res = await session.fetch(url, {
           method: "POST",
-          body,
+          body: body as any,
           signal: controller.signal,
           headers: {
             "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
             ...headers,
           },
-        } as any)
+        })
         return res as unknown as Response
       } finally {
         clearTimeout(timeout)

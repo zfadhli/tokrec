@@ -161,10 +161,14 @@ export function createTikTokApi(http: HttpClient): TikTokApi {
   }
 
   /**
-   * Fetch room info from the Webcast room/info API (reliable, works
-   * for both live and offline rooms). Requires a known roomId.
+   * Shared boilerplate for Webcast room/info API calls.
+   * Handles URL construction, HTTP GET, JSON parsing, status code checks,
+   * and error handling. The caller provides an extractor for the response data.
    */
-  async function fetchRoomInfoFromRoomApi(roomId: string): Promise<LiveInfo | null> {
+  async function fetchFromRoomApi<T>(
+    roomId: string,
+    extract: (data: Record<string, unknown>) => T | null,
+  ): Promise<T | null> {
     try {
       const url = `${WEBCAST_BASE}/webcast/room/info/?aid=1988&room_id=${roomId}&type=live`
       const res = await http.get(url)
@@ -178,6 +182,17 @@ export function createTikTokApi(http: HttpClient): TikTokApi {
       // status_code 4003110 = live restriction / room not found
       if ((data as any).status_code === 4003110) return null
 
+      return extract(data)
+    } catch {
+      return null
+    }
+  }
+
+  /**
+   * Fetch room info from the Webcast room/info API. Requires a known roomId.
+   */
+  async function fetchRoomInfoFromRoomApi(roomId: string): Promise<LiveInfo | null> {
+    return fetchFromRoomApi(roomId, (data) => {
       const roomData = (data as any).data
       if (!roomData) return null
 
@@ -186,9 +201,7 @@ export function createTikTokApi(http: HttpClient): TikTokApi {
       const streamUrl = isLive ? findStreamUrlRecursively(roomData) : null
 
       return { roomId, isLive, streamUrl, title: roomData.title ?? null }
-    } catch {
-      return null
-    }
+    })
   }
 
   /**
@@ -223,28 +236,11 @@ export function createTikTokApi(http: HttpClient): TikTokApi {
   }
 
   /**
-   * Fallback: fetch stream URL from the Webcast API.
-   * This covers cases where SIGI_STATE doesn't include stream data
-   * (e.g. async-loaded room info).
+   * Fetch stream URL from the Webcast API.
+   * Covers cases where SIGI_STATE doesn't include stream data.
    */
   async function fetchStreamUrlFromApi(roomId: string): Promise<string | null> {
-    try {
-      const url = `${WEBCAST_BASE}/webcast/room/info/?aid=1988&room_id=${roomId}&type=live`
-      const res = await http.get(url)
-      if (!res.ok) return null
-
-      const text = await res.text()
-      if (text.length === 0) return null
-
-      const data = JSON.parse(text) as Record<string, unknown>
-
-      // status_code 4003110 = live restriction / room not found
-      if ((data as any).status_code === 4003110) return null
-
-      return findStreamUrlRecursively(data)
-    } catch {
-      return null
-    }
+    return fetchFromRoomApi(roomId, (data) => findStreamUrlRecursively(data))
   }
 }
 

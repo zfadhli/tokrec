@@ -189,7 +189,7 @@ export function createRecorder(config: RecorderConfig): RecorderController {
           pendingRemuxes,
           emit: (event: string, ...args: any[]) => (emitter as any).emit(event, ...args),
           setState: stateManager.setState,
-          stopRequested,
+          stopRequested: () => stopRequested,
           logger,
         })
       },

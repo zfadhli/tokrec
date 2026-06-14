@@ -67,6 +67,7 @@ export function createStreamDownloader(logger?: Logger): StreamDownloader {
         outputDir,
         maxDuration,
         onProgress,
+        getNextUrl,
         abortController.signal,
         logger,
       )
