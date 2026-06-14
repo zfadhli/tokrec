@@ -1,10 +1,12 @@
 /**
  * HTTP client — thin wrapper around wreq-js createSession.
- * Provides TLS fingerprint impersonation, cookie jar, and proxy support.
+ * Provides TLS fingerprint impersonation, cookie jar, proxy support,
+ * and configurable rate limiting to prevent WAF triggering.
  */
 
 import { createSession, type Session } from "wreq-js"
 import type { RecorderConfig } from "../config"
+import { createRateLimiter } from "./rate-limiter"
 
 export interface HttpClient {
   get: (url: string) => Promise<Response>
@@ -12,50 +14,78 @@ export interface HttpClient {
   close: () => Promise<void>
 }
 
+const REQUEST_TIMEOUT_MS = 15_000
+
+/** Standard browser headers to avoid TikTok WAF detection. */
+const BROWSER_HEADERS: Record<string, string> = {
+  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:149.0) Gecko/20100101 Firefox/149.0",
+  Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+  "Accept-Language": "en-US,en;q=0.5",
+  "Accept-Encoding": "gzip, deflate, br",
+  "Upgrade-Insecure-Requests": "1",
+  "Sec-Fetch-Dest": "document",
+  "Sec-Fetch-Mode": "navigate",
+  "Sec-Fetch-Site": "none",
+  "Sec-Fetch-User": "?1",
+}
+
 export async function createHttpClient(config: RecorderConfig): Promise<HttpClient> {
   const session: Session = await createSession({
-    browser: "chrome_142",
+    browser: "firefox_149",
     os: "windows",
     proxy: config.proxy,
-  } as any)
+  })
 
   // Seed cookies into the session jar so all subsequent requests are authenticated.
   // NOTE: Using a Cookie header does NOT populate wreq-js's cookie jar —
   // we must use session.setCookie() instead.
   // Seed for all TikTok domains since cookies may not propagate across
   // subdomains automatically in wreq-js's cookie jar.
-  if (config.cookies?.sessionid_ss) {
-    for (const domain of [
-      "https://www.tiktok.com",
-      "https://webcast.tiktok.com",
-      "https://m.tiktok.com",
-    ]) {
-      session.setCookie("sessionid_ss", config.cookies.sessionid_ss, domain)
-      if (config.cookies["tt-target-idc"]) {
-        session.setCookie("tt-target-idc", config.cookies["tt-target-idc"], domain)
+  if (config.cookies && "sessionid_ss" in config.cookies) {
+    const domains = ["https://www.tiktok.com", "https://webcast.tiktok.com", "https://m.tiktok.com"]
+    for (const domain of domains) {
+      for (const [name, value] of Object.entries(config.cookies)) {
+        session.setCookie(name, value, domain)
       }
     }
   }
 
-  return {
-    get: async (url: string) => {
+  const rateLimiter = createRateLimiter(config.ratePerSecond ?? 5)
+
+  async function rateLimitedFetch(
+    url: string,
+    options?: { method?: string; body?: unknown; headers?: Record<string, string> },
+  ): Promise<Response> {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+    try {
+      await rateLimiter.acquire(controller.signal)
       const res = await session.fetch(url, {
-        signal: AbortSignal.timeout(15000),
-      } as any)
+        method: options?.method,
+        body: options?.body as any,
+        headers: {
+          ...BROWSER_HEADERS,
+          ...options?.headers,
+        },
+        signal: controller.signal,
+      })
       return res as unknown as Response
-    },
-    post: async (url: string, body?: BodyInit, headers?: Record<string, string>) => {
-      const res = await session.fetch(url, {
+    } finally {
+      clearTimeout(timeout)
+    }
+  }
+
+  return {
+    get: async (url: string) => rateLimitedFetch(url),
+    post: async (url: string, body?: BodyInit, headers?: Record<string, string>) =>
+      rateLimitedFetch(url, {
         method: "POST",
-        body,
-        signal: AbortSignal.timeout(15000),
+        body: body as any,
         headers: {
           "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
           ...headers,
         },
-      } as any)
-      return res as unknown as Response
-    },
+      }),
     close: async () => {
       await session.close()
     },

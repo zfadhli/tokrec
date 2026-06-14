@@ -15,21 +15,16 @@ import { createRecorder } from "./lib"
 import { createDisplay } from "./ui"
 import { bytesToHuman, relativeTime } from "./utils"
 
-async function loadCookies(
-  cookiesPath?: string,
-): Promise<{ sessionid_ss: string; "tt-target-idc"?: string } | undefined> {
+async function loadCookies(cookiesPath?: string): Promise<Record<string, string> | undefined> {
   const path = cookiesPath ?? join(process.cwd(), "cookies.json")
   if (!existsSync(path)) {
     return undefined
   }
   try {
     const content = readFileSync(path, "utf-8")
-    const data = JSON.parse(content) as {
-      sessionid_ss?: string
-      "tt-target-idc"?: string
-    }
+    const data = JSON.parse(content) as Record<string, string | undefined>
     if (data.sessionid_ss && data.sessionid_ss.length > 0) {
-      return data as { sessionid_ss: string; "tt-target-idc"?: string }
+      return data as Record<string, string>
     }
     return undefined
   } catch {
@@ -52,7 +47,8 @@ async function main(): Promise<void> {
   }
 
   // Load cookies: try Firefox browser first, then fall back to cookies.json
-  config.cookies = extractTikTokCookiesFromFirefox() ?? (await loadCookies(config.cookiesPath))
+  const firefoxCookies = extractTikTokCookiesFromFirefox()
+  config.cookies = firefoxCookies ?? (await loadCookies(config.cookiesPath))
 
   // Suppress internal logger's console output — the Display owns the terminal
   config.logConsole = false
@@ -60,7 +56,12 @@ async function main(): Promise<void> {
   // Beautiful terminal display
   const display = createDisplay()
 
-  if (!config.cookies) {
+  if (config.cookies) {
+    const source = firefoxCookies ? "Firefox" : "cookies.json"
+    const names = Object.keys(config.cookies)
+    const detail = names.length > 1 ? ` (${names.length} cookies)` : ""
+    display.showInfo(`${source} cookies loaded${detail}`)
+  } else {
     display.showWarning(
       "No TikTok cookies found — log in at tiktok.com in Firefox or create cookies.json",
     )
@@ -115,8 +116,9 @@ async function main(): Promise<void> {
     display.startConverting()
   })
 
-  recorder.on("converted", () => {
-    // Individual conversion results acknowledged via segmenting:end or recording:end
+  recorder.on("converted", (info) => {
+    const parsed = info.output.split("/").pop() ?? info.output
+    display.conversionDone(parsed)
   })
 
   recorder.on("recording:end", () => {
@@ -149,8 +151,12 @@ async function main(): Promise<void> {
   // Signal handling
   let stopping = false
   const handleSignal = async () => {
-    if (stopping) return  // ignore duplicate signals (e.g. SIGINT + SIGTERM from one Ctrl-C)
+    if (stopping) return // ignore duplicate signals (e.g. SIGINT + SIGTERM from one Ctrl-C)
     stopping = true
+    // Remove signal handlers so they don't accumulate if main() is called again
+    process.off("SIGINT", handleSignal)
+    process.off("SIGTERM", handleSignal)
+    process.off("SIGHUP", handleSignal)
     display.showInfo("Shutting down gracefully...")
     await recorder.stop()
     display.stop()
@@ -171,10 +177,16 @@ async function main(): Promise<void> {
     } else {
       display.showError(`Unexpected error: ${err instanceof Error ? err.message : String(err)}`)
     }
+    process.off("SIGINT", handleSignal)
+    process.off("SIGTERM", handleSignal)
+    process.off("SIGHUP", handleSignal)
     await recorder.stop()
     display.stop()
     process.exit(1)
   }
 }
 
-main()
+main().catch((err) => {
+  console.error("Fatal:", err instanceof Error ? err.message : String(err))
+  process.exit(1)
+})

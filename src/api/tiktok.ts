@@ -17,6 +17,7 @@
  * 403 errors. All lookups go through room/info (reliable for live + offline).
  */
 
+import type { Logger } from "../logger"
 import type { HttpClient } from "./client"
 
 export interface TikTokApi {
@@ -30,12 +31,15 @@ export interface TikTokApi {
   invalidateCache(): void
 }
 
-const TIKTOK_BASE = "https://www.tiktok.com"
+const TIKTOK_BASES = ["https://www.tiktok.com", "https://m.tiktok.com"]
 const WEBCAST_BASE = "https://webcast.tiktok.com"
 
-export function createTikTokApi(http: HttpClient): TikTokApi {
-  // Per-tick cache — stores the last fetched live info so the three public
-  // methods don't each fetch the page separately.
+export function createTikTokApi(http: HttpClient, logger?: Logger, showDebug?: boolean): TikTokApi {
+  // Debug logging helper — writes to stderr only when --debug is passed.
+  const debug = (msg: string) => {
+    logger?.debug(msg)
+    if (showDebug) process.stderr.write(`[API_DEBUG] ${msg}\n`)
+  }
   let cached: LiveInfo | null = null
   let cachedUser = ""
 
@@ -63,8 +67,9 @@ export function createTikTokApi(http: HttpClient): TikTokApi {
       if (cached && String(cached.roomId) === String(roomId)) {
         return cached.isLive
       }
-      const info = await fetchLiveInfo(cachedUser || roomId)
-      return info?.isLive ?? false
+      // Use the lightweight check_alive endpoint instead of re-fetching
+      // the full room/info response.
+      return fetchCheckAlive(roomId)
     },
 
     async getLiveUrl(roomId: string): Promise<string | null> {
@@ -75,60 +80,136 @@ export function createTikTokApi(http: HttpClient): TikTokApi {
 
   // ─── Internal: fetch and parse SIGI_STATE / Universal Data ──
 
+  /**
+   * Try to fetch a TikTok user page from multiple domains.
+   * www.tiktok.com is increasingly blocked by Slardar WAF; m.tiktok.com
+   * often has different bot protection and may succeed.
+   * Returns the HTML and the base URL that worked, or null if all fail.
+   */
+  async function tryFetchPage(
+    user: string,
+    path: string,
+  ): Promise<{ html: string; baseUrl: string } | null> {
+    for (const base of TIKTOK_BASES) {
+      const url = `${base}/@${user}${path}`
+      const res = await http.get(url)
+      debug(`tryFetchPage: ${url} status=${res.status}, ok=${res.ok}`)
+      if (!res.ok) continue
+
+      const html = await res.text()
+      // Reject Slardar WAF challenge pages (small + keyword)
+      if (html.length < 5000 || html.includes("SlardarWAF")) {
+        debug(
+          `tryFetchPage: ${url} WAF blocked (${html.length} bytes, slardar=${html.includes("SlardarWAF")})`,
+        )
+        continue
+      }
+
+      debug(`tryFetchPage: ${url} succeeded (${html.length} bytes)`)
+      return { html, baseUrl: base }
+    }
+    return null
+  }
+
   async function fetchLiveInfo(user: string): Promise<LiveInfo | null> {
     let sigi: SigiState | null = null
     let html = ""
 
     try {
-      const res = await http.get(`${TIKTOK_BASE}/@${user}/live`)
-      if (!res.ok) return null
+      const page = await tryFetchPage(user, "/live")
+      if (!page) {
+        debug("fetchLiveInfo: all domains blocked for /live page")
+        // Fall through to universal data / profile page fallback
+        html = ""
+      } else {
+        html = page.html
+        debug(
+          `fetchLiveInfo: /live returned ${html.length} bytes (${page.baseUrl}), first 300: ${html.slice(0, 300).replace(/\n/g, "\\n")}`,
+        )
 
-      html = await res.text()
-      sigi = extractSigiState(html)
+        sigi = extractSigiState(html)
+        debug(`fetchLiveInfo: SIGI_STATE ${sigi ? "found" : "not found"}`)
 
-      if (sigi) {
-        // ── Primary path: room info in LiveRoom.liveRoomUserInfo ──
-        const liveRoom = sigi.LiveRoom?.liveRoomUserInfo?.liveRoom
-        const userInfo = sigi.LiveRoom?.liveRoomUserInfo?.user
+        if (sigi) {
+          const liveRoom = sigi.LiveRoom?.liveRoomUserInfo?.liveRoom
+          const userInfo = sigi.LiveRoom?.liveRoomUserInfo?.user
 
-        if (liveRoom && userInfo?.roomId) {
-          const roomId = String(userInfo.roomId)
-          const isLive = liveRoom.status === 2 // 2 = live, 4 = offline
+          debug(
+            `fetchLiveInfo: liveRoom=${!!liveRoom}, userInfo=${!!userInfo}, userInfo.roomId=${userInfo?.roomId ?? "null"}`,
+          )
 
-          // Extract stream URL: try SIGI_STATE first, then Webcast API fallback
-          let streamUrl: string | null = null
-          if (isLive) {
-            streamUrl = extractStreamUrlFast(liveRoom)
-            if (!streamUrl) streamUrl = findStreamUrlRecursively(sigi)
-            if (!streamUrl) streamUrl = await fetchStreamUrlFromApi(roomId)
+          // ── Primary path: liveRoom is populated (server-rendered) ──
+          if (liveRoom && userInfo?.roomId) {
+            const roomId = String(userInfo.roomId)
+            const isLive = liveRoom.status === 2 // 2 = live, 4 = offline
+            debug(
+              `fetchLiveInfo: primary path — roomId=${roomId}, status=${liveRoom.status}, isLive=${isLive}`,
+            )
+
+            // Extract stream URL: try SIGI_STATE first, then Webcast API fallback
+            let streamUrl: string | null = null
+            if (isLive) {
+              streamUrl = extractStreamUrlFast(liveRoom)
+              if (!streamUrl) streamUrl = findStreamUrlRecursively(sigi)
+              if (!streamUrl) streamUrl = await fetchStreamUrlFromApi(roomId)
+            }
+
+            return { roomId, isLive, streamUrl, title: liveRoom.title ?? null }
           }
 
-          return { roomId, isLive, streamUrl, title: liveRoom.title ?? null }
-        }
+          // ── Fallback: userInfo has roomId, but liveRoom is async-loaded ──
+          // TikTok may omit liveRoom from the server-rendered page and load it
+          // via JavaScript. Query the Webcast API directly — it's authoritative.
+          if (userInfo?.roomId) {
+            const roomId = String(userInfo.roomId)
+            debug(`fetchLiveInfo: userInfo fallback — roomId=${roomId}, querying Webcast API`)
+            const roomInfo = await fetchRoomInfoFromRoomApi(roomId)
+            debug(`fetchLiveInfo: Webcast API ${roomInfo ? "returned room info" : "returned null"}`)
+            if (roomInfo) return roomInfo
+          }
 
-        // ── Legacy fallback: async-loaded SIGI_STATE ──
-        const legacy = await fetchLiveInfoFallback(sigi, user)
-        if (legacy) return legacy
-      }
+          // ── Legacy fallback: async-loaded SIGI_STATE ──
+          debug("fetchLiveInfo: trying legacy fallback (UserModule)")
+          const legacy = await fetchLiveInfoFallback(sigi, user)
+          debug(`fetchLiveInfo: legacy fallback ${legacy ? "succeeded" : "returned null"}`)
+          if (legacy) return legacy
+        } // end if (sigi)
+      } // end else (page loaded)
     } catch (_err) {
       // Timeout (15s) or network error → treat as offline
+      debug(`fetchLiveInfo: caught error — ${_err instanceof Error ? _err.message : String(_err)}`)
       return null
+    }
+
+    // ── API fallback: when page scraping fails (WAF), use TikTok API directly ──
+    // The /api-live/user/room/ endpoint returns roomId + live status without
+    // the Slardar WAF that blocks www.tiktok.com HTML pages.
+    if (!html || html.length < 5000) {
+      debug("fetchLiveInfo: trying API fallback (api-live/user/room)")
+      const apiResult = await fetchLiveInfoFromApi(user)
+      if (apiResult) return apiResult
     }
 
     // ── New fallback: TikTok's unified page structure ──
     // TikTok migrated from SIGI_STATE to __UNIVERSAL_DATA_FOR_REHYDRATION__.
     // The /live page may not have it, so try the main profile page.
+    debug(`fetchLiveInfo: trying universal data fallback (html length ${html.length})`)
     const { roomId } = extractUserFromUniversalData(html)
+    debug(`fetchLiveInfo: universal data roomId=${roomId ?? "null"}`)
     if (roomId) {
       // If the /live page has the roomId, use room/info (reliable)
       const result = await fetchRoomInfoFromRoomApi(roomId)
+      debug(`fetchLiveInfo: universal data Webcast API ${result ? "succeeded" : "returned null"}`)
       if (result) return result
     }
     // No roomId available — fall through to profile page to check for
     // __UNIVERSAL_DATA_FOR_REHYDRATION__ which may have the roomId when live.
 
     // Final fallback: fetch the main profile page for webapp.user-detail
-    return fetchLiveInfoFromProfile(user)
+    debug("fetchLiveInfo: trying profile page fallback")
+    const profileResult = await fetchLiveInfoFromProfile(user)
+    debug(`fetchLiveInfo: profile page ${profileResult ? "succeeded" : "returned null"}`)
+    return profileResult
   }
 
   /**
@@ -140,11 +221,15 @@ export function createTikTokApi(http: HttpClient): TikTokApi {
    */
   async function fetchLiveInfoFromProfile(user: string): Promise<LiveInfo | null> {
     try {
-      const res = await http.get(`${TIKTOK_BASE}/@${user}`)
-      if (!res.ok) return null
-
-      const html = await res.text()
-      const { userId, roomId } = extractUserFromUniversalData(html)
+      const page = await tryFetchPage(user, "")
+      if (!page) {
+        debug("fetchLiveInfoFromProfile: all domains blocked for profile page")
+        return null
+      }
+      debug(
+        `fetchLiveInfoFromProfile: returned ${page.html.length} bytes (${page.baseUrl}), first 300: ${page.html.slice(0, 300).replace(/\n/g, "\\n")}`,
+      )
+      const { userId, roomId } = extractUserFromUniversalData(page.html)
       if (!userId) return null
 
       // If roomId is embedded in the profile page, the user is live.
@@ -161,16 +246,68 @@ export function createTikTokApi(http: HttpClient): TikTokApi {
   }
 
   /**
-   * Fetch room info from the Webcast room/info API (reliable, works
-   * for both live and offline rooms). Requires a known roomId.
+   * Fetch live info from TikTok's internal API endpoint.
+   * This bypasses the Slardar WAF that blocks www.tiktok.com HTML pages.
+   *
+   * Endpoint: /api-live/user/room/?aid=1988&uniqueId=${user}&sourceType=54
+   * Returns the roomId, user status (2 = live), and other user metadata.
+   * When the user is live, also queries the Webcast API for a stream URL.
    */
-  async function fetchRoomInfoFromRoomApi(roomId: string): Promise<LiveInfo | null> {
+  async function fetchLiveInfoFromApi(user: string): Promise<LiveInfo | null> {
     try {
-      const url = `${WEBCAST_BASE}/webcast/room/info/?aid=1988&room_id=${roomId}&type=live`
+      const url = `https://www.tiktok.com/api-live/user/room/?aid=1988&uniqueId=${encodeURIComponent(user)}&sourceType=54`
       const res = await http.get(url)
+      debug(`fetchLiveInfoFromApi: ${url} status=${res.status}`)
       if (!res.ok) return null
 
       const text = await res.text()
+      debug(`fetchLiveInfoFromApi: returned ${text.length} bytes`)
+      if (text.length === 0) return null
+
+      const data = JSON.parse(text) as Record<string, unknown>
+      const userData = (data?.data as Record<string, unknown> | undefined)?.user as
+        | { roomId?: string; status?: number; uniqueId?: string }
+        | undefined
+
+      if (!userData?.roomId) {
+        debug("fetchLiveInfoFromApi: no roomId in API response")
+        return null
+      }
+
+      const roomId = String(userData.roomId)
+      // status: 2 = live, 4 = offline, 1 = ...
+      const isLive = userData.status === 2
+      debug(`fetchLiveInfoFromApi: roomId=${roomId}, status=${userData.status}, isLive=${isLive}`)
+
+      if (!isLive) {
+        return { roomId, isLive: false, streamUrl: null, title: null }
+      }
+
+      // Query Webcast API for stream URL
+      const streamUrl = await fetchStreamUrlFromApi(roomId)
+      return { roomId, isLive: true, streamUrl, title: null }
+    } catch {
+      return null
+    }
+  }
+
+  /**
+   * Shared boilerplate for Webcast room/info API calls.
+   * Handles URL construction, HTTP GET, JSON parsing, status code checks,
+   * and error handling. The caller provides an extractor for the response data.
+   */
+  async function fetchFromRoomApi<T>(
+    roomId: string,
+    extract: (data: Record<string, unknown>) => T | null,
+  ): Promise<T | null> {
+    try {
+      const url = `${WEBCAST_BASE}/webcast/room/info/?aid=1988&room_id=${roomId}&type=live`
+      const res = await http.get(url)
+      debug(`fetchFromRoomApi: roomId=${roomId} status=${res.status}, ok=${res.ok}`)
+      if (!res.ok) return null
+
+      const text = await res.text()
+      debug(`fetchFromRoomApi: roomId=${roomId} returned ${text.length} bytes`)
       if (text.length === 0) return null
 
       const data = JSON.parse(text) as Record<string, unknown>
@@ -178,6 +315,51 @@ export function createTikTokApi(http: HttpClient): TikTokApi {
       // status_code 4003110 = live restriction / room not found
       if ((data as any).status_code === 4003110) return null
 
+      return extract(data)
+    } catch {
+      return null
+    }
+  }
+
+  /**
+   * Check if a room is currently alive using the lightweight
+   * /webcast/room/check_alive/ endpoint.
+   *
+   * This is faster and cheaper than fetching the full room/info response.
+   * Returns `true` if the room is live, `false` otherwise (including errors).
+   *
+   * Endpoint: /webcast/room/check_alive/?aid=1988&region=CH&room_ids={id}&user_is_login=true
+   * Response: { "data": [{ "alive": true/false, "room_id": "..." }] }
+   */
+  async function fetchCheckAlive(roomId: string): Promise<boolean> {
+    try {
+      const url = `${WEBCAST_BASE}/webcast/room/check_alive/?aid=1988&region=CH&room_ids=${roomId}&user_is_login=true`
+      const res = await http.get(url)
+      debug(`fetchCheckAlive: roomId=${roomId} status=${res.status}, ok=${res.ok}`)
+      if (!res.ok) return false
+
+      const text = await res.text()
+      debug(`fetchCheckAlive: roomId=${roomId} returned ${text.length} bytes`)
+      if (text.length === 0) return false
+
+      const data = JSON.parse(text) as Record<string, unknown>
+      const items = data?.data as Array<Record<string, unknown>> | undefined
+      const alive = items?.[0]?.alive === true
+      debug(`fetchCheckAlive: roomId=${roomId} alive=${alive}`)
+      return alive
+    } catch (err) {
+      debug(
+        `fetchCheckAlive: roomId=${roomId} error — ${err instanceof Error ? err.message : String(err)}`,
+      )
+      return false
+    }
+  }
+
+  /**
+   * Fetch room info from the Webcast room/info API. Requires a known roomId.
+   */
+  async function fetchRoomInfoFromRoomApi(roomId: string): Promise<LiveInfo | null> {
+    return fetchFromRoomApi(roomId, (data) => {
       const roomData = (data as any).data
       if (!roomData) return null
 
@@ -186,9 +368,7 @@ export function createTikTokApi(http: HttpClient): TikTokApi {
       const streamUrl = isLive ? findStreamUrlRecursively(roomData) : null
 
       return { roomId, isLive, streamUrl, title: roomData.title ?? null }
-    } catch {
-      return null
-    }
+    })
   }
 
   /**
@@ -223,28 +403,11 @@ export function createTikTokApi(http: HttpClient): TikTokApi {
   }
 
   /**
-   * Fallback: fetch stream URL from the Webcast API.
-   * This covers cases where SIGI_STATE doesn't include stream data
-   * (e.g. async-loaded room info).
+   * Fetch stream URL from the Webcast API.
+   * Covers cases where SIGI_STATE doesn't include stream data.
    */
   async function fetchStreamUrlFromApi(roomId: string): Promise<string | null> {
-    try {
-      const url = `${WEBCAST_BASE}/webcast/room/info/?aid=1988&room_id=${roomId}&type=live`
-      const res = await http.get(url)
-      if (!res.ok) return null
-
-      const text = await res.text()
-      if (text.length === 0) return null
-
-      const data = JSON.parse(text) as Record<string, unknown>
-
-      // status_code 4003110 = live restriction / room not found
-      if ((data as any).status_code === 4003110) return null
-
-      return findStreamUrlRecursively(data)
-    } catch {
-      return null
-    }
+    return fetchFromRoomApi(roomId, (data) => findStreamUrlRecursively(data))
   }
 }
 

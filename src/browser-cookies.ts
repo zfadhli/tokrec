@@ -11,21 +11,16 @@ import { existsSync, readdirSync, readFileSync } from "node:fs"
 import { homedir } from "node:os"
 import { join } from "node:path"
 
-export interface TikTokCookies {
-  sessionid_ss: string
-  "tt-target-idc"?: string
-}
-
 /**
  * Extract TikTok session cookies from Firefox's cookie store.
  *
- * Searches all profile directories under ~/.mozilla/firefox/ for a
- * cookies.sqlite file, then queries it for TikTok session cookies.
+ * Queries ALL cookies for TikTok domains from Firefox, including the
+ * Slardar WAF challenge cookie which is needed to bypass bot detection.
  *
  * Returns null if Firefox isn't found, cookies can't be read, or no
- * TikTok login session exists.
+ * sessionid_ss cookie exists (without which the session is useless).
  */
-export function extractTikTokCookiesFromFirefox(): TikTokCookies | null {
+export function extractTikTokCookiesFromFirefox(): Record<string, string> | null {
   const dbPath = findFirefoxCookieDb()
   if (!dbPath) return null
 
@@ -35,19 +30,19 @@ export function extractTikTokCookiesFromFirefox(): TikTokCookies | null {
       const rows = db
         .query(
           `SELECT name, value FROM moz_cookies
-           WHERE host LIKE '%.tiktok.com'
-           AND name IN ('sessionid_ss', 'tt-target-idc')`,
+           WHERE host LIKE '%.tiktok.com' OR host LIKE '%.tiktokv.com'`,
         )
         .all() as Array<{ name: string; value: string }>
 
-      const session = rows.find((r) => r.name === "sessionid_ss")
-      if (!session?.value) return null
+      // Require sessionid_ss — without it the session is useless
+      const hasSession = rows.some((r) => r.name === "sessionid_ss")
+      if (!hasSession) return null
 
-      const result: TikTokCookies = { sessionid_ss: session.value }
-      const idc = rows.find((r) => r.name === "tt-target-idc")
-      if (idc?.value) result["tt-target-idc"] = idc.value
-
-      return result
+      const cookies: Record<string, string> = {}
+      for (const row of rows) {
+        cookies[row.name] = row.value
+      }
+      return cookies
     } finally {
       db.close()
     }
