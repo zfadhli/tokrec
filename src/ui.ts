@@ -69,8 +69,16 @@ export function createDisplay(): Display {
   let activeSpinner: SpinnerInstance | null = null
   let offlineLineShown = false
 
+  // Recording timer state
+  let recordingStartTime: number | null = null
+  let recordingTimer: ReturnType<typeof setInterval> | null = null
+
   /** Stop the currently active spinner (if any) without printing anything. */
   function clearSpinner(): void {
+    if (recordingTimer) {
+      clearInterval(recordingTimer)
+      recordingTimer = null
+    }
     if (activeSpinner?.isSpinning) {
       activeSpinner.stop()
     }
@@ -89,21 +97,6 @@ export function createDisplay(): Display {
     const s = Math.floor(seconds % 60)
     if (m > 0) return `${m}m ${s}s`
     return `${s}s`
-  }
-
-  /** Format bytes into human-readable size. */
-  function fmtBytes(bytes: number): string {
-    if (bytes === 0) return "0 B"
-    const units = ["B", "KB", "MB", "GB"]
-    const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1)
-    return `${(bytes / 1024 ** i).toFixed(1)} ${units[i]}`
-  }
-
-  /** Format bytes per second into a readable speed string. */
-  function fmtSpeed(bytesPerSec: number): string {
-    if (bytesPerSec < 1024) return `${bytesPerSec.toFixed(0)} B/s`
-    if (bytesPerSec < 1024 * 1024) return `${(bytesPerSec / 1024).toFixed(1)} KB/s`
-    return `${(bytesPerSec / (1024 * 1024)).toFixed(1)} MB/s`
   }
 
   return {
@@ -127,12 +120,12 @@ export function createDisplay(): Display {
       if (offlineLineShown) {
         // Move cursor up one line and overwrite the previous offline message
         process.stdout.write(
-          `\x1b[1A\r${ICON_INFO}${color.dim(`@${user} is offline`)} ${color.dim(`[last check: ${lastCheck}]`)}\x1b[K\n`,
+          `\x1b[1A\r${ICON_INFO}${color.dim(`@${user} is offline`)} ${color.dim(`[last online: ${lastCheck}]`)}\x1b[K\n`,
         )
       } else {
         // Fallback if state is out of sync
         process.stdout.write(
-          `${ICON_INFO}${color.dim(`@${user} is offline`)} ${color.dim(`[last check: ${lastCheck}]`)}\n`,
+          `${ICON_INFO}${color.dim(`@${user} is offline`)} ${color.dim(`[last online: ${lastCheck}]`)}\n`,
         )
         offlineLineShown = true
       }
@@ -148,13 +141,19 @@ export function createDisplay(): Display {
 
     startRecording(): void {
       clearSpinner()
-      activeSpinner = createSpinner(color.cyan("Recording stream..."))
+      recordingStartTime = Date.now()
+      activeSpinner = createSpinner(`${color.cyan("Recording...")} ${color.dim("[0s]")}`)
       activeSpinner.start()
+
+      recordingTimer = setInterval(() => {
+        if (!activeSpinner?.isSpinning || !recordingStartTime) return
+        const elapsed = (Date.now() - recordingStartTime) / 1000
+        activeSpinner.text = `${color.cyan("Recording...")} ${color.dim(`[${fmtDuration(elapsed)}]`)}`
+      }, 1000)
     },
 
-    updateProgress(bytes: number, elapsed: number, speed: number): void {
-      if (!activeSpinner?.isSpinning) return
-      activeSpinner.text = ` ${fmtBytes(bytes)} ${color.dim("•")} ${fmtDuration(elapsed)} ${color.dim("•")} ${fmtSpeed(speed)}`
+    updateProgress(_bytes: number, _elapsed: number, _speed: number): void {
+      // Timer is handled by the interval in startRecording()
     },
 
     finishRecording(filename: string, duration: number, size: string): void {
