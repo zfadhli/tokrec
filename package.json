@@ -16,7 +16,7 @@
     }
   },
   "bin": {
-    "tiktok-live-recorder": "./dist/index.mjs"
+    "tokrec": "./dist/index.mjs"
   },
   "files": [
     "dist"
