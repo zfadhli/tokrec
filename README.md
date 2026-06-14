@@ -59,7 +59,7 @@ npm install -g @zfadhli/tokrec
 Then run:
 
 ```bash
-tiktok-live-recorder -u username
+tokrec -u username
 ```
 
 ### One-off use (npx)
@@ -91,19 +91,19 @@ await recorder.start()
 
 ```bash
 # Record a live stream (Ctrl+C to stop)
-tiktok-live-recorder -u username
+tokrec -u username
 
 # Record for 10 minutes, then exit
-tiktok-live-recorder -u username -d 10
+tokrec -u username -d 10
 
 # Record for 10 minutes, split into 5-minute segments
-tiktok-live-recorder -u username -d 10 -s 5
+tokrec -u username -d 10 -s 5
 
 # Use a proxy and custom output directory
-tiktok-live-recorder -u username -o ./videos -p http://127.0.0.1:8080
+tokrec -u username -o ./videos -p http://127.0.0.1:8080
 
 # Enable audio normalization
-tiktok-live-recorder -u username --normalize
+tokrec -u username --normalize
 ```
 
 > [!TIP]
@@ -141,7 +141,7 @@ TikTok's Slardar WAF blocks unauthenticated requests. You must provide a valid `
 If you're logged into TikTok in Firefox, `tokrec` automatically reads the cookie from Firefox's SQLite store. No config file needed.
 
 ```bash
-tiktok-live-recorder -u username
+tokrec -u username
 ```
 
 You will see: `ℹ Firefox cookies loaded (30 cookies)`
