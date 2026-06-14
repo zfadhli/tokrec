@@ -128,7 +128,7 @@ const DEFAULTS = {
   logLevel: "info" as LogLevel,
   logConsole: true,
   segmentMinutes: 0,
-  normalizeAudio: false,
+  normalizeAudio: true,
   normalizeLoudness: -14,
   normalizeCodec: "aac",
   normalizeBitrate: "128k",
