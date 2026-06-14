@@ -7,13 +7,12 @@
  * a fresh URL via getNextUrl.
  */
 
-import { type ChildProcess, spawn } from "node:child_process"
 import { createWriteStream } from "node:fs"
 import { join } from "node:path"
 import { TikTokError } from "../config"
 import type { Logger } from "../logger"
 import { bytesToHuman, formatFilename } from "../utils"
-import { FFMPEG_STARTUP_TIMEOUT, findFfmpegPath, formatDuration } from "./ffmpeg-utils"
+import { findFfmpegPath, formatDuration, pipeFfmpegSegment } from "./ffmpeg-utils"
 import type { DownloadResult, ProgressInfo } from "./stream"
 
 export async function downloadFlv(
@@ -48,96 +47,11 @@ export async function downloadFlv(
   }
 
   const writer = createWriteStream(filepath)
-  let currentProc: ChildProcess | null = null
 
   try {
     while (!signal.aborted) {
-      const proc = spawn(
-        ffmpegPath,
-        [
-          "-reconnect",
-          "1",
-          "-reconnect_at_eof",
-          "1",
-          "-reconnect_streamed",
-          "1",
-          "-reconnect_delay_max",
-          "5",
-          "-i",
-          liveUrl,
-          "-c",
-          "copy",
-          "-f",
-          "mpegts",
-          "pipe:1",
-        ],
-        {
-          stdio: ["ignore", "pipe", "pipe"],
-          signal,
-        },
-      )
-      currentProc = proc
-
-      let stderr = ""
-      let firstDataTimer: ReturnType<typeof setTimeout> | null = null
-
-      proc.stderr?.on("data", (chunk: Buffer) => {
-        if (firstDataTimer) clearTimeout(firstDataTimer)
-        firstDataTimer = null
-        stderr += chunk.toString()
-        if (stderr.length > 10000) stderr = stderr.slice(-5000)
-      })
-
-      proc.stdout.on("data", (chunk: Buffer) => {
-        if (firstDataTimer) clearTimeout(firstDataTimer)
-        firstDataTimer = null
-        const canContinue = writer.write(chunk)
-        totalBytes += chunk.length
-        if (!canContinue) {
-          proc.stdout.pause()
-          writer.once("drain", () => proc.stdout.resume())
-        }
-      })
-
-      await new Promise<void>((resolve, reject) => {
-        firstDataTimer = setTimeout(() => {
-          if (!proc.killed) {
-            proc.kill("SIGTERM")
-            setTimeout(() => {
-              if (!proc.killed) proc.kill("SIGKILL")
-            }, 2000)
-          }
-          reject(
-            new TikTokError(
-              "ffmpeg-error",
-              `FFmpeg startup timed out after ${FFMPEG_STARTUP_TIMEOUT / 1000}s`,
-            ),
-          )
-        }, FFMPEG_STARTUP_TIMEOUT)
-
-        proc.on("close", (code) => {
-          if (firstDataTimer) clearTimeout(firstDataTimer)
-          if (signal.aborted) {
-            resolve()
-            return
-          }
-          if (code === 0 || code === null) {
-            resolve()
-            return
-          }
-          reject(
-            new TikTokError(
-              "ffmpeg-error",
-              `FFmpeg exited with code ${code}\n${stderr.slice(-500)}`,
-            ),
-          )
-        })
-        proc.on("error", (err) => {
-          if (firstDataTimer) clearTimeout(firstDataTimer)
-          if (err instanceof Error && err.name === "AbortError") return
-          reject(err)
-        })
-      })
+      const { bytes } = await pipeFfmpegSegment(ffmpegPath, liveUrl, writer, signal)
+      totalBytes += bytes
 
       // Report progress after each segment
       const now = Date.now()
@@ -163,7 +77,6 @@ export async function downloadFlv(
       liveUrl = nextUrl
     }
   } catch (err) {
-    if (currentProc && !currentProc.killed) currentProc.kill("SIGTERM")
     logger?.error(`Recording error: ${err instanceof Error ? err.message : String(err)}`)
   } finally {
     await new Promise<void>((resolve) => writer.end(resolve))
