@@ -4,19 +4,17 @@
 
 **Minimal TikTok live stream recorder — Bun + TypeScript**
 
-<br>
-
 [![CI Status](https://img.shields.io/github/actions/workflow/status/zfadhli/tokrec/ci.yml?style=flat-square&label=CI)](https://github.com/zfadhli/tokrec/actions/workflows/ci.yml)
 [![npm version](https://img.shields.io/npm/v/@zfadhli/tokrec?style=flat-square)](https://www.npmjs.com/package/@zfadhli/tokrec)
 [![npm downloads](https://img.shields.io/npm/dw/@zfadhli/tokrec?style=flat-square)](https://www.npmjs.com/package/@zfadhli/tokrec)
 [![Bun](https://img.shields.io/badge/Bun-%3E%3D1.2-14151a?style=flat-square&logo=bun)](https://bun.sh)
 [![License](https://img.shields.io/npm/l/@zfadhli/tokrec?style=flat-square)](LICENSE)
 
-[CLI options](#cli-options) · [Features](#features) · [Installation](#installation) · [Quick start](#quick-start) · [Authentication](#authentication) · [How it works](#how-it-works) · [Library API](#library-api) · [FAQ](#faq)
+[Features](#features) · [Installation](#installation) · [Quick start](#quick-start) · [CLI options](#cli-options) · [Authentication](#authentication) · [How it works](#how-it-works) · [Library API](#library-api) · [FAQ](#faq)
 
 </div>
 
-`tokrec` polls a TikTok user's live status, detects when they go live, downloads the FLV stream, and post-processes it with FFmpeg into playable MP4 segments. It is available as both a CLI tool and a TypeScript library.
+`tokrec` polls a TikTok user's live status, detects when they go live, downloads the stream, and post-processes it with FFmpeg into playable MP4 segments. Available as both a CLI tool and a TypeScript library.
 
 > [!NOTE]
 > This is **not** an all-in-one TikTok downloader. It focuses on **live stream recording** with automatic reconnection, graceful shutdown, and clean terminal output. For downloading uploaded videos, see other tools.
@@ -25,16 +23,28 @@
 
 ## Features
 
-- **Automatic polling** — checks every N minutes (default 3) and starts recording as soon as the user goes live.
-- **Stream reconnection** — TikTok stream segments are short-lived (30–60s). When one ends, `tokrec` transparently fetches a fresh URL and continues writing to the same file.
-- **Time-aligned MP4 segments** — post-recording, FFmpeg splits the raw FLV into configurable-length MP4 segments (default 20 minutes), each independently playable.
-- **Graceful shutdown** — responds to `SIGINT`, `SIGTERM`, and `SIGHUP` (terminal close). Aborts the current download, flushes buffered data, runs FFmpeg, and exits cleanly. A second signal force-kills.
-- **Live progress display** — animated spinner with real-time byte count, elapsed time, and download speed. Built with [@zfadhli/koko-cli](https://github.com/zfadhli/koko-cli).
-- **Cookie-based auth** — seeds a `sessionid_ss` cookie into the HTTP session for authenticated requests, bypassing TikTok's Slardar WAF.
-- **Duration limit** — record for a fixed time (`--duration`) or unlimited (default).
-- **Proxy support** — route traffic through an HTTP proxy for regional access.
-- **Dual entry** — use as a CLI tool or embed `createRecorder()` in your own application.
-- **45+ passing tests** — unit-tested CLI parsing, config validation, stream URL detection, and logger.
+- **Automatic polling** — checks every N minutes (default 3) and starts recording as soon as the user goes live
+- **Stream reconnection** — TikTok stream segments are short-lived (30-60s). When one ends, `tokrec` transparently fetches a fresh URL and continues writing to the same file
+- **Duration-limited recording** — record for a fixed time (`-d`) and auto-exit, or record indefinitely (default)
+- **Time-aligned MP4 segments** — post-recording, optionally split the stream into configurable-length MP4 segments, each independently playable
+- **Audio normalization** — EBU R128 two-pass loudness normalization via [peaknorm](https://github.com/sinedied/peaknorm)
+- **Graceful shutdown** — responds to `SIGINT`/`SIGTERM`/`SIGHUP`. Aborts the download, flushes buffered data, converts to MP4, and exits cleanly
+- **Firefox cookie auto-detection** — reads `sessionid_ss` from Firefox's SQLite cookie store automatically (no config file needed)
+- **Live progress display** — animated spinner with real-time byte count, elapsed time, and download speed
+- **Typed event system** — 15 events with typed payloads for lifecycle tracking
+- **Proxy support** — route traffic through an HTTP proxy for regional access
+- **FLV + HLS support** — automatically detects and handles both stream formats
+- **65+ passing tests** — unit tests with real TikTok HTML/API fixtures
+
+---
+
+## Requirements
+
+- **FFmpeg** — must be on your `$PATH` for MP4 conversion and segmenting
+  - Linux: `apt install ffmpeg`
+  - macOS: `brew install ffmpeg`
+  - Windows: `choco install ffmpeg`
+- **Bun** (optional, for development) — Node.js 20+ can run the built package
 
 ---
 
@@ -46,7 +56,7 @@
 npm install -g @zfadhli/tokrec
 ```
 
-Then run with:
+Then run:
 
 ```bash
 tiktok-live-recorder -u username
@@ -77,31 +87,27 @@ await recorder.start()
 
 ---
 
-## Requirements
-
-- **FFmpeg** — must be on your `$PATH` for FLV→MP4 conversion and segmenting.
-  - Linux: `apt install ffmpeg`
-  - macOS: `brew install ffmpeg`
-  - Windows: `choco install ffmpeg`
-- **Bun** (optional, for development) — Node.js 20+ can run the built package.
-
----
-
 ## Quick start
 
 ```bash
 # Record a live stream (Ctrl+C to stop)
-tiktok-live-recorder -u vierstinrovve
+tiktok-live-recorder -u username
+
+# Record for 10 minutes, then exit
+tiktok-live-recorder -u username -d 10
 
 # Record for 10 minutes, split into 5-minute segments
-tiktok-live-recorder -u vierstinrovve -d 10 -s 5
+tiktok-live-recorder -u username -d 10 -s 5
 
 # Use a proxy and custom output directory
-tiktok-live-recorder -u vierstinrovve -o ./videos -p http://127.0.0.1:8080
+tiktok-live-recorder -u username -o ./videos -p http://127.0.0.1:8080
 
-# Specify a cookies file (see Authentication section)
-tiktok-live-recorder -u vierstinrovve -c ./my-cookies.json
+# Enable audio normalization
+tiktok-live-recorder -u username --normalize
 ```
+
+> [!TIP]
+> Both `-d` and `-s` accept values in **minutes** (the tool converts them internally).
 
 ---
 
@@ -109,17 +115,20 @@ tiktok-live-recorder -u vierstinrovve -c ./my-cookies.json
 
 | Option | Shorthand | Default | Description |
 |--------|-----------|---------|-------------|
-| `--user <name>` | `-u` | _(required)_ | TikTok username (without `@`) |
-| `--output <dir>` | `-o` | `./recordings` | Output directory for recordings |
-| `--interval <minutes>` | `-i` | `3` | Polling interval (minimum 1) |
-| `--duration <minutes>` | `-d` | unlimited | Maximum recording duration |
-| `--segment-minutes <minutes>` | `-s` | `20` | Length of each output MP4 segment |
+| `--user <name>` | `-u` | _(required)_ | TikTok username (with or without `@`) |
+| `--output <dir>` | `-o` | `./recordings` | Output directory |
+| `--interval <minutes>` | `-i` | `3` | Polling interval (min 1) |
+| `--duration <minutes>` | `-d` | unlimited | Max recording duration. Implies one-shot (exit after recording) |
+| `--segment-minutes <minutes>` | `-s` | disabled | Split recording into MP4 segments of this length |
 | `--proxy <url>` | `-p` | none | HTTP proxy URL |
 | `--cookies <path>` | `-c` | `./cookies.json` | Path to cookies JSON file |
 | `--log-level <level>` | `-l` | `info` | One of: `debug`, `info`, `warn`, `error` |
-
-> [!TIP]
-> `--duration` and `--segment-minutes` both accept values in **minutes**. The tool converts them internally.
+| `--normalize` | _(none)_ | off | Enable EBU R128 audio normalization |
+| `--normalize-loudness <num>` | _(none)_ | `-14` | Target loudness in LUFS |
+| `--normalize-codec <name>` | _(none)_ | `aac` | Audio codec for normalized output |
+| `--normalize-bitrate <str>` | _(none)_ | `128k` | Audio bitrate for normalized output |
+| `--rate <n>` | _(none)_ | `5` | Max API requests/sec (0 = unlimited). Prevents WAF triggering |
+| `--debug` | _(none)_ | off | Show API debug logging on stderr |
 
 ---
 
@@ -127,9 +136,19 @@ tiktok-live-recorder -u vierstinrovve -c ./my-cookies.json
 
 TikTok's Slardar WAF blocks unauthenticated requests. You must provide a valid `sessionid_ss` cookie to bypass it.
 
-### Setup
+### Option 1: Firefox (auto-detected)
 
-1. Open TikTok in your browser and log in.
+If you're logged into TikTok in Firefox, `tokrec` automatically reads the cookie from Firefox's SQLite store. No config file needed.
+
+```bash
+tiktok-live-recorder -u username
+```
+
+You will see: `ℹ Firefox cookies loaded (30 cookies)`
+
+### Option 2: cookies.json
+
+1. Open TikTok in any browser and log in.
 2. Open DevTools → **Application** → **Cookies** → `www.tiktok.com`.
 3. Copy the value of `sessionid_ss` and create a `cookies.json` file:
 
@@ -148,7 +167,7 @@ You can also include the `tt-target-idc` cookie (optional, for regional routing)
 }
 ```
 
-4. Run the tool with `--cookies ./path/to/cookies.json`, or place `cookies.json` in the working directory (auto-detected).
+4. Place `cookies.json` in the working directory (auto-detected) or pass `--cookies ./path/to/cookies.json`.
 
 > [!CAUTION]
 > Without valid cookies, the tool will report every user as **offline** because the WAF challenge page won't contain live-stream JSON data.
@@ -157,23 +176,56 @@ You can also include the `tt-target-idc` cookie (optional, for regional routing)
 
 ## How it works
 
+### Detection flow
+
+```
+fetchLiveInfo(user)
+  ├─ tryFetchPage (www.tiktok.com → m.tiktok.com)
+  │    └─ WAF blocks both → API fallback
+  ├─ /api-live/user/room/ (bypasses WAF)
+  │    └─ Returns roomId + status (2=live, 4=offline)
+  └─ If live → /webcast/room/info/ for stream URL
+
+isRoomAlive(roomId)  [during recording]
+  ├─ Cache hit → return cached.isLive
+  └─ Cache miss → /webcast/room/check_alive/ → boolean (~100 bytes)
+
+getNextUrl()  [during recording]
+  ├─ isRoomAlive(roomId) → if dead, stop
+  ├─ Invalidate cache
+  └─ getLiveUrl(roomId) → fresh stream URL
+```
+
 ### Pipeline
 
 ```
-┌────────────┐   ┌──────────────┐   ┌──────────────┐   ┌──────────────┐
-│  Poll tick  │ → │  Detect live  │ → │  Download FLV │ → │  FFmpeg post  │
-│  (every Nm) │   │  via SIGI_    │   │  (auto-reconn.)│   │  (segment/    │
-│             │   │  STATE scrape │   │               │   │   convert)    │
-└────────────┘   └──────────────┘   └──────────────┘   └──────────────┘
+┌────────────┐   ┌──────────────┐   ┌──────────────┐   ┌─────────────────┐
+│  Poll tick  │ → │  Detect live │ → │  Download TS  │ → │  FFmpeg post    │
+│  (every Nm) │   │  3-tier      │   │  (auto-reconn.)│   │  (convert/      │
+│             │   │  fallback    │   │               │   │   segment)       │
+└────────────┘   └──────────────┘   └──────────────┘   └─────────────────┘
 ```
 
 1. **Poll tick** — every N minutes, the monitor calls the check function.
-2. **Live detection** — the TikTok profile page is fetched and the `SIGI_STATE` JSON blob is extracted. Stream URL extraction follows a three-tier fallback:
-   - Fast-path from the known `pull_data.stream_data` location (~95% of cases).
-   - Brute-force recursive search of the entire JSON (survives key name changes).
-   - Webcast API fallback (`/webcast/room/info/?aid=1988`).
-3. **Download** — the raw FLV is streamed to disk with a 512 KB buffer and 60-second read timeout. If the stream segment ends, the downloader fetches a fresh URL and continues (up to 100 reconnects per session). The `--duration` limit is checked against total elapsed time across reconnections.
-4. **FFmpeg post-processing** — the FLV is split into time-aligned MP4 segments using `ffmpeg -c copy -f segment -segment_time N -reset_timestamps 1`. If segmenting fails, it falls back to a simple FLV→MP4 conversion.
+2. **Live detection** — uses a three-tier fallback:
+   - Fast-path from `SIGI_STATE` on the `/live` page (~95% of cases)
+   - Brute-force recursive search of the entire JSON (survives key name changes)
+   - Webcast API fallback (`/webcast/room/info/`)
+3. **Download** — the stream is downloaded via FFmpeg stdout pipe to a `.ts` file. TikTok's short-lived URLs are handled transparently: when a URL expires, `getNextUrl()` fetches a fresh one. Duration limit is enforced **inside** FFmpeg via the `-t` flag for precise cutoff.
+4. **Post-processing** — the `.ts` file is remuxed to MP4 via `ffmpeg -c copy` (no re-encode, fast). If segmenting is enabled, FFmpeg's segment muxer splits into `_partN.mp4` files. Audio normalization runs last if enabled.
+
+### Output structure
+
+```
+./recordings/
+  username=20260614_143000.ts               # raw download (deleted after conversion)
+  username=20260614_143000.mp4              # remuxed MP4 (no segmenting)
+  username=20260614_143000_part1.mp4        # segment 1 (with -s)
+  username=20260614_143000_part2.mp4        # segment 2
+  ...
+```
+
+File naming: `{username}={YYYYMMDD}_{HHMMSS}[_partN].mp4`
 
 ### Event system
 
@@ -186,25 +238,16 @@ The recorder emits typed events that you can subscribe to via `recorder.on()`:
 | `recording:start` | `{ user, file }` | When recording begins |
 | `download:progress` | `{ bytes, elapsed, speed }` | During download (~1s intervals) |
 | `download:end` | `{ file, duration, size }` | When download completes |
+| `recording:end` | `{ file, duration, size }` | Per segment/file after conversion |
 | `segmenting:start` | `{ input, outputPattern }` | Before FFmpeg segmenting |
 | `segmenting:end` | `{ segments }` | After segmenting |
 | `converting:start` | `{ input }` | Before simple conversion |
-| `converted` | `{ input, output }` | After each segment/file |
+| `converted` | `{ input, output }` | After each converted file |
+| `normalize:start` | `{ file }` | Before audio normalization |
+| `normalize:progress` | `{ file, percent, phase }` | During normalization |
+| `normalize:end` | `{ input, output }` | After normalization |
+| `normalize:error` | `{ input, error }` | On normalization error |
 | `error` | `err: TikTokError` | On non-fatal errors |
-
-### Output structure
-
-Recordings are saved as:
-
-```
-./recordings/
-  vierstinrovve=20260609_143000.flv              # raw download (deleted after conversion)
-  vierstinrovve=20260609_143000_part1.mp4        # segment 1
-  vierstinrovve=20260609_143000_part2.mp4        # segment 2
-  ...
-```
-
-File naming: `{username}={YYYYMMDD}_{HHMMSS}[_partN].mp4`
 
 ---
 
@@ -237,6 +280,7 @@ interface RecorderController {
   stop(): Promise<void>
   getStatus(): RecorderStatus
   on<E extends RecorderEvent>(event: E, handler: RecorderEventHandler[E]): void
+  off<E extends RecorderEvent>(event: E, handler: RecorderEventHandler[E]): void
 }
 ```
 
@@ -253,7 +297,7 @@ interface RecorderStatus {
 }
 ```
 
-### Example: watch for live status
+### Example: build a notification bot
 
 ```ts
 import { createRecorder } from '@zfadhli/tokrec'
@@ -262,9 +306,14 @@ const recorder = createRecorder({ user: 'username' })
 
 recorder.on('checking', ({ user }) => console.log(`Checking @${user}...`))
 recorder.on('tick', ({ isLive, roomId, user }) => {
-  console.log(isLive ? `@${user} is LIVE!` : `@${user} is offline`)
+  if (isLive) {
+    console.log(`@${user} is LIVE! (room: ${roomId})`)
+    // Send a Discord/Telegram notification here
+  }
 })
-
+recorder.on('recording:end', ({ file, duration }) => {
+  console.log(`Recorded ${file} (${Math.round(duration)}s)`)
+})
 recorder.on('error', (err) => console.error(`[${err.kind}] ${err.message}`))
 
 await recorder.start()
@@ -280,19 +329,23 @@ You likely don't have a valid `sessionid_ss` cookie. See the [Authentication](#a
 
 ### Why does the download stop after 30 seconds?
 
-TikTok serves live streams as short FLV segments (~30–60s). The tool now reconnects automatically, but older versions stopped after one segment. Update to the latest version.
+TikTok serves live streams as short FLV segments (~30-60s). `tokrec` handles reconnection transparently — this is expected behavior and the download continues with a fresh URL.
 
-### Can I record multiple users at the same time?
+### Can I record multiple users at once?
 
 Run multiple instances of the CLI in separate terminals, each with a different `--user` and `--output`.
 
 ### Can I use this with Node.js instead of Bun?
 
-The package is built to ESM for Node.js 20+. The runtime dependency is `@zfadhli/koko-cli` and `wreq-js`, both of which work in Node. Bun is optional for development.
+Yes. The package is built to ESM for Node.js 20+. Bun is optional for development.
 
 ### Where are the log files?
 
-`tiktok-recorder.log` in the working directory, with rotating backups. File logs include full timestamps and levels for debugging.
+`tiktok-recorder.log` in the working directory, with rotating backups. Console output is also available via `--log-level`.
+
+### Does it work if the user goes live while I'm not running it?
+
+No. `tokrec` only polls while it's running. If you want 24/7 monitoring, leave it running in a background process (e.g., tmux, systemd, or a Docker container).
 
 ---
 
@@ -310,6 +363,6 @@ which ffmpeg    # should print a path
 
 Your `sessionid_ss` cookie has expired or is invalid. Generate a fresh one from your browser's DevTools.
 
-### The spinner freezes during download
+### The process doesn't exit after a `-d` recording
 
-The download has a 60-second read timeout. If TikTok stops sending data (e.g., network drop), the tool waits 60 seconds before attempting reconnection. If reconnection fails, the download ends with whatever data was buffered.
+Make sure you're using v0.7.1 or later. Earlier versions continued polling instead of exiting.
