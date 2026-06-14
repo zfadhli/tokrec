@@ -64,6 +64,13 @@ export function createRecorder(config: RecorderConfig): RecorderController {
     eventHandlers.set(event, list)
   }
 
+  function off<E extends RecorderEvent>(event: E, handler: RecorderEventHandler[E]): void {
+    const list = eventHandlers.get(event)
+    if (!list) return
+    const idx = list.indexOf(handler as (...args: any[]) => void)
+    if (idx !== -1) list.splice(idx, 1)
+  }
+
   function emit<E extends RecorderEvent>(
     event: E,
     ...args: Parameters<RecorderEventHandler[E]>
@@ -102,6 +109,7 @@ export function createRecorder(config: RecorderConfig): RecorderController {
       let stderr = ""
       proc.stderr?.on("data", (chunk: Buffer) => {
         stderr += chunk.toString()
+        if (stderr.length > 10000) stderr = stderr.slice(-5000)
       })
 
       proc.on("close", (code) => {
@@ -395,5 +403,6 @@ export function createRecorder(config: RecorderConfig): RecorderController {
     stop,
     getStatus,
     on,
+    off,
   }
 }

@@ -85,6 +85,7 @@ function runFfmpeg(ffmpegPath: string, input: string, output: string): Promise<v
 
     proc.stderr?.on("data", (chunk: Buffer) => {
       stderr += chunk.toString()
+      if (stderr.length > 10000) stderr = stderr.slice(-5000)
     })
 
     proc.on("close", (code) => {

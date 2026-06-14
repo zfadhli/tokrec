@@ -50,6 +50,8 @@ export interface RecorderController {
   getStatus(): RecorderStatus
   /** Subscribe to events */
   on<E extends keyof RecorderEventHandler>(event: E, handler: RecorderEventHandler[E]): void
+  /** Unsubscribe a previously registered event handler */
+  off<E extends keyof RecorderEventHandler>(event: E, handler: RecorderEventHandler[E]): void
 }
 
 export interface RecorderStatus {

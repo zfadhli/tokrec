@@ -40,13 +40,11 @@ export interface StreamDownloader {
 }
 
 export function createStreamDownloader(logger?: Logger): StreamDownloader {
-  let abortFlag = false
   let abortController = new AbortController()
   let streamReader: ReadableStreamDefaultReader<Uint8Array> | null = null
   let ffmpegProcess: ChildProcess | null = null
 
   function abort(): void {
-    abortFlag = true
     abortController.abort()
     streamReader?.cancel().catch(() => {})
     if (ffmpegProcess && !ffmpegProcess.killed) {
@@ -116,7 +114,7 @@ export function createStreamDownloader(logger?: Logger): StreamDownloader {
 
       /** Try to reconnect to a fresh stream URL. Returns true if reconnected. */
       async function tryReconnect(): Promise<boolean> {
-        if (abortFlag) return false
+        if (abortController.signal.aborted) return false
         if (!getNextUrl) return false
         if (maxDuration > 0 && elapsed() >= maxDuration) return false
 
@@ -140,30 +138,29 @@ export function createStreamDownloader(logger?: Logger): StreamDownloader {
         }
       }
 
-      /** Resolves if the abort signal fires — used to break out of read waits instantly. */
-      function waitForAbort(): Promise<never> {
-        return new Promise((_, reject) => {
-          if (abortController.signal.aborted) {
-            reject(new Error("Aborted"))
-            return
-          }
-          abortController.signal.addEventListener("abort", () => reject(new Error("Aborted")), {
-            once: true,
-          })
+      // Single abort promise created once before the loop — prevents
+      // listener accumulation (one listener total vs. one per iteration).
+      const abortPromise = new Promise<never>((_, reject) => {
+        if (abortController.signal.aborted) {
+          reject(new Error("Aborted"))
+          return
+        }
+        abortController.signal.addEventListener("abort", () => reject(new Error("Aborted")), {
+          once: true,
         })
-      }
+      })
 
-      while (!abortFlag) {
+      while (!abortController.signal.aborted) {
         let chunk: { done: boolean; value?: Uint8Array }
 
         try {
           const result = await Promise.race([
             timeout(reader.read(), 60_000, "Stream read timed out"),
-            waitForAbort(),
+            abortPromise,
           ])
           chunk = result
         } catch (_err) {
-          if (abortFlag) break
+          if (abortController.signal.aborted) break
           logger?.info("Stream ended or timed out, attempting reconnection...")
           if (await tryReconnect()) {
             continue
@@ -175,6 +172,7 @@ export function createStreamDownloader(logger?: Logger): StreamDownloader {
           if (await tryReconnect()) {
             continue
           }
+          reader.cancel().catch(() => {})
           break
         }
 
@@ -190,6 +188,7 @@ export function createStreamDownloader(logger?: Logger): StreamDownloader {
           const e = elapsed()
           if (e >= maxDuration) {
             logger?.info(`Duration limit reached (${maxDuration}s)`)
+            reader.cancel().catch(() => {})
             break
           }
         }
@@ -275,6 +274,7 @@ export function createStreamDownloader(logger?: Logger): StreamDownloader {
 
       proc.stderr?.on("data", (chunk: Buffer) => {
         stderr += chunk.toString()
+        if (stderr.length > 10000) stderr = stderr.slice(-5000)
       })
 
       // Poll output file size for progress reporting
@@ -309,7 +309,7 @@ export function createStreamDownloader(logger?: Logger): StreamDownloader {
         if (maxDurationTimer) clearTimeout(maxDurationTimer)
         ffmpegProcess = null
 
-        if (abortFlag) {
+        if (abortController.signal.aborted) {
           // Aborted by user — return whatever we have
           try {
             const stats = statSync(filepath)
@@ -364,7 +364,6 @@ export function createStreamDownloader(logger?: Logger): StreamDownloader {
     onProgress?: (info: ProgressInfo) => void,
     getNextUrl?: () => Promise<string | null>,
   ): Promise<DownloadResult> {
-    abortFlag = false
     abortController = new AbortController()
     ensureDir(outputDir)
 
