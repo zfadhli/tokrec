@@ -29,7 +29,7 @@ export function parseArgs(argv: string[] = process.argv): RecorderConfig {
     cmd.option("-p, --proxy <url>", "HTTP proxy (e.g. http://127.0.0.1:8080)")
     cmd.option("-l, --log-level <level>", "Log level: debug | info | warn | error")
     cmd.option("-c, --cookies <path>", "Path to cookies.json")
-    cmd.option("-s, --segment-minutes <minutes>", "Segment duration in minutes", { default: "20" })
+    cmd.option("-s, --segment-minutes <minutes>", "Segment duration in minutes (default: disabled). Split recording into segments of this length.")
     cmd.option("--normalize", "Normalize audio loudness (EBU R128)")
     cmd.option("--normalize-loudness <num>", "Target loudness in LUFS (default: -14)")
     cmd.option("--normalize-codec <name>", "Audio codec for normalized output (default: aac)")
@@ -76,8 +76,8 @@ export function parseArgs(argv: string[] = process.argv): RecorderConfig {
         if (opts.cookies) parsed.cookiesPath = opts.cookies as string
         if (opts.segmentMinutes !== undefined) {
           const n = Number(opts.segmentMinutes)
-          if (!Number.isFinite(n) || n < 1) {
-            throw new TikTokError("config-error", "--segment-minutes must be a number >= 1")
+          if (!Number.isFinite(n) || n < 0) {
+            throw new TikTokError("config-error", "--segment-minutes must be a number >= 0")
           }
           parsed.segmentMinutes = n
         }

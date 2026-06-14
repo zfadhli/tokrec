@@ -29,7 +29,7 @@ export interface RecorderConfig {
   logLevel?: LogLevel
   /** Whether to print logs to console (default: true). Set false when using Display-based UI. */
   logConsole?: boolean
-  /** Segment duration in minutes (default: 20). Stream is cut into segments of this length. */
+  /** Segment duration in minutes (default: 0 — disabled). When >= 1, the recording is split into segments of this length. */
   segmentMinutes?: number
   /** Normalize audio loudness via EBU R128 (default: false). */
   normalizeAudio?: boolean
@@ -123,7 +123,7 @@ const DEFAULTS = {
   duration: 0,
   logLevel: "info" as LogLevel,
   logConsole: true,
-  segmentMinutes: 20,
+  segmentMinutes: 0,
   normalizeAudio: false,
   normalizeLoudness: -14,
   normalizeCodec: "aac",
