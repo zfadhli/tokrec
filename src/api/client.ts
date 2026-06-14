@@ -39,22 +39,34 @@ export async function createHttpClient(config: RecorderConfig): Promise<HttpClie
 
   return {
     get: async (url: string) => {
-      const res = await session.fetch(url, {
-        signal: AbortSignal.timeout(15000),
-      } as any)
-      return res as unknown as Response
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), 15000)
+      try {
+        const res = await session.fetch(url, {
+          signal: controller.signal,
+        } as any)
+        return res as unknown as Response
+      } finally {
+        clearTimeout(timeout)
+      }
     },
     post: async (url: string, body?: BodyInit, headers?: Record<string, string>) => {
-      const res = await session.fetch(url, {
-        method: "POST",
-        body,
-        signal: AbortSignal.timeout(15000),
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-          ...headers,
-        },
-      } as any)
-      return res as unknown as Response
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), 15000)
+      try {
+        const res = await session.fetch(url, {
+          method: "POST",
+          body,
+          signal: controller.signal,
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+            ...headers,
+          },
+        } as any)
+        return res as unknown as Response
+      } finally {
+        clearTimeout(timeout)
+      }
     },
     close: async () => {
       await session.close()

@@ -146,7 +146,12 @@ export function createStreamDownloader(logger?: Logger): StreamDownloader {
         // Wait for FFmpeg to finish (URL expired or stream ended)
         await new Promise<void>((resolve, reject) => {
           firstDataTimer = setTimeout(() => {
-            if (!proc.killed) proc.kill("SIGTERM")
+            if (!proc.killed) {
+              proc.kill("SIGTERM")
+              setTimeout(() => {
+                if (!proc.killed) proc.kill("SIGKILL")
+              }, 2000)
+            }
             reject(new Error(`FFmpeg startup timed out after ${FFMPEG_STARTUP_TIMEOUT / 1000}s`))
           }, FFMPEG_STARTUP_TIMEOUT)
 
@@ -271,7 +276,12 @@ export function createStreamDownloader(logger?: Logger): StreamDownloader {
 
       // Startup timeout: kill FFmpeg if no stderr output received within window
       let firstDataTimer: ReturnType<typeof setTimeout> | null = setTimeout(() => {
-        if (!proc.killed) proc.kill("SIGTERM")
+        if (!proc.killed) {
+          proc.kill("SIGTERM")
+          setTimeout(() => {
+            if (!proc.killed) proc.kill("SIGKILL")
+          }, 2000)
+        }
         reject(
           new Error(
             `FFmpeg startup timed out after ${FFMPEG_STARTUP_TIMEOUT / 1000}s\n${stderr.slice(-500)}`,
@@ -309,7 +319,12 @@ export function createStreamDownloader(logger?: Logger): StreamDownloader {
       if (maxDuration > 0) {
         maxDurationTimer = setTimeout(() => {
           logger?.info(`Duration limit reached (${maxDuration}s) — stopping FFmpeg`)
-          if (!proc.killed) proc.kill("SIGTERM")
+          if (!proc.killed) {
+            proc.kill("SIGTERM")
+            setTimeout(() => {
+              if (!proc.killed) proc.kill("SIGKILL")
+            }, 2000)
+          }
         }, maxDuration * 1000)
       }
 

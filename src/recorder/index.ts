@@ -450,12 +450,14 @@ export function createRecorder(config: RecorderConfig): RecorderController {
     if (pendingRemuxes.length > 0) {
       logger.info(`Waiting for ${pendingRemuxes.length} pending conversion(s) (max 60s)...`)
       await Promise.race([Promise.allSettled(pendingRemuxes), sleep(60_000)])
+      pendingRemuxes = [] // release settled promises
     }
 
     stopAbortController.abort()
     if (downloader) downloader.abort()
     if (monitor) await monitor.stop()
     if (httpClient) await httpClient.close()
+    eventHandlers.clear()
     setState({ state: "stopped" })
     logger.info("Recorder stopped")
   }
