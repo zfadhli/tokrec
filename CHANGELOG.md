@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.1] — 2026-06-15
+
+### Changed
+
+- **`--normalize` defaults now accurate in docs** — the README's CLI options table
+  now correctly shows `on` (not `off`) for `--normalize`, and `libopus`/`96k` for
+  the codec/bitrate defaults (matching the actual v0.10.0 behavior).
+
+### Added
+
+- **Version banner shown in README example** — the authentication output example
+  now includes the `tokrec v0.X.Y` startup line.
+
 ## [0.11.0] — 2026-06-15
 
 ### Changed
