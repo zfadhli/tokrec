@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] — 2026-06-14
+
+### Added
+
+- **Recording elapsed timer** — during recording, the spinner now shows a
+  live counter that ticks every second (`Recording... [1m 5s]`) instead of
+  a static `Recording stream...` message. Elapsed time is now visible from
+  the very first second instead of waiting for the first progress event.
+
+### Changed
+
+- **Audio normalization enabled by default** — `--normalize` is no longer
+  needed; EBU R128 loudness normalization now runs automatically after
+  every conversion. To disable, use `--no-normalize`.
+
+### Fixed
+
+- **Offline status delayed 3 minutes after stream end** — when a live stream
+  ended, the recorder waited for the next poll tick (default 3 minutes) before
+  reporting `@user is offline`. Now it immediately re-checks via the
+  `check_alive` endpoint right after the recording finishes.
+- **Misleading `[last check: ...]` label** — the offline repeat message now
+  shows `[last online: ...]` instead of `[last check: ...]`, matching what
+  the timestamp actually represents.
+
 ## [0.8.0] — 2026-06-14
 
 ### Added
