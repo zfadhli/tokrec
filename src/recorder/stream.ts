@@ -8,8 +8,7 @@
 
 import type { Logger } from "../logger"
 import { ensureDir } from "../utils"
-import { downloadHls } from "./download-hls"
-import { downloadFlv } from "./download-stream"
+import { downloadStream } from "./download"
 
 export interface ProgressInfo {
   bytes: number
@@ -60,20 +59,7 @@ export function createStreamDownloader(logger?: Logger): StreamDownloader {
     abortController = new AbortController()
     ensureDir(outputDir)
 
-    if (isHlsUrl(liveUrl)) {
-      return downloadHls(
-        liveUrl,
-        user,
-        outputDir,
-        maxDuration,
-        onProgress,
-        getNextUrl,
-        abortController.signal,
-        logger,
-      )
-    }
-
-    return downloadFlv(
+    return downloadStream(
       liveUrl,
       user,
       outputDir,
@@ -82,6 +68,7 @@ export function createStreamDownloader(logger?: Logger): StreamDownloader {
       getNextUrl,
       abortController.signal,
       logger,
+      isHlsUrl(liveUrl) ? "HLS" : undefined,
     )
   }
 

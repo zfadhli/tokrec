@@ -1,10 +1,9 @@
 /**
- * Shared FFmpeg utilities — binary resolution, duration formatting, constants,
- * and stream-download primitives.
+ * Shared FFmpeg utilities — stream-download pipe primitive and constants.
  */
 
 import { spawn } from "node:child_process"
-import { statSync, type WriteStream } from "node:fs"
+import type { WriteStream } from "node:fs"
 import { TikTokError } from "../config"
 
 /** Kill FFmpeg if no output is received within this window after spawn. */
@@ -26,32 +25,6 @@ const FFMPEG_BASE_ARGS = [
   "mpegts",
   "pipe:1",
 ]
-
-/** Find FFmpeg binary via Bun.which() or PATH search. */
-export function findFfmpegPath(): string | null {
-  const bunWhich = (Bun as any)?.which
-  if (typeof bunWhich === "function") {
-    return (bunWhich("ffmpeg") as string) ?? null
-  }
-  const paths = process.env.PATH?.split(":") ?? []
-  for (const dir of paths) {
-    try {
-      const full = `${dir}/ffmpeg`
-      statSync(full)
-      return full
-    } catch {
-      // not found in this directory
-    }
-  }
-  return null
-}
-
-/** Format seconds into a compact human-readable duration. */
-export function formatDuration(seconds: number): string {
-  const m = Math.floor(seconds / 60)
-  const s = Math.floor(seconds % 60)
-  return `${m}m ${s}s`
-}
 
 /** Result from a single FFmpeg segment download. */
 export interface FfmpegSegmentResult {
