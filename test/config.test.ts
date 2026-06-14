@@ -41,6 +41,21 @@ describe("normalizeConfig", () => {
     expect(cfg.normalizeBitrate).toBe("192k")
   })
 
+  test("normalizeAudio defaults to true", () => {
+    const cfg = normalizeConfig({ user: "testuser" })
+    expect(cfg.normalizeAudio).toBe(true)
+  })
+
+  test("normalizeAudio can be explicitly set to false", () => {
+    const cfg = normalizeConfig({ user: "testuser", normalizeAudio: false })
+    expect(cfg.normalizeAudio).toBe(false)
+  })
+
+  test("normalizeAudio can be explicitly set to true", () => {
+    const cfg = normalizeConfig({ user: "testuser", normalizeAudio: true })
+    expect(cfg.normalizeAudio).toBe(true)
+  })
+
   test("preserves cookies and proxy", () => {
     const cfg = normalizeConfig({
       user: "testuser",

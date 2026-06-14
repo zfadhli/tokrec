@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.2] — 2026-06-15
+
+### Fixed
+
+- **`--no-normalize` now actually disables normalization** — the action handler
+  only checked truthiness (`if (opts.normalize)`), so passing `--no-normalize`
+  was silently ignored and normalization stayed on (the default). Now the boolean
+  value is propagated correctly.
+- **Post-processing no longer trusts the pipe byte counter** — the early-return
+  guard in `processRecording()` compared `result.size === 0` using the in-memory
+  pipe counter, which could diverge from the actual bytes written to disk under
+  backpressure or error-recovery paths. Now it reads the real file size from disk
+  via `statSync`, so valid recordings are never skipped.
+
 ## [0.11.1] — 2026-06-15
 
 ### Changed

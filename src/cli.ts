@@ -86,7 +86,7 @@ export function parseArgs(argv: string[] = process.argv): RecorderConfig {
           parsed.segmentMinutes = n
         }
 
-        if (opts.normalize) parsed.normalizeAudio = true
+        if (opts.normalize !== undefined) parsed.normalizeAudio = opts.normalize as boolean
         if (opts.normalizeLoudness !== undefined) {
           const n = Number(opts.normalizeLoudness)
           if (!Number.isFinite(n)) {
