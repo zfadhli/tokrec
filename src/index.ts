@@ -151,6 +151,10 @@ async function main(): Promise<void> {
   const handleSignal = async () => {
     if (stopping) return // ignore duplicate signals (e.g. SIGINT + SIGTERM from one Ctrl-C)
     stopping = true
+    // Remove signal handlers so they don't accumulate if main() is called again
+    process.off("SIGINT", handleSignal)
+    process.off("SIGTERM", handleSignal)
+    process.off("SIGHUP", handleSignal)
     display.showInfo("Shutting down gracefully...")
     await recorder.stop()
     display.stop()
@@ -171,6 +175,9 @@ async function main(): Promise<void> {
     } else {
       display.showError(`Unexpected error: ${err instanceof Error ? err.message : String(err)}`)
     }
+    process.off("SIGINT", handleSignal)
+    process.off("SIGTERM", handleSignal)
+    process.off("SIGHUP", handleSignal)
     await recorder.stop()
     display.stop()
     process.exit(1)
