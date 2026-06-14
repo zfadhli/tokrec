@@ -13,6 +13,9 @@ import { join } from "node:path"
 import type { Logger } from "../logger"
 import { bytesToHuman, ensureDir, formatFilename } from "../utils"
 
+/** Kill FFmpeg if no output is received within this window after spawn. */
+const FFMPEG_STARTUP_TIMEOUT = 30_000
+
 export interface ProgressInfo {
   bytes: number
   elapsed: number
@@ -118,13 +121,20 @@ export function createStreamDownloader(logger?: Logger): StreamDownloader {
 
         let stderr = ""
 
+        // Startup timeout: kill FFmpeg if no output received within window
+        let firstDataTimer: ReturnType<typeof setTimeout> | null = null
+
         proc.stderr?.on("data", (chunk: Buffer) => {
+          if (firstDataTimer) clearTimeout(firstDataTimer)
+          firstDataTimer = null
           stderr += chunk.toString()
           if (stderr.length > 10000) stderr = stderr.slice(-5000)
         })
 
         // Pipe FFmpeg stdout directly to file with backpressure handling
         proc.stdout.on("data", (chunk: Buffer) => {
+          if (firstDataTimer) clearTimeout(firstDataTimer)
+          firstDataTimer = null
           const canContinue = writer.write(chunk)
           totalBytes += chunk.length
           if (!canContinue) {
@@ -135,7 +145,13 @@ export function createStreamDownloader(logger?: Logger): StreamDownloader {
 
         // Wait for FFmpeg to finish (URL expired or stream ended)
         await new Promise<void>((resolve, reject) => {
+          firstDataTimer = setTimeout(() => {
+            if (!proc.killed) proc.kill("SIGTERM")
+            reject(new Error(`FFmpeg startup timed out after ${FFMPEG_STARTUP_TIMEOUT / 1000}s`))
+          }, FFMPEG_STARTUP_TIMEOUT)
+
           proc.on("close", (code) => {
+            if (firstDataTimer) clearTimeout(firstDataTimer)
             if (abortController.signal.aborted) {
               resolve()
               return
@@ -148,6 +164,7 @@ export function createStreamDownloader(logger?: Logger): StreamDownloader {
             }
           })
           proc.on("error", (err) => {
+            if (firstDataTimer) clearTimeout(firstDataTimer)
             if ((err as any)?.name === "AbortError") return
             reject(err)
           })
@@ -252,7 +269,19 @@ export function createStreamDownloader(logger?: Logger): StreamDownloader {
 
       let stderr = ""
 
+      // Startup timeout: kill FFmpeg if no stderr output received within window
+      let firstDataTimer: ReturnType<typeof setTimeout> | null = setTimeout(() => {
+        if (!proc.killed) proc.kill("SIGTERM")
+        reject(
+          new Error(
+            `FFmpeg startup timed out after ${FFMPEG_STARTUP_TIMEOUT / 1000}s\n${stderr.slice(-500)}`,
+          ),
+        )
+      }, FFMPEG_STARTUP_TIMEOUT)
+
       proc.stderr?.on("data", (chunk: Buffer) => {
+        if (firstDataTimer) clearTimeout(firstDataTimer)
+        firstDataTimer = null
         stderr += chunk.toString()
         if (stderr.length > 10000) stderr = stderr.slice(-5000)
       })
@@ -285,6 +314,7 @@ export function createStreamDownloader(logger?: Logger): StreamDownloader {
       }
 
       proc.on("close", (code) => {
+        if (firstDataTimer) clearTimeout(firstDataTimer)
         clearInterval(progressTimer)
         if (maxDurationTimer) clearTimeout(maxDurationTimer)
 
@@ -325,6 +355,7 @@ export function createStreamDownloader(logger?: Logger): StreamDownloader {
       })
 
       proc.on("error", (err) => {
+        if (firstDataTimer) clearTimeout(firstDataTimer)
         // Spawn emits AbortError when killed via signal — handled by close
         if ((err as any)?.name === "AbortError") return
         clearInterval(progressTimer)
