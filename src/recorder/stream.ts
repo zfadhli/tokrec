@@ -8,8 +8,8 @@
 
 import type { Logger } from "../logger"
 import { ensureDir } from "../utils"
-import { downloadFlv } from "./download-flv"
 import { downloadHls } from "./download-hls"
+import { downloadFlv } from "./download-stream"
 
 export interface ProgressInfo {
   bytes: number

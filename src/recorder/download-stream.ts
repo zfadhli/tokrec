@@ -1,6 +1,7 @@
 /**
- * FLV stream downloader — downloads a live FLV stream via FFmpeg stdout pipe.
+ * Live stream downloader — downloads a live stream via FFmpeg stdout pipe.
  *
+ * Outputs MPEG-TS (.ts) format, which is crash-safe and append-friendly.
  * FFmpeg handles HTTP reconnection via -reconnect flags. When TikTok's
  * short-lived stream URL expires, FFmpeg exits and the outer loop fetches
  * a fresh URL via getNextUrl.
