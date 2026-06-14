@@ -27,7 +27,7 @@
 - **Stream reconnection** — TikTok stream segments are short-lived (30-60s). When one ends, `tokrec` transparently fetches a fresh URL and continues writing to the same file
 - **Duration-limited recording** — record for a fixed time (`-d`) and auto-exit, or record indefinitely (default)
 - **Time-aligned MP4 segments** — post-recording, optionally split the stream into configurable-length MP4 segments, each independently playable
-- **Audio normalization** — EBU R128 two-pass loudness normalization via [peaknorm](https://github.com/sinedied/peaknorm)
+- **Audio normalization** — EBU R128 two-pass loudness normalization via [peaknorm](https://github.com/zfadhli/peaknorm)
 - **Graceful shutdown** — responds to `SIGINT`/`SIGTERM`/`SIGHUP`. Aborts the download, flushes buffered data, converts to MP4, and exits cleanly
 - **Firefox cookie auto-detection** — reads `sessionid_ss` from Firefox's SQLite cookie store automatically (no config file needed)
 - **Live progress display** — animated spinner with real-time byte count, elapsed time, and download speed
@@ -75,11 +75,11 @@ npm install @zfadhli/tokrec
 ```
 
 ```ts
-import { createRecorder } from '@zfadhli/tokrec'
+import { createRecorder } from "@zfadhli/tokrec";
 
-const recorder = createRecorder({ user: 'username' })
-recorder.on('recording:end', (info) => console.log('Done:', info.file))
-await recorder.start()
+const recorder = createRecorder({ user: "username" });
+recorder.on("recording:end", (info) => console.log("Done:", info.file));
+await recorder.start();
 ```
 
 > [!TIP]
@@ -113,22 +113,22 @@ tokrec -u username --normalize
 
 ## CLI options
 
-| Option | Shorthand | Default | Description |
-|--------|-----------|---------|-------------|
-| `--user <name>` | `-u` | _(required)_ | TikTok username (with or without `@`) |
-| `--output <dir>` | `-o` | `./recordings` | Output directory |
-| `--interval <minutes>` | `-i` | `3` | Polling interval (min 1) |
-| `--duration <minutes>` | `-d` | unlimited | Max recording duration. Implies one-shot (exit after recording) |
-| `--segment-minutes <minutes>` | `-s` | disabled | Split recording into MP4 segments of this length |
-| `--proxy <url>` | `-p` | none | HTTP proxy URL |
-| `--cookies <path>` | `-c` | `./cookies.json` | Path to cookies JSON file |
-| `--log-level <level>` | `-l` | `info` | One of: `debug`, `info`, `warn`, `error` |
-| `--normalize` | _(none)_ | on | Enable EBU R128 audio normalization (enabled by default, pass `--no-normalize` to disable) |
-| `--normalize-loudness <num>` | _(none)_ | `-14` | Target loudness in LUFS |
-| `--normalize-codec <name>` | _(none)_ | `libopus` | Audio codec for normalized output (peaknorm default) |
-| `--normalize-bitrate <str>` | _(none)_ | `96k` | Audio bitrate for normalized output (peaknorm default) |
-| `--rate <n>` | _(none)_ | `5` | Max API requests/sec (0 = unlimited). Prevents WAF triggering |
-| `--debug` | _(none)_ | off | Show API debug logging on stderr |
+| Option                        | Shorthand | Default          | Description                                                                                |
+| ----------------------------- | --------- | ---------------- | ------------------------------------------------------------------------------------------ |
+| `--user <name>`               | `-u`      | _(required)_     | TikTok username (with or without `@`)                                                      |
+| `--output <dir>`              | `-o`      | `./recordings`   | Output directory                                                                           |
+| `--interval <minutes>`        | `-i`      | `3`              | Polling interval (min 1)                                                                   |
+| `--duration <minutes>`        | `-d`      | unlimited        | Max recording duration. Implies one-shot (exit after recording)                            |
+| `--segment-minutes <minutes>` | `-s`      | disabled         | Split recording into MP4 segments of this length                                           |
+| `--proxy <url>`               | `-p`      | none             | HTTP proxy URL                                                                             |
+| `--cookies <path>`            | `-c`      | `./cookies.json` | Path to cookies JSON file                                                                  |
+| `--log-level <level>`         | `-l`      | `info`           | One of: `debug`, `info`, `warn`, `error`                                                   |
+| `--normalize`                 | _(none)_  | on               | Enable EBU R128 audio normalization (enabled by default, pass `--no-normalize` to disable) |
+| `--normalize-loudness <num>`  | _(none)_  | `-14`            | Target loudness in LUFS                                                                    |
+| `--normalize-codec <name>`    | _(none)_  | `libopus`        | Audio codec for normalized output (peaknorm default)                                       |
+| `--normalize-bitrate <str>`   | _(none)_  | `96k`            | Audio bitrate for normalized output (peaknorm default)                                     |
+| `--rate <n>`                  | _(none)_  | `5`              | Max API requests/sec (0 = unlimited). Prevents WAF triggering                              |
+| `--debug`                     | _(none)_  | off              | Show API debug logging on stderr                                                           |
 
 ---
 
@@ -145,6 +145,7 @@ tokrec -u username
 ```
 
 You will see:
+
 ```
 tokrec v0.11.0
 ℹ Firefox cookies loaded (30 cookies)
@@ -235,23 +236,23 @@ File naming: `{username}={YYYYMMDD}_{HHMMSS}[_partN].mp4`
 
 The recorder emits typed events that you can subscribe to via `recorder.on()`:
 
-| Event | Payload | When |
-|-------|---------|------|
-| `checking` | `{ user }` | Before each poll tick |
-| `tick` | `{ user, isLive, roomId? }` | After checking live status |
-| `recording:start` | `{ user, file }` | When recording begins |
-| `download:progress` | `{ bytes, elapsed, speed }` | During download (~1s intervals) |
-| `download:end` | `{ file, duration, size }` | When download completes |
-| `recording:end` | `{ file, duration, size }` | Per segment/file after conversion |
-| `segmenting:start` | `{ input, outputPattern }` | Before FFmpeg segmenting |
-| `segmenting:end` | `{ segments }` | After segmenting |
-| `converting:start` | `{ input }` | Before simple conversion |
-| `converted` | `{ input, output }` | After each converted file |
-| `normalize:start` | `{ file }` | Before audio normalization |
-| `normalize:progress` | `{ file, percent, phase }` | During normalization |
-| `normalize:end` | `{ input, output }` | After normalization |
-| `normalize:error` | `{ input, error }` | On normalization error |
-| `error` | `err: TikTokError` | On non-fatal errors |
+| Event                | Payload                     | When                              |
+| -------------------- | --------------------------- | --------------------------------- |
+| `checking`           | `{ user }`                  | Before each poll tick             |
+| `tick`               | `{ user, isLive, roomId? }` | After checking live status        |
+| `recording:start`    | `{ user, file }`            | When recording begins             |
+| `download:progress`  | `{ bytes, elapsed, speed }` | During download (~1s intervals)   |
+| `download:end`       | `{ file, duration, size }`  | When download completes           |
+| `recording:end`      | `{ file, duration, size }`  | Per segment/file after conversion |
+| `segmenting:start`   | `{ input, outputPattern }`  | Before FFmpeg segmenting          |
+| `segmenting:end`     | `{ segments }`              | After segmenting                  |
+| `converting:start`   | `{ input }`                 | Before simple conversion          |
+| `converted`          | `{ input, output }`         | After each converted file         |
+| `normalize:start`    | `{ file }`                  | Before audio normalization        |
+| `normalize:progress` | `{ file, percent, phase }`  | During normalization              |
+| `normalize:end`      | `{ input, output }`         | After normalization               |
+| `normalize:error`    | `{ input, error }`          | On normalization error            |
+| `error`              | `err: TikTokError`          | On non-fatal errors               |
 
 ---
 
@@ -260,31 +261,31 @@ The recorder emits typed events that you can subscribe to via `recorder.on()`:
 ### `createRecorder(config)`
 
 ```ts
-import { createRecorder } from '@zfadhli/tokrec'
-import type { RecorderConfig, RecorderController, RecorderEvent } from '@zfadhli/tokrec'
+import { createRecorder } from "@zfadhli/tokrec";
+import type { RecorderConfig, RecorderController, RecorderEvent } from "@zfadhli/tokrec";
 
 const recorder: RecorderController = createRecorder({
-  user: 'username',          // required
-  outputDir: './videos',     // default: './recordings'
-  interval: 3,               // polling interval in minutes
-  duration: 600,             // max recording duration in seconds
-  segmentMinutes: 20,        // segment length in minutes
-  proxy: 'http://127.0.0.1:8080',
-  cookies: { sessionid_ss: '...' },
-  logLevel: 'info',
+  user: "username", // required
+  outputDir: "./videos", // default: './recordings'
+  interval: 3, // polling interval in minutes
+  duration: 600, // max recording duration in seconds
+  segmentMinutes: 20, // segment length in minutes
+  proxy: "http://127.0.0.1:8080",
+  cookies: { sessionid_ss: "..." },
+  logLevel: "info",
   logConsole: true,
-})
+});
 ```
 
 ### `RecorderController`
 
 ```ts
 interface RecorderController {
-  start(): Promise<void>
-  stop(): Promise<void>
-  getStatus(): RecorderStatus
-  on<E extends RecorderEvent>(event: E, handler: RecorderEventHandler[E]): void
-  off<E extends RecorderEvent>(event: E, handler: RecorderEventHandler[E]): void
+  start(): Promise<void>;
+  stop(): Promise<void>;
+  getStatus(): RecorderStatus;
+  on<E extends RecorderEvent>(event: E, handler: RecorderEventHandler[E]): void;
+  off<E extends RecorderEvent>(event: E, handler: RecorderEventHandler[E]): void;
 }
 ```
 
@@ -292,35 +293,35 @@ interface RecorderController {
 
 ```ts
 interface RecorderStatus {
-  state: 'idle' | 'polling' | 'recording' | 'converting' | 'stopped'
-  user: string
-  currentFile?: string
-  sessionDuration?: number
-  lastPollTime?: string
-  lastError?: string
+  state: "idle" | "polling" | "recording" | "converting" | "stopped";
+  user: string;
+  currentFile?: string;
+  sessionDuration?: number;
+  lastPollTime?: string;
+  lastError?: string;
 }
 ```
 
 ### Example: build a notification bot
 
 ```ts
-import { createRecorder } from '@zfadhli/tokrec'
+import { createRecorder } from "@zfadhli/tokrec";
 
-const recorder = createRecorder({ user: 'username' })
+const recorder = createRecorder({ user: "username" });
 
-recorder.on('checking', ({ user }) => console.log(`Checking @${user}...`))
-recorder.on('tick', ({ isLive, roomId, user }) => {
+recorder.on("checking", ({ user }) => console.log(`Checking @${user}...`));
+recorder.on("tick", ({ isLive, roomId, user }) => {
   if (isLive) {
-    console.log(`@${user} is LIVE! (room: ${roomId})`)
+    console.log(`@${user} is LIVE! (room: ${roomId})`);
     // Send a Discord/Telegram notification here
   }
-})
-recorder.on('recording:end', ({ file, duration }) => {
-  console.log(`Recorded ${file} (${Math.round(duration)}s)`)
-})
-recorder.on('error', (err) => console.error(`[${err.kind}] ${err.message}`))
+});
+recorder.on("recording:end", ({ file, duration }) => {
+  console.log(`Recorded ${file} (${Math.round(duration)}s)`);
+});
+recorder.on("error", (err) => console.error(`[${err.kind}] ${err.message}`));
 
-await recorder.start()
+await recorder.start();
 ```
 
 ---
