@@ -158,7 +158,7 @@ export function createRecorder(config: RecorderConfig): RecorderController {
       })
 
       proc.on("error", (err) => {
-        if ((err as any)?.name === "AbortError") return
+        if (err instanceof Error && err.name === "AbortError") return
         reject(new TikTokError("unknown", `Failed to spawn FFmpeg: ${err.message}`))
       })
     })

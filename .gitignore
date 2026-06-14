@@ -5,3 +5,4 @@ recordings/
 *.session
 .DS_Store
 scripts/
+docs/

@@ -107,7 +107,7 @@ function runFfmpeg(
     })
 
     proc.on("error", (err) => {
-      if ((err as any)?.name === "AbortError") return
+      if (err instanceof Error && err.name === "AbortError") return
       reject(new Error(`Failed to spawn FFmpeg: ${err.message}`))
     })
   })

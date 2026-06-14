@@ -170,7 +170,7 @@ export function createStreamDownloader(logger?: Logger): StreamDownloader {
           })
           proc.on("error", (err) => {
             if (firstDataTimer) clearTimeout(firstDataTimer)
-            if ((err as any)?.name === "AbortError") return
+            if (err instanceof Error && err.name === "AbortError") return
             reject(err)
           })
         })
@@ -372,7 +372,7 @@ export function createStreamDownloader(logger?: Logger): StreamDownloader {
       proc.on("error", (err) => {
         if (firstDataTimer) clearTimeout(firstDataTimer)
         // Spawn emits AbortError when killed via signal — handled by close
-        if ((err as any)?.name === "AbortError") return
+        if (err instanceof Error && err.name === "AbortError") return
         clearInterval(progressTimer)
         if (maxDurationTimer) clearTimeout(maxDurationTimer)
         reject(new Error(`Failed to spawn FFmpeg: ${err.message}`))
