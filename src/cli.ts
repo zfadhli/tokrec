@@ -38,6 +38,7 @@ export function parseArgs(argv: string[] = process.argv): RecorderConfig {
     cmd.option("--normalize-codec <name>", "Audio codec for normalized output (default: aac)")
     cmd.option("--normalize-bitrate <str>", "Audio bitrate for normalized output (default: 128k)")
     cmd.option("--rate <n>", "Max API requests per second (default: 5). Set 0 for unlimited.")
+    cmd.option("--debug", "Show API debug logging on stderr for troubleshooting")
 
     cmd.action((opts: Record<string, unknown>) => {
       try {
@@ -102,6 +103,7 @@ export function parseArgs(argv: string[] = process.argv): RecorderConfig {
           }
           parsed.ratePerSecond = n
         }
+        if (opts.debug) parsed.debug = true
 
         config = parsed
       } catch (err) {

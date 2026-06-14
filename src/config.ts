@@ -47,6 +47,8 @@ export interface RecorderConfig {
    * Set to 0 for unlimited (not recommended).
    */
   ratePerSecond?: number
+  /** Show API debug logging on stderr (default: false). */
+  debug?: boolean
 }
 
 export interface RecorderController {
@@ -131,6 +133,7 @@ const DEFAULTS = {
   normalizeCodec: "aac",
   normalizeBitrate: "128k",
   ratePerSecond: 5,
+  debug: false,
 }
 
 export function normalizeConfig(
@@ -153,6 +156,7 @@ export function normalizeConfig(
     normalizeCodec: config.normalizeCodec ?? DEFAULTS.normalizeCodec,
     normalizeBitrate: config.normalizeBitrate ?? DEFAULTS.normalizeBitrate,
     ratePerSecond: config.ratePerSecond ?? DEFAULTS.ratePerSecond,
+    debug: config.debug ?? DEFAULTS.debug,
   }
 }
 

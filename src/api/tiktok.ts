@@ -34,12 +34,11 @@ export interface TikTokApi {
 const TIKTOK_BASES = ["https://www.tiktok.com", "https://m.tiktok.com"]
 const WEBCAST_BASE = "https://webcast.tiktok.com"
 
-export function createTikTokApi(http: HttpClient, logger?: Logger): TikTokApi {
-  // Debug logging helper — writes to stderr directly since the app-level logger
-  // may have console output suppressed. Temporary for live detection debugging.
+export function createTikTokApi(http: HttpClient, logger?: Logger, showDebug?: boolean): TikTokApi {
+  // Debug logging helper — writes to stderr only when --debug is passed.
   const debug = (msg: string) => {
     logger?.debug(msg)
-    process.stderr.write(`[API_DEBUG] ${msg}\n`)
+    if (showDebug) process.stderr.write(`[API_DEBUG] ${msg}\n`)
   }
   let cached: LiveInfo | null = null
   let cachedUser = ""
