@@ -1,20 +1,24 @@
 /**
- * HLS stream downloader — downloads a live HLS stream via FFmpeg subprocess.
+ * Live stream downloader — downloads a live stream via FFmpeg stdout pipe.
  *
- * FFmpeg handles M3U8 playlist fetching and .ts segment concatenation.
- * The -reconnect flags handle transient CDN drops. When the playlist URL
- * expires, getNextUrl fetches a fresh URL and FFmpeg is respawned.
+ * Outputs MPEG-TS (.ts) format, which is crash-safe and append-friendly.
+ * FFmpeg handles HTTP reconnection via -reconnect flags. When TikTok's
+ * short-lived stream URL expires, FFmpeg exits and the outer loop fetches
+ * a fresh URL via getNextUrl.
+ *
+ * Both FLV and HLS streams are handled by the same download function —
+ * the only difference is an optional label in the log messages.
  */
 
 import { createWriteStream } from "node:fs"
 import { join } from "node:path"
 import { TikTokError } from "../config"
 import type { Logger } from "../logger"
-import { bytesToHuman, formatFilename } from "../utils"
-import { findFfmpegPath, formatDuration, pipeFfmpegSegment } from "./ffmpeg-utils"
+import { bytesToHuman, findFfmpegPath, formatDuration, formatFilename } from "../utils"
+import { pipeFfmpegSegment } from "./ffmpeg-utils"
 import type { DownloadResult, ProgressInfo } from "./stream"
 
-export async function downloadHls(
+export async function downloadStream(
   liveUrl: string,
   user: string,
   outputDir: string,
@@ -23,10 +27,12 @@ export async function downloadHls(
   getNextUrl: (() => Promise<string | null>) | undefined,
   signal: AbortSignal,
   logger?: Logger,
+  label?: string,
 ): Promise<DownloadResult> {
   const filename = formatFilename(user, "ts")
   const filepath = join(outputDir, filename)
-  logger?.info(`Recording (HLS): ${filename}`)
+  const prefix = label ? ` (${label})` : ""
+  logger?.info(`Recording${prefix}: ${filename}`)
 
   const startTime = Date.now()
   let totalBytes = 0
@@ -36,7 +42,7 @@ export async function downloadHls(
   if (!ffmpegPath) {
     throw new TikTokError(
       "ffmpeg-not-found",
-      "FFmpeg not found — required for HLS streams. Install it:\n" +
+      "FFmpeg not found — required for stream download. Install it:\n" +
         "  Linux:  apt install ffmpeg\n  macOS:  brew install ffmpeg",
     )
   }
