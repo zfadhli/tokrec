@@ -35,7 +35,11 @@ export async function processRecording(
   cfg: RecorderConfig,
   deps: ProcessingDeps,
 ): Promise<void> {
-  if (result.size === 0) return
+  try {
+    if (statSync(result.file).size === 0) return
+  } catch {
+    return // file doesn't exist or can't be accessed
+  }
 
   deps.setState({ state: "converting" })
 
