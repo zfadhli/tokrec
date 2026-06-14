@@ -52,7 +52,8 @@ async function main(): Promise<void> {
   }
 
   // Load cookies: try Firefox browser first, then fall back to cookies.json
-  config.cookies = extractTikTokCookiesFromFirefox() ?? (await loadCookies(config.cookiesPath))
+  const firefoxCookies = extractTikTokCookiesFromFirefox()
+  config.cookies = firefoxCookies ?? (await loadCookies(config.cookiesPath))
 
   // Suppress internal logger's console output — the Display owns the terminal
   config.logConsole = false
@@ -60,7 +61,11 @@ async function main(): Promise<void> {
   // Beautiful terminal display
   const display = createDisplay()
 
-  if (!config.cookies) {
+  if (config.cookies) {
+    const source = firefoxCookies ? "Firefox" : "cookies.json"
+    const detail = config.cookies["tt-target-idc"] ? " (+ tt-target-idc)" : ""
+    display.showInfo(`${source} cookies loaded${detail}`)
+  } else {
     display.showWarning(
       "No TikTok cookies found — log in at tiktok.com in Firefox or create cookies.json",
     )
