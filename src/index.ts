@@ -94,10 +94,6 @@ async function main(): Promise<void> {
     display.startRecording()
   })
 
-  recorder.on("download:progress", (info) => {
-    display.updateProgress(info.bytes, info.elapsed, info.speed)
-  })
-
   recorder.on("download:end", (info) => {
     const parsed = info.file.split("/").pop() ?? info.file
     const sizeStr = bytesToHuman(info.size)

@@ -7,7 +7,7 @@ import { spawn } from "node:child_process"
 import { unlinkSync } from "node:fs"
 import { TikTokError } from "../config"
 import type { Logger } from "../logger"
-import { findFfmpegPath } from "./ffmpeg-utils"
+import { findFfmpegPath } from "../utils"
 
 export interface Converter {
   /** Convert a TS file to MP4. Returns the output filepath. */

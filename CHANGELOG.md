@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.1] — 2026-06-14
+
+### Changed
+
+- **Consolidated download modules** — `download-stream.ts` and `download-hls.ts`
+  (which were 90% identical) merged into a single `download.ts`. The only difference
+  (log message prefix) is now a parameterized `label` argument.
+- **Utilities centralized in `utils.ts`** — `findFfmpegPath` and `formatDuration`
+  moved from `ffmpeg-utils.ts` to `utils.ts`, making the utility module the single
+  source of truth for pure helper functions.
+- **Removed `getFfmpegPath()` wrapper** — the orchestrator (`recorder/index.ts`) now
+  calls `findFfmpegPath()` directly instead of wrapping it in a one-liner that only
+  added an error message.
+- **`ffmpeg-utils.ts` scoped to pipe-only** — after extracting general utilities, the
+  module now only exports the core `pipeFfmpegSegment` primitive and its associated
+  constants. Cleaner separation of concerns.
+- **Removed no-op `updateProgress` from Display** — the `updateProgress()` method
+  was already a no-op (the recording timer is driven by an independent `setInterval`).
+  Removed from the `Display` interface and the event subscription in `index.ts`. The
+  `download:progress` event is still available in the recorder's event system for
+  API consumers.
+
 ## [0.9.0] — 2026-06-14
 
 ### Added

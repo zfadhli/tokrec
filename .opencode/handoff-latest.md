@@ -1,76 +1,50 @@
-# Session Handoff — 2026-06-14 20:57
+# Session Handoff — 2026-06-14 15:10
 
 ## Goal
 
-Resume from the previous session's pending items: fix the busy 1-second polling loop in `monitor.ts` with `AbortError`-aware `sleep()`, and implement the `/webcast/room/check_alive/` endpoint for faster/cheaper live checks (as tokdl does).
+Simplify the codebase through consolidation: merge near-duplicate modules, centralize utilities, remove dead code, and clean up module boundaries.
 
 ## Files Modified/Created
 
 | File | Summary of changes |
 |---|---|
-| `src/monitor.ts` | Replaced `active` flag + 1s polling loop with `AbortController` (`stopSignal`). `stop()` calls `stopSignal.abort()` to immediately interrupt `sleep(intervalMs, signal)`, making stop responsive instantly instead of waiting up to 1s. |
-| `src/api/tiktok.ts` | Added `fetchCheckAlive(roomId)` — calls `/webcast/room/check_alive/` endpoint returning a simple boolean (`data[0].alive`). Updated `isRoomAlive()` to use it instead of re-fetching full `LiveInfo` (cache still checked first). |
-| `src/recorder/index.ts` | `getNextUrl()` now calls `api.isRoomAlive(roomId)` (uses `check_alive`) first; only invalidates cache + fetches stream URL if still alive. Avoids full page re-scan during recording. |
-| `test/fixtures/tiktok/check-alive-live.json` | **New** — Fixture: `{ data: [{ alive: true, room_id: "..." }] }`. |
-| `test/fixtures/tiktok/check-alive-offline.json` | **New** — Fixture: `{ data: [{ alive: false, room_id: "..." }] }`. |
-| `test/tiktok-api.test.ts` | Added 4 tests for `isRoomAlive` with `check_alive` (live, offline, HTTP error, cache hit). |
-| `.opencode/handoff-latest.md` | Updated by biome `--write --unsafe` formatting pass. |
+| `src/recorder/download-stream.ts` → `download.ts` | Renamed and merged with `download-hls.ts`. The unified `downloadStream()` function accepts an optional `label` parameter ("HLS") instead of having two nearly-identical functions. |
+| `src/recorder/download-hls.ts` | **Deleted** — merged into `download.ts`. |
+| `src/utils.ts` | Added `formatDuration()` and `findFfmpegPath()` — now the single source of truth for all pure utilities. |
+| `src/recorder/ffmpeg-utils.ts` | Removed `findFfmpegPath` and `formatDuration`. Now focused solely on `pipeFfmpegSegment` and constants. |
+| `src/recorder/convert.ts` | Updated import of `findFfmpegPath` from `../utils` instead of `./ffmpeg-utils`. |
+| `src/recorder/index.ts` | Updated import of `findFfmpegPath` from `../utils`. Removed `getFfmpegPath()` wrapper — `runFfmpeg()` calls `findFfmpegPath()` directly with inline error handling. |
+| `src/recorder/stream.ts` | Simplified to call unified `downloadStream()` with an optional `"HLS"` label based on URL detection. |
+| `src/ui.ts` | Replaced private `fmtDuration()` with shared `formatDuration()` from `utils`. Removed `updateProgress` from `Display` interface and implementation. |
+| `src/index.ts` | Removed the `download:progress` event subscription that called the no-op `updateProgress`. |
+| `CHANGELOG.md` | Added v0.9.1 with Changed entries for all refactoring. |
+| `package.json` | Version bumped 0.9.0 → 0.9.1. |
 
 ## Key Decisions
 
-1. **`room/check_alive/` over `room/info/` for alive checks** — The `check_alive` endpoint returns a tiny boolean response (~100 bytes) vs the multi-kilobyte `room/info` response. Ideal for the `isRoomAlive()` method and the `getNextUrl` hot path during recording. Response format: `{ "data": [{ "alive": true/false, "room_id": "..." }] }`.
+1. **Single `download.ts` over two specialized files** — `download-stream.ts` and `download-hls.ts` were 90% identical (same FFmpeg pipe, same progress loop, same error handling). The only difference was the log prefix `"Recording:"` vs `"Recording (HLS):"`. Parameterizing the label eliminates ~90 lines of duplicate code without losing any diagnostic information.
 
-2. **`AbortController` in monitor instead of polling** — The old pattern checked `active` every 1 second in a tight loop. The new pattern uses a single `sleep(intervalMs, stopSignal.signal)` call. `stop()` calls `stopSignal.abort()`, making `sleep()` resolve immediately. This is consistent with the `AbortController` + `sleep()` pattern already used in `recorder/index.ts`.
+2. **`utils.ts` as single utility hub** — `findFfmpegPath` and `formatDuration` are used by 3+ modules each. Having them in `utils.ts` (alongside `bytesToHuman`, `sleep`, etc.) creates a single import target instead of scattering utilities across module-specific files.
 
-3. **`check_alive` parameters** — Uses the same parameters as tokdl: `aid=1988&region=CH&room_ids={id}&user_is_login=true`. The `room_ids` parameter (plural) is intentional — the endpoint accepts multiple comma-separated IDs but we send one.
+3. **Inline `getFfmpegPath()` wrapper** — The wrapper added an error message around `findFfmpegPath()`, but it was only called from one place (`runFfmpeg()`). Inlining it removes a layer of indirection and keeps the error handling at the call site.
 
-4. **Cache-first in `isRoomAlive()`** — If the roomId matches the cached `LiveInfo`, the cached `isLive` value is returned without any network call. Only cache misses trigger `check_alive`.
+4. **Remove no-op `updateProgress`** — The recording timer was migrated to an independent `setInterval` in a previous session. `updateProgress()` became a no-op but was still in the interface, misleading API consumers. Removed it while keeping the `download:progress` event in the recorder's event system for any external consumers.
 
 ## Current State
 
-### Working
-- 4 new tests + 2 fixtures for `check_alive` endpoint
-- All 66 tests pass (was 62)
+- `src/` source files: **20** (was 22)
+- All 66 tests pass
 - Clean `tsc --noEmit`
-- `monitor.ts` — immediate stop via AbortController (no more 1s polling lag)
-- `isRoomAlive()` — lightweight boolean check via `/webcast/room/check_alive/`
-- `getNextUrl()` — uses `isRoomAlive()` before fetching stream URL
-
-### Detection flow (end-to-end)
-```
-fetchLiveInfo(user)
-  ├─ tryFetchPage (www.tiktok.com → m.tiktok.com)
-  │    └─ WAF blocks both → API fallback
-  ├─ /api-live/user/room/ (WAF bypass)
-  │    └─ Returns roomId + status (2=live, 4=offline)
-  └─ If live → /webcast/room/info/ for stream URL
-
-isRoomAlive(roomId)
-  ├─ Cache hit → return cached.isLive
-  └─ Cache miss → /webcast/room/check_alive/ → boolean
-
-getNextUrl() during recording
-  ├─ isRoomAlive(roomId) [check_alive] → if dead, stop
-  ├─ Invalidate cache
-  └─ getLiveUrl(roomId) [room/info] → stream URL
-```
+- v0.9.1 about to be released
 
 ## Next Steps / Pending
 
-- [ ] **Chrome/Chromium cookie extraction** — `browser-cookies.ts` currently only supports Firefox. Add Chromium-based browser cookie extraction (Chrome, Edge, Brave, etc.) from their SQLite cookie stores.
+- [ ] Merge `lib.ts` into `recorder/index.ts` (pure re-export file)
+- [ ] Inline `recorder-state.ts` + `recorder-events.ts` into `recorder/index.ts` (tiny single-use modules)
 
 ## Important Context
 
-- **`room/check_alive/` endpoint**: `https://webcast.tiktok.com/webcast/room/check_alive/?aid=1988&region=CH&room_ids={roomId}&user_is_login=true`. Not behind WAF. Response is `{ "data": [{ "alive": boolean, "room_id": string }] }`. Discovered from tokdl: `/home/envs4/workspaces/tokdl/packages/lib/src/client.ts`.
-
-- **`room/info` vs `check_alive`**: Use `room/info` when you need stream URLs or full room metadata. Use `check_alive` when you only need a live/offline boolean — it's ~100 bytes vs multiple KB.
-
-- **`getNextUrl` flow**: During recording, `getNextUrl` is called by the downloader to refresh the stream URL (for segmenting or reconnection). Using `check_alive` first avoids unnecessary full page rescans when the stream is still healthy.
-
-- **Monitor pattern**: The `createPollingMonitor` now uses `new AbortController()` internally. The `stop()` method aborts the signal and awaits the current tick. This is the same pattern used in `recorder/index.ts` for the `pendingRemuxes` timeout.
-
-- **RoomIds are per-session**: The roomId changes each time the user goes live. In the fixture: `7649515096078600981` (old). Do NOT hardcode roomIds.
-
-- **TikTok WAF**: The Slardar WAF on `www.tiktok.com` blocks HTML page requests from non-browser clients. The `/api-live/user/room/` and `/webcast/room/*` API endpoints are not behind the WAF.
-
-- **Published**: `@zfadhli/tokrec` v0.7.1 on npm.
+- **`downloadStream()` signature**: `(liveUrl, user, outputDir, maxDuration, onProgress, getNextUrl, signal, logger?, label?)` — same as old `downloadFlv`/`downloadHls` but with an extra optional `label` for HLS vs FLV distinction in logs.
+- **`formatDuration` in utils**: Now exported from `utils.ts` with a slightly different output — `"1m 5s"` when minutes > 0, `"30s"` when < 1 minute (was always `"0m 30s"` before).
+- **`findFfmpegPath` in utils**: Identical implementation, just moved location.
+- **Release**: `@zfadhli/tokrec` v0.9.1. Package: `@zfadhli/tokrec`.

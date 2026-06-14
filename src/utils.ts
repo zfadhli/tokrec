@@ -2,7 +2,7 @@
  * Utility helpers — pure functions, no side effects.
  */
 
-import { mkdirSync } from "node:fs"
+import { mkdirSync, statSync } from "node:fs"
 
 /** Format a filename like username=2025.06.09_14-30-00_1.flv */
 export function formatFilename(user: string, ext = "flv", part?: number): string {
@@ -71,4 +71,31 @@ export function relativeTime(ms: number): string {
   if (hours < 24) return mins > 0 ? `${hours}h ${mins}m ago` : `${hours}h ago`
   const days = Math.floor(hours / 24)
   return `${days}d ago`
+}
+
+/** Format seconds into a compact human-readable duration (e.g. "1m 5s", "30s"). */
+export function formatDuration(seconds: number): string {
+  const m = Math.floor(seconds / 60)
+  const s = Math.floor(seconds % 60)
+  if (m > 0) return `${m}m ${s}s`
+  return `${s}s`
+}
+
+/** Find FFmpeg binary via Bun.which() or PATH search. */
+export function findFfmpegPath(): string | null {
+  const bunWhich = (Bun as any)?.which
+  if (typeof bunWhich === "function") {
+    return (bunWhich("ffmpeg") as string) ?? null
+  }
+  const paths = process.env.PATH?.split(":") ?? []
+  for (const dir of paths) {
+    try {
+      const full = `${dir}/ffmpeg`
+      statSync(full)
+      return full
+    } catch {
+      // not found in this directory
+    }
+  }
+  return null
 }
