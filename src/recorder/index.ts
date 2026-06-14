@@ -53,8 +53,35 @@ export function createRecorder(config: RecorderConfig): RecorderController {
   let stopAbortController = new AbortController()
   let pendingRemuxes: Promise<unknown>[] = []
 
+  // Valid state transitions: [from] → [to, to, ...]
+  const TRANSITIONS: Record<string, string[]> = {
+    idle: ["polling"],
+    polling: ["recording", "stopped"],
+    recording: ["converting", "stopped"],
+    converting: ["polling", "stopped"],
+    stopped: [],
+  }
+
   function setState(partial: Partial<RecorderStatus>): void {
+    const prevState = state.state
+    const newState = partial.state
+
+    // Validate state transitions
+    if (newState && newState !== prevState) {
+      const allowed = TRANSITIONS[prevState]
+      if (!allowed?.includes(newState)) {
+        logger.error(`Invalid state transition: ${prevState} → ${newState} (ignored)`)
+        return
+      }
+      logger.info(`State: ${prevState} → ${newState}`)
+    }
+
     state = { ...state, ...partial }
+
+    // Auto-track timestamps on state entry
+    if (newState === "polling" && newState !== prevState) {
+      state.lastPollTime = new Date().toISOString()
+    }
   }
 
   function getStatus(): RecorderStatus {
@@ -138,6 +165,10 @@ export function createRecorder(config: RecorderConfig): RecorderController {
   }
 
   async function start(): Promise<void> {
+    if (state.state !== "idle") {
+      logger.warn(`start() ignored: already in state ${state.state}`)
+      return
+    }
     stopRequested = false
     pendingRemuxes = []
     stopAbortController = new AbortController()
@@ -349,6 +380,7 @@ export function createRecorder(config: RecorderConfig): RecorderController {
             if (stopRequested) return
             const msg = err instanceof Error ? err.message : String(err)
             logger.error(`Segmenting failed: ${msg}`)
+            setState({ lastError: `Segmenting failed: ${msg}` })
             // Fallback: try simple conversion of the whole FLV
             emit("converting:start", { input: result.file })
             try {
@@ -367,6 +399,7 @@ export function createRecorder(config: RecorderConfig): RecorderController {
                   ? convErr
                   : new TikTokError("unknown", String(convErr))
               logger.error(`Conversion failed: ${tkErr.message}`)
+              setState({ lastError: `Conversion failed: ${tkErr.message}` })
               emit("error", tkErr)
             }
           }
@@ -392,6 +425,7 @@ export function createRecorder(config: RecorderConfig): RecorderController {
             const tkErr =
               convErr instanceof TikTokError ? convErr : new TikTokError("unknown", String(convErr))
             logger.error(`Conversion failed: ${tkErr.message}`)
+            setState({ lastError: `Conversion failed: ${tkErr.message}` })
             emit("error", tkErr)
           }
         }
@@ -405,6 +439,10 @@ export function createRecorder(config: RecorderConfig): RecorderController {
   }
 
   async function stop(): Promise<void> {
+    if (state.state === "stopped") {
+      logger.warn(`stop() ignored: already stopped`)
+      return
+    }
     stopRequested = true
     logger.info("Stopping recorder...")
 
