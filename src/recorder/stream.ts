@@ -1,13 +1,14 @@
 /**
- * Stream downloader — fetches a live stream and writes it to disk with buffering.
+ * Stream downloader — downloads a live stream to disk using FFmpeg.
  *
- * FLV streams: downloaded via raw fetch() with byte buffering and transparent
- * reconnection when TikTok stream segments end naturally.
- * HLS streams: downloaded via FFmpeg (which handles M3U8 playlist + .ts segments).
+ * Both FLV and HLS streams are downloaded via FFmpeg subprocess with
+ * transparent reconnection for transient network drops. When a stream
+ * URL expires (TikTok URLs are short-lived), the main loop fetches a
+ * fresh URL via getNextUrl and spawns a new FFmpeg process.
  */
 
 import { spawn } from "node:child_process"
-import { createWriteStream, statSync, type WriteStream } from "node:fs"
+import { createWriteStream, statSync } from "node:fs"
 import { join } from "node:path"
 import type { Logger } from "../logger"
 import { bytesToHuman, ensureDir, formatFilename } from "../utils"
@@ -41,12 +42,10 @@ export interface StreamDownloader {
 
 export function createStreamDownloader(logger?: Logger): StreamDownloader {
   let abortController = new AbortController()
-  let streamReader: ReadableStreamDefaultReader<Uint8Array> | null = null
 
   function abort(): void {
     abortController.abort()
-    streamReader?.cancel().catch(() => {})
-    // FFmpeg subprocess is killed automatically via spawn's `signal` option
+    // All FFmpeg subprocesses are killed automatically via spawn's `signal` option
   }
 
   /** Detect whether a URL is an HLS (.m3u8) playlist. */
@@ -54,15 +53,7 @@ export function createStreamDownloader(logger?: Logger): StreamDownloader {
     return url.includes(".m3u8")
   }
 
-  // ─── FLV downloader (existing fetch-based path) ────────────────
-
-  async function openReader(url: string): Promise<ReadableStreamDefaultReader<Uint8Array>> {
-    const response = await fetch(url)
-    if (!response.ok || !response.body) {
-      throw new Error(`Failed to fetch stream: ${response.status}`)
-    }
-    return response.body.getReader()
-  }
+  // ─── FLV downloader (FFmpeg-based path) ──────────────────────
 
   async function downloadFlv(
     liveUrl: string,
@@ -80,156 +71,132 @@ export function createStreamDownloader(logger?: Logger): StreamDownloader {
     let totalBytes = 0
     let lastProgressTime = 0
 
-    let reader: ReadableStreamDefaultReader<Uint8Array>
-    try {
-      reader = await openReader(liveUrl)
-    } catch (err) {
-      throw new Error(`Failed to open stream: ${err instanceof Error ? err.message : String(err)}`)
+    const ffmpegPath = findFfmpegPath()
+    if (!ffmpegPath) {
+      throw new Error(
+        "FFmpeg not found — required for stream download. Install it:\n" +
+          "  Linux:  apt install ffmpeg\n  macOS:  brew install ffmpeg",
+      )
     }
-    streamReader = reader
-
-    const writer = createWriteStream(filepath)
 
     function elapsed(): number {
       return (Date.now() - startTime) / 1000
     }
 
-    const bufferSize = 512 * 1024 // 512 KB buffer
-    let buffer = Buffer.alloc(0)
+    const writer = createWriteStream(filepath)
 
     try {
-      function reportProgress(bytes: number): void {
-        if (!onProgress) return
+      while (!abortController.signal.aborted) {
+        // Spawn FFmpeg with reconnect flags. FFmpeg handles transient
+        // network drops transparently. When the stream URL expires
+        // (TikTok URLs are short-lived), FFmpeg exits and the outer
+        // loop fetches a fresh URL.
+        const proc = spawn(
+          ffmpegPath,
+          [
+            "-reconnect",
+            "1",
+            "-reconnect_at_eof",
+            "1",
+            "-reconnect_streamed",
+            "1",
+            "-reconnect_delay_max",
+            "5",
+            "-i",
+            liveUrl,
+            "-c",
+            "copy",
+            "-f",
+            "flv",
+            "pipe:1",
+          ],
+          {
+            stdio: ["ignore", "pipe", "pipe"],
+            signal: abortController.signal,
+          },
+        )
+
+        let stderr = ""
+
+        proc.stderr?.on("data", (chunk: Buffer) => {
+          stderr += chunk.toString()
+          if (stderr.length > 10000) stderr = stderr.slice(-5000)
+        })
+
+        // Pipe FFmpeg stdout directly to file with backpressure handling
+        proc.stdout.on("data", (chunk: Buffer) => {
+          const canContinue = writer.write(chunk)
+          totalBytes += chunk.length
+          if (!canContinue) {
+            proc.stdout.pause()
+            writer.once("drain", () => proc.stdout.resume())
+          }
+        })
+
+        // Wait for FFmpeg to finish (URL expired or stream ended)
+        await new Promise<void>((resolve, reject) => {
+          proc.on("close", (code) => {
+            if (abortController.signal.aborted) {
+              resolve()
+              return
+            }
+            // URL expired or stream ended — normal for live streams
+            if (code === 0 || code === null) {
+              resolve()
+            } else {
+              reject(new Error(`FFmpeg exited with code ${code}\n${stderr.slice(-500)}`))
+            }
+          })
+          proc.on("error", (err) => {
+            if ((err as any)?.name === "AbortError") return
+            reject(err)
+          })
+        })
+
+        // Report progress after each segment
         const now = Date.now()
         const e = elapsed()
-        const speed = e > 0 ? bytes / e : 0
-        if (now - lastProgressTime >= 1000) {
+        if (onProgress && now - lastProgressTime >= 1000) {
           lastProgressTime = now
-          onProgress({ bytes, elapsed: e, speed })
+          const speed = e > 0 ? totalBytes / e : 0
+          onProgress({ bytes: totalBytes, elapsed: e, speed })
         }
-      }
 
-      /** Try to reconnect to a fresh stream URL. Returns true if reconnected. */
-      async function tryReconnect(): Promise<boolean> {
-        if (abortController.signal.aborted) return false
-        if (!getNextUrl) return false
-        if (maxDuration > 0 && elapsed() >= maxDuration) return false
+        // Check if we should continue
+        if (abortController.signal.aborted) break
+        if (maxDuration > 0 && e >= maxDuration) {
+          logger?.info(`Duration limit reached (${maxDuration}s)`)
+          break
+        }
+        if (!getNextUrl) break
 
-        logger?.info("Stream ended, attempting reconnection...")
         const nextUrl = await getNextUrl()
         if (!nextUrl) {
           logger?.info("No new stream URL — recording finished")
-          return false
-        }
-
-        logger?.info(`Reconnecting to new stream URL: ${nextUrl}`)
-        try {
-          reader.cancel().catch(() => {})
-          reader = await openReader(nextUrl)
-          streamReader = reader
-          logger?.info("Reconnected successfully")
-          return true
-        } catch (err) {
-          logger?.error(`Reconnection failed: ${err instanceof Error ? err.message : String(err)}`)
-          return false
-        }
-      }
-
-      // Single abort promise created once before the loop — prevents
-      // listener accumulation (one listener total vs. one per iteration).
-      const abortPromise = new Promise<never>((_, reject) => {
-        if (abortController.signal.aborted) {
-          reject(new Error("Aborted"))
-          return
-        }
-        abortController.signal.addEventListener("abort", () => reject(new Error("Aborted")), {
-          once: true,
-        })
-      })
-
-      while (!abortController.signal.aborted) {
-        let chunk: { done: boolean; value?: Uint8Array }
-
-        try {
-          const result = await Promise.race([
-            timeout(reader.read(), 60_000, "Stream read timed out"),
-            abortPromise,
-          ])
-          chunk = result
-        } catch (_err) {
-          if (abortController.signal.aborted) break
-          logger?.info("Stream ended or timed out, attempting reconnection...")
-          if (await tryReconnect()) {
-            continue
-          }
           break
         }
-
-        if (chunk.done) {
-          if (await tryReconnect()) {
-            continue
-          }
-          reader.cancel().catch(() => {})
-          break
-        }
-
-        buffer = Buffer.concat([buffer, Buffer.from(chunk.value!)])
-
-        if (buffer.length >= bufferSize) {
-          await writeBuffer(writer, buffer)
-          totalBytes += buffer.length
-          buffer = Buffer.alloc(0)
-        }
-
-        if (maxDuration > 0) {
-          const e = elapsed()
-          if (e >= maxDuration) {
-            logger?.info(`Duration limit reached (${maxDuration}s)`)
-            reader.cancel().catch(() => {})
-            break
-          }
-        }
-
-        reportProgress(totalBytes)
+        liveUrl = nextUrl
       }
-
-      if (buffer.length > 0) {
-        await writeBuffer(writer, buffer)
-        totalBytes += buffer.length
-      }
-      await new Promise<void>((resolve) => writer.end(resolve))
-
-      const duration = elapsed()
-      if (onProgress) {
-        onProgress({
-          bytes: totalBytes,
-          elapsed: duration,
-          speed: duration > 0 ? totalBytes / duration : 0,
-        })
-      }
-      logger?.info(
-        `Recording finished: ${filename} (${formatDuration(duration)}, ${bytesToHuman(totalBytes)})`,
-      )
-
-      return { file: filepath, duration, size: totalBytes }
     } catch (err) {
-      abort()
-      // Flush remaining buffer and close the write stream so the partial file is valid
-      try {
-        if (buffer.length > 0) {
-          await writeBuffer(writer, buffer)
-          totalBytes += buffer.length
-        }
-        await new Promise<void>((resolve) => writer.end(resolve))
-      } catch {
-        // best effort — file may be truncated but readable
-      }
-      const duration = elapsed()
+      abortController.abort()
       logger?.error(`Recording error: ${err instanceof Error ? err.message : String(err)}`)
-      return { file: filepath, duration, size: totalBytes }
     } finally {
-      streamReader = null
+      await new Promise<void>((resolve) => writer.end(resolve))
     }
+
+    const duration = elapsed()
+    if (onProgress) {
+      onProgress({
+        bytes: totalBytes,
+        elapsed: duration,
+        speed: duration > 0 ? totalBytes / duration : 0,
+      })
+    }
+    logger?.info(
+      `Recording finished: ${filename} (${formatDuration(duration)}, ${bytesToHuman(totalBytes)})`,
+    )
+
+    return { file: filepath, duration, size: totalBytes }
   }
 
   // ─── HLS downloader (FFmpeg-based path) ───────────────────────
@@ -259,7 +226,23 @@ export function createStreamDownloader(logger?: Logger): StreamDownloader {
 
     // Spawn FFmpeg with the M3U8 URL as input.
     // FFmpeg handles downloading all .ts segments and concatenating them.
-    const args = ["-i", liveUrl, "-c", "copy", "-y", filepath]
+    // -reconnect flags handle transient CDN drops.
+    const args = [
+      "-reconnect",
+      "1",
+      "-reconnect_at_eof",
+      "1",
+      "-reconnect_streamed",
+      "1",
+      "-reconnect_delay_max",
+      "5",
+      "-i",
+      liveUrl,
+      "-c",
+      "copy",
+      "-y",
+      filepath,
+    ]
 
     return new Promise<DownloadResult>((resolve, reject) => {
       const proc = spawn(ffmpegPath, args, {
@@ -366,11 +349,10 @@ export function createStreamDownloader(logger?: Logger): StreamDownloader {
 
     if (isHlsUrl(liveUrl)) {
       // HLS: FFmpeg handles playlist + segments natively.
-      // Reconnection is not needed (FFmpeg refreshes the playlist internally).
       return downloadHls(liveUrl, user, outputDir, maxDuration, onProgress)
     }
 
-    // FLV: existing fetch-based path with reconnection support
+    // FLV: FFmpeg-based path with reconnect flags and URL refresh loop
     return downloadFlv(liveUrl, user, outputDir, maxDuration, onProgress, getNextUrl)
   }
 
@@ -396,34 +378,8 @@ function findFfmpegPath(): string | null {
   return null
 }
 
-function writeBuffer(writer: WriteStream, buffer: Buffer): Promise<void> {
-  return new Promise((resolve, reject) => {
-    writer.write(buffer, (err) => {
-      if (err) reject(err)
-      else resolve()
-    })
-  })
-}
-
 function formatDuration(seconds: number): string {
   const m = Math.floor(seconds / 60)
   const s = Math.floor(seconds % 60)
   return `${m}m ${s}s`
-}
-
-/** Race a promise against a timeout. The losing promise is ignored (no unhandled rejection). */
-function timeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(label)), ms)
-    promise.then(
-      (result) => {
-        clearTimeout(timer)
-        resolve(result)
-      },
-      (err) => {
-        clearTimeout(timer)
-        reject(err)
-      },
-    )
-  })
 }

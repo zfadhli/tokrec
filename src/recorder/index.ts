@@ -21,6 +21,7 @@ import type {
 import { normalizeConfig, TikTokError } from "../config"
 import { createLogger } from "../logger"
 import { createPollingMonitor, type PollingMonitor } from "../monitor"
+import { sleep } from "../utils"
 import { type Converter, createConverter } from "./convert"
 import { type AudioNormalizer, createAudioNormalizer } from "./normalize"
 import { createStreamDownloader, type StreamDownloader } from "./stream"
@@ -50,6 +51,7 @@ export function createRecorder(config: RecorderConfig): RecorderController {
   let audioNormalizer: AudioNormalizer | null = null
   let stopRequested = false
   let stopAbortController = new AbortController()
+  let pendingRemuxes: Promise<unknown>[] = []
 
   function setState(partial: Partial<RecorderStatus>): void {
     state = { ...state, ...partial }
@@ -137,6 +139,7 @@ export function createRecorder(config: RecorderConfig): RecorderController {
 
   async function start(): Promise<void> {
     stopRequested = false
+    pendingRemuxes = []
     stopAbortController = new AbortController()
 
     logger.info(`Starting recorder for @${cfg.user}`)
@@ -198,17 +201,12 @@ export function createRecorder(config: RecorderConfig): RecorderController {
         setState({ state: "recording" })
         emit("recording:start", { user, file: "" })
 
-        // Create a reconnection callback that fetches a fresh stream URL
-        // when the current segment ends. This handles TikTok's short-lived
-        // stream URLs (typically 30-60s per segment).
-        let reconnectCount = 0
+        // Create a callback that fetches a fresh stream URL when the
+        // current segment ends. TikTok stream URLs are short-lived
+        // (30-60s), so we need to refresh them for long recordings.
+        // The abort signal acts as the safety valve — if the user stops
+        // or the user goes offline, we stop reconnecting.
         const getNextUrl = async (): Promise<string | null> => {
-          reconnectCount++
-          if (reconnectCount > 100) {
-            // Safety valve: don't reconnect indefinitely
-            logger.warn(`Reconnection limit reached (${reconnectCount} attempts)`)
-            return null
-          }
           // Invalidate cache so we get fresh data from TikTok
           api!.invalidateCache()
           // Check if the user is still live with the same room
@@ -250,7 +248,7 @@ export function createRecorder(config: RecorderConfig): RecorderController {
           emit("segmenting:start", { input: result.file, outputPattern })
 
           try {
-            await runFfmpeg(
+            const segmentPromise = runFfmpeg(
               [
                 "-i",
                 result.file,
@@ -268,6 +266,8 @@ export function createRecorder(config: RecorderConfig): RecorderController {
               ],
               stopAbortController.signal,
             )
+            pendingRemuxes.push(segmentPromise)
+            await segmentPromise
 
             // Capture FLV timestamp before deletion (used to timestamp segments)
             const flvMtimeMs = statSync(result.file).mtimeMs
@@ -325,15 +325,19 @@ export function createRecorder(config: RecorderConfig): RecorderController {
             emit("segmenting:end", { segments: segmentFiles.length })
 
             // Normalize audio for each segment if enabled
+            // Run all normalizations concurrently for speed
             if (audioNormalizer) {
-              for (const segFile of segmentFiles) {
+              const normalizer = audioNormalizer
+              const normalizePromises = segmentFiles.map(async (segFile) => {
                 const segPath = join(parsed.dir, segFile)
                 try {
-                  await audioNormalizer.normalize(segPath)
+                  await normalizer.normalize(segPath)
                 } catch {
-                  // Error already emitted via onError callback — continue to next segment
+                  // Error already emitted via onError callback
                 }
-              }
+              })
+              pendingRemuxes.push(...normalizePromises)
+              await Promise.allSettled(normalizePromises)
             }
 
             setState({
@@ -348,14 +352,14 @@ export function createRecorder(config: RecorderConfig): RecorderController {
             // Fallback: try simple conversion of the whole FLV
             emit("converting:start", { input: result.file })
             try {
-              const mp4File = await converter!.convert(result.file)
+              const convertPromise = converter!.convert(result.file)
+              pendingRemuxes.push(convertPromise)
+              const mp4File = await convertPromise
               emit("converted", { input: result.file, output: mp4File })
               if (audioNormalizer) {
-                try {
-                  await audioNormalizer.normalize(mp4File)
-                } catch {
-                  // Error already emitted via onError callback
-                }
+                const normalizePromise = audioNormalizer.normalize(mp4File).catch(() => {})
+                pendingRemuxes.push(normalizePromise)
+                await normalizePromise
               }
             } catch (convErr) {
               const tkErr =
@@ -370,13 +374,13 @@ export function createRecorder(config: RecorderConfig): RecorderController {
           // No segmenting — simple FLV → MP4 conversion
           emit("converting:start", { input: result.file })
           try {
-            const mp4File = await converter!.convert(result.file)
+            const convertPromise = converter!.convert(result.file)
+            pendingRemuxes.push(convertPromise)
+            const mp4File = await convertPromise
             if (audioNormalizer) {
-              try {
-                await audioNormalizer.normalize(mp4File)
-              } catch {
-                // Error already emitted via onError callback
-              }
+              const normalizePromise = audioNormalizer.normalize(mp4File).catch(() => {})
+              pendingRemuxes.push(normalizePromise)
+              await normalizePromise
             }
             emit("recording:end", {
               file: mp4File,
@@ -403,6 +407,13 @@ export function createRecorder(config: RecorderConfig): RecorderController {
   async function stop(): Promise<void> {
     stopRequested = true
     logger.info("Stopping recorder...")
+
+    // Let in-flight conversions/remuxes finish within a reasonable window
+    if (pendingRemuxes.length > 0) {
+      logger.info(`Waiting for ${pendingRemuxes.length} pending conversion(s) (max 60s)...`)
+      await Promise.race([Promise.allSettled(pendingRemuxes), sleep(60_000)])
+    }
+
     stopAbortController.abort()
     if (downloader) downloader.abort()
     if (monitor) await monitor.stop()
