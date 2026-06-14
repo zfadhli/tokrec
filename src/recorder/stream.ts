@@ -66,7 +66,7 @@ export function createStreamDownloader(logger?: Logger): StreamDownloader {
     onProgress?: (info: ProgressInfo) => void,
     getNextUrl?: () => Promise<string | null>,
   ): Promise<DownloadResult> {
-    const filename = formatFilename(user, "flv")
+    const filename = formatFilename(user, "ts")
     const filepath = join(outputDir, filename)
     logger?.info(`Recording: ${filename}`)
 
@@ -110,7 +110,7 @@ export function createStreamDownloader(logger?: Logger): StreamDownloader {
             "-c",
             "copy",
             "-f",
-            "flv",
+            "mpegts",
             "pipe:1",
           ],
           {
