@@ -55,6 +55,9 @@ export interface Display {
   /** Audio normalization failed. */
   normalizeError(message: string): void
 
+  /** Show version banner at startup. */
+  showVersion(name: string, version: string): void
+
   /** General-purpose status helpers. */
   showError(message: string): void
   showInfo(message: string): void
@@ -192,6 +195,12 @@ export function createDisplay(): Display {
 
     normalizeError(message: string): void {
       finalize(ICON_ERROR, color.red(`Normalization failed: ${message}`))
+    },
+
+    showVersion(name: string, version: string): void {
+      clearSpinner()
+      offlineLineShown = false
+      process.stdout.write(`${color.dim(`${name} ${version}`)}\n`)
     },
 
     showError(message: string): void {

@@ -7,6 +7,7 @@
 import { existsSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import { color } from "@zfadhli/koko-cli"
+import pkg from "../package.json"
 import { extractTikTokCookiesFromFirefox } from "./browser-cookies"
 import { parseArgs } from "./cli"
 import type { RecorderConfig } from "./config"
@@ -55,6 +56,8 @@ async function main(): Promise<void> {
 
   // Beautiful terminal display
   const display = createDisplay()
+
+  display.showVersion("tokrec", pkg.version)
 
   if (config.cookies) {
     const source = firefoxCookies ? "Firefox" : "cookies.json"

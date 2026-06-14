@@ -1,6 +1,6 @@
 {
   "name": "@zfadhli/tokrec",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "description": "Minimal TikTok live stream recorder — Bun + TypeScript",
   "type": "module",
   "main": "./dist/lib.mjs",
@@ -16,7 +16,7 @@
     }
   },
   "bin": {
-    "tiktok-live-recorder": "./dist/index.mjs"
+    "tokrec": "./dist/index.mjs"
   },
   "files": [
     "dist"
