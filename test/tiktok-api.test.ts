@@ -160,6 +160,81 @@ describe("createTikTokApi with fixture mocks", () => {
   })
 })
 
+// ─── isRoomAlive with room/check_alive/ endpoint ────────────────────
+
+describe("isRoomAlive with check_alive endpoint", () => {
+  test("returns true when check_alive reports alive", async () => {
+    const checkAliveJson = loadFixture(FIXTURES, "check-alive-live.json")
+
+    const http = createMockHttp({
+      "https://webcast.tiktok.com/webcast/room/check_alive/": checkAliveJson,
+    })
+
+    const api = createTikTokApi(http)
+    const alive = await api.isRoomAlive("7649515096078600981")
+    expect(alive).toBe(true)
+
+    await http.close()
+  })
+
+  test("returns false when check_alive reports offline", async () => {
+    const checkAliveJson = loadFixture(FIXTURES, "check-alive-offline.json")
+
+    const http = createMockHttp({
+      "https://webcast.tiktok.com/webcast/room/check_alive/": checkAliveJson,
+    })
+
+    const api = createTikTokApi(http)
+    const alive = await api.isRoomAlive("7649515096078600981")
+    expect(alive).toBe(false)
+
+    await http.close()
+  })
+
+  test("returns false on HTTP error from check_alive", async () => {
+    const http = createMockHttp({
+      "https://webcast.tiktok.com/webcast/room/check_alive/": { status: 500, body: "Error" },
+    })
+
+    const api = createTikTokApi(http)
+    const alive = await api.isRoomAlive("7649515096078600981")
+    expect(alive).toBe(false)
+
+    await http.close()
+  })
+
+  test("uses cache when available (does not call check_alive)", async () => {
+    const livePageHtml = loadFixture(FIXTURES, "anomaliaa27-live.html")
+    const checkAliveJson = loadFixture(FIXTURES, "check-alive-live.json")
+
+    let checkAliveCalls = 0
+    const http = createMockHttp({
+      "https://www.tiktok.com/@anomaliaa27/live": livePageHtml,
+      "https://webcast.tiktok.com/webcast/room/info/": { status: 500, body: "" },
+      "https://webcast.tiktok.com/webcast/room/check_alive/": checkAliveJson,
+    })
+    // Track check_alive calls
+    const origGet = http.get.bind(http)
+    http.get = async (url: string) => {
+      if (url.includes("check_alive")) checkAliveCalls++
+      return origGet(url)
+    }
+
+    const api = createTikTokApi(http)
+
+    // First call populates cache via getRoomId
+    const roomId = await api.getRoomId("anomaliaa27")
+    expect(roomId).toBe("7649515096078600981")
+
+    // isRoomAlive uses cache — should NOT call check_alive
+    const alive = await api.isRoomAlive(roomId!)
+    expect(alive).toBe(true)
+    expect(checkAliveCalls).toBe(0)
+
+    await http.close()
+  })
+})
+
 // ─── findStreamUrlRecursively integration with real fixtures ────────
 
 describe("findStreamUrlRecursively with fixture data", () => {

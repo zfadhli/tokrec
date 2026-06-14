@@ -66,4 +66,5 @@ export function loadFixture(...parts: string[]): string {
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
+
 const __dirname = fileURLToPath(new URL(".", import.meta.url))

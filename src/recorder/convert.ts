@@ -1,26 +1,29 @@
 /**
- * Converter — spawns FFmpeg to convert FLV/TS → MP4 (stream copy by default).
+ * Converter — spawns FFmpeg to convert TS → MP4 (stream copy by default).
  * Deletes the original file on success.
  */
 
 import { spawn } from "node:child_process"
-import { statSync, unlinkSync } from "node:fs"
+import { unlinkSync } from "node:fs"
+import { TikTokError } from "../config"
 import type { Logger } from "../logger"
+import { findFfmpegPath } from "./ffmpeg-utils"
 
 export interface Converter {
-  /** Convert a FLV or TS file to MP4. Returns the output filepath. */
+  /** Convert a TS file to MP4. Returns the output filepath. */
   convert: (input: string) => Promise<string>
 }
 
-export function createConverter(logger?: Logger): Converter {
+export function createConverter(logger?: Logger, signal?: AbortSignal): Converter {
   async function convert(input: string): Promise<string> {
     const output = input.replace(/\.(flv|ts)$/i, ".mp4")
 
     logger?.info(`Converting: ${input} → ${output}`)
 
-    const ffmpegPath = findFfmpeg()
+    const ffmpegPath = findFfmpegPath()
     if (!ffmpegPath) {
-      throw new Error(
+      throw new TikTokError(
+        "ffmpeg-not-found",
         "FFmpeg not found. Install it:\n" +
           "  Linux:  apt install ffmpeg / brew install ffmpeg / pacman -S ffmpeg\n" +
           "  macOS:  brew install ffmpeg\n" +
@@ -28,9 +31,9 @@ export function createConverter(logger?: Logger): Converter {
       )
     }
 
-    await runFfmpeg(ffmpegPath, input, output)
+    await runFfmpeg(ffmpegPath, input, output, signal)
 
-    // Delete original FLV
+    // Delete original TS
     try {
       unlinkSync(input)
       logger?.info(`Deleted original: ${input}`)
@@ -45,28 +48,12 @@ export function createConverter(logger?: Logger): Converter {
   return { convert }
 }
 
-function findFfmpeg(): string | null {
-  // Bun.which searches PATH like `which`
-  const bunWhich = (Bun as any)?.which
-  if (typeof bunWhich === "function") {
-    return bunWhich("ffmpeg") as string | null
-  }
-
-  // Fallback: manual PATH search
-  const paths = process.env.PATH?.split(":") ?? []
-  for (const dir of paths) {
-    try {
-      const full = `${dir}/ffmpeg`
-      statSync(full)
-      return full
-    } catch {
-      // eslint-disable-line no-empty
-    }
-  }
-  return null
-}
-
-function runFfmpeg(ffmpegPath: string, input: string, output: string): Promise<void> {
+function runFfmpeg(
+  ffmpegPath: string,
+  input: string,
+  output: string,
+  signal?: AbortSignal,
+): Promise<void> {
   return new Promise((resolve, reject) => {
     const args = [
       "-i",
@@ -79,24 +66,33 @@ function runFfmpeg(ffmpegPath: string, input: string, output: string): Promise<v
 
     const proc = spawn(ffmpegPath, args, {
       stdio: ["ignore", "pipe", "pipe"],
+      signal,
     })
 
     let stderr = ""
 
     proc.stderr?.on("data", (chunk: Buffer) => {
       stderr += chunk.toString()
+      if (stderr.length > 10000) stderr = stderr.slice(-5000)
     })
 
     proc.on("close", (code) => {
+      if (signal?.aborted) {
+        reject(new TikTokError("aborted", "Aborted by user"))
+        return
+      }
       if (code === 0) {
         resolve()
       } else {
-        reject(new Error(`FFmpeg exited with code ${code}\n${stderr.slice(-500)}`))
+        reject(
+          new TikTokError("ffmpeg-error", `FFmpeg exited with code ${code}\n${stderr.slice(-500)}`),
+        )
       }
     })
 
     proc.on("error", (err) => {
-      reject(new Error(`Failed to spawn FFmpeg: ${err.message}`))
+      if (err instanceof Error && err.name === "AbortError") return
+      reject(new TikTokError("ffmpeg-error", `Failed to spawn FFmpeg: ${err.message}`))
     })
   })
 }
