@@ -39,6 +39,12 @@ export interface RecorderConfig {
   normalizeCodec?: string
   /** Audio bitrate for normalized output (default: "128k"). */
   normalizeBitrate?: string
+  /**
+   * Max API requests per second (default: 5).
+   * Prevents TikTok WAF triggering on rapid polling or URL refresh loops.
+   * Set to 0 for unlimited (not recommended).
+   */
+  ratePerSecond?: number
 }
 
 export interface RecorderController {
@@ -122,6 +128,7 @@ const DEFAULTS = {
   normalizeLoudness: -14,
   normalizeCodec: "aac",
   normalizeBitrate: "128k",
+  ratePerSecond: 5,
 }
 
 export function normalizeConfig(
@@ -143,6 +150,7 @@ export function normalizeConfig(
     normalizeLoudness: config.normalizeLoudness ?? DEFAULTS.normalizeLoudness,
     normalizeCodec: config.normalizeCodec ?? DEFAULTS.normalizeCodec,
     normalizeBitrate: config.normalizeBitrate ?? DEFAULTS.normalizeBitrate,
+    ratePerSecond: config.ratePerSecond ?? DEFAULTS.ratePerSecond,
   }
 }
 

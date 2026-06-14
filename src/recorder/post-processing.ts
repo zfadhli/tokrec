@@ -3,7 +3,7 @@
  *
  * After a stream download completes, this module handles:
  * - Splitting the downloaded file into timed MP4 segments
- * - Converting FLV/TS to MP4 (fallback or direct)
+ * - Converting TS to MP4 (fallback or direct)
  * - Audio normalization via EBU R128
  * - File management (deleting originals, setting timestamps)
  * - Event emissions for each step
@@ -86,11 +86,11 @@ async function processSegmenting(
     deps.pendingRemuxes.push(segmentPromise)
     await segmentPromise
 
-    // Capture FLV timestamp before deletion
-    const flvMtimeMs = statSync(result.file).mtimeMs
-    const recStartMs = flvMtimeMs - (result.duration ?? 0) * 1000
+    // Capture file timestamp before deletion
+    const fileMtimeMs = statSync(result.file).mtimeMs
+    const recStartMs = fileMtimeMs - (result.duration ?? 0) * 1000
 
-    // Delete the original FLV
+    // Delete the original TS
     try {
       unlinkSync(result.file)
       deps.logger.info(`Deleted original: ${parsed.base}`)
@@ -158,7 +158,7 @@ async function processSegmenting(
     const msg = err instanceof Error ? err.message : String(err)
     deps.logger.error(`Segmenting failed: ${msg}`)
     deps.setState({ lastError: `Segmenting failed: ${msg}` })
-    // Fallback: try simple conversion of the whole FLV
+    // Fallback: try simple conversion of the whole TS
     await runFallbackConversion(result, deps)
   }
 }

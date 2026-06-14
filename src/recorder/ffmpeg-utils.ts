@@ -12,12 +12,18 @@ export const FFMPEG_STARTUP_TIMEOUT = 30_000
 
 /** Standard FFmpeg reconnect + mpegts pipe arguments. */
 const FFMPEG_BASE_ARGS = [
-  "-reconnect", "1",
-  "-reconnect_at_eof", "1",
-  "-reconnect_streamed", "1",
-  "-reconnect_delay_max", "5",
-  "-c", "copy",
-  "-f", "mpegts",
+  "-reconnect",
+  "1",
+  "-reconnect_at_eof",
+  "1",
+  "-reconnect_streamed",
+  "1",
+  "-reconnect_delay_max",
+  "5",
+  "-c",
+  "copy",
+  "-f",
+  "mpegts",
   "pipe:1",
 ]
 
@@ -71,11 +77,10 @@ export async function pipeFfmpegSegment(
   writer: WriteStream,
   signal: AbortSignal,
 ): Promise<FfmpegSegmentResult> {
-  const proc = spawn(
-    ffmpegPath,
-    ["-i", url, ...FFMPEG_BASE_ARGS],
-    { stdio: ["ignore", "pipe", "pipe"], signal },
-  )
+  const proc = spawn(ffmpegPath, ["-i", url, ...FFMPEG_BASE_ARGS], {
+    stdio: ["ignore", "pipe", "pipe"],
+    signal,
+  })
 
   let totalBytes = 0
   let stderr = ""
@@ -126,10 +131,7 @@ export async function pipeFfmpegSegment(
         return
       }
       reject(
-        new TikTokError(
-          "ffmpeg-error",
-          `FFmpeg exited with code ${code}\n${stderr.slice(-500)}`,
-        ),
+        new TikTokError("ffmpeg-error", `FFmpeg exited with code ${code}\n${stderr.slice(-500)}`),
       )
     })
 

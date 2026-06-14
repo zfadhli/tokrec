@@ -1,5 +1,5 @@
 /**
- * Converter — spawns FFmpeg to convert FLV/TS → MP4 (stream copy by default).
+ * Converter — spawns FFmpeg to convert TS → MP4 (stream copy by default).
  * Deletes the original file on success.
  */
 
@@ -10,7 +10,7 @@ import type { Logger } from "../logger"
 import { findFfmpegPath } from "./ffmpeg-utils"
 
 export interface Converter {
-  /** Convert a FLV or TS file to MP4. Returns the output filepath. */
+  /** Convert a TS file to MP4. Returns the output filepath. */
   convert: (input: string) => Promise<string>
 }
 
@@ -33,7 +33,7 @@ export function createConverter(logger?: Logger, signal?: AbortSignal): Converte
 
     await runFfmpeg(ffmpegPath, input, output, signal)
 
-    // Delete original FLV
+    // Delete original TS
     try {
       unlinkSync(input)
       logger?.info(`Deleted original: ${input}`)

@@ -1,16 +1,20 @@
 /**
  * HTTP client — thin wrapper around wreq-js createSession.
- * Provides TLS fingerprint impersonation, cookie jar, and proxy support.
+ * Provides TLS fingerprint impersonation, cookie jar, proxy support,
+ * and configurable rate limiting to prevent WAF triggering.
  */
 
 import { createSession, type Session } from "wreq-js"
 import type { RecorderConfig } from "../config"
+import { createRateLimiter } from "./rate-limiter"
 
 export interface HttpClient {
   get: (url: string) => Promise<Response>
   post: (url: string, body?: BodyInit, headers?: Record<string, string>) => Promise<Response>
   close: () => Promise<void>
 }
+
+const REQUEST_TIMEOUT_MS = 15_000
 
 export async function createHttpClient(config: RecorderConfig): Promise<HttpClient> {
   const session: Session = await createSession({
@@ -37,35 +41,39 @@ export async function createHttpClient(config: RecorderConfig): Promise<HttpClie
     }
   }
 
+  const rateLimiter = createRateLimiter(config.ratePerSecond ?? 5)
+
+  async function rateLimitedFetch(
+    url: string,
+    options?: { method?: string; body?: unknown; headers?: Record<string, string> },
+  ): Promise<Response> {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+    try {
+      await rateLimiter.acquire(controller.signal)
+      const res = await session.fetch(url, {
+        method: options?.method,
+        body: options?.body as any,
+        headers: options?.headers,
+        signal: controller.signal,
+      })
+      return res as unknown as Response
+    } finally {
+      clearTimeout(timeout)
+    }
+  }
+
   return {
-    get: async (url: string) => {
-      const controller = new AbortController()
-      const timeout = setTimeout(() => controller.abort(), 15000)
-      try {
-        const res = await session.fetch(url, { signal: controller.signal })
-        return res as unknown as Response
-      } finally {
-        clearTimeout(timeout)
-      }
-    },
-    post: async (url: string, body?: BodyInit, headers?: Record<string, string>) => {
-      const controller = new AbortController()
-      const timeout = setTimeout(() => controller.abort(), 15000)
-      try {
-        const res = await session.fetch(url, {
-          method: "POST",
-          body: body as any,
-          signal: controller.signal,
-          headers: {
-            "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-            ...headers,
-          },
-        })
-        return res as unknown as Response
-      } finally {
-        clearTimeout(timeout)
-      }
-    },
+    get: async (url: string) => rateLimitedFetch(url),
+    post: async (url: string, body?: BodyInit, headers?: Record<string, string>) =>
+      rateLimitedFetch(url, {
+        method: "POST",
+        body: body as any,
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+          ...headers,
+        },
+      }),
     close: async () => {
       await session.close()
     },
