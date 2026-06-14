@@ -16,9 +16,22 @@ export interface HttpClient {
 
 const REQUEST_TIMEOUT_MS = 15_000
 
+/** Standard browser headers to avoid TikTok WAF detection. */
+const BROWSER_HEADERS: Record<string, string> = {
+  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:149.0) Gecko/20100101 Firefox/149.0",
+  Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+  "Accept-Language": "en-US,en;q=0.5",
+  "Accept-Encoding": "gzip, deflate, br",
+  "Upgrade-Insecure-Requests": "1",
+  "Sec-Fetch-Dest": "document",
+  "Sec-Fetch-Mode": "navigate",
+  "Sec-Fetch-Site": "none",
+  "Sec-Fetch-User": "?1",
+}
+
 export async function createHttpClient(config: RecorderConfig): Promise<HttpClient> {
   const session: Session = await createSession({
-    browser: "chrome_142",
+    browser: "firefox_149",
     os: "windows",
     proxy: config.proxy,
   })
@@ -28,15 +41,11 @@ export async function createHttpClient(config: RecorderConfig): Promise<HttpClie
   // we must use session.setCookie() instead.
   // Seed for all TikTok domains since cookies may not propagate across
   // subdomains automatically in wreq-js's cookie jar.
-  if (config.cookies?.sessionid_ss) {
-    for (const domain of [
-      "https://www.tiktok.com",
-      "https://webcast.tiktok.com",
-      "https://m.tiktok.com",
-    ]) {
-      session.setCookie("sessionid_ss", config.cookies.sessionid_ss, domain)
-      if (config.cookies["tt-target-idc"]) {
-        session.setCookie("tt-target-idc", config.cookies["tt-target-idc"], domain)
+  if (config.cookies && "sessionid_ss" in config.cookies) {
+    const domains = ["https://www.tiktok.com", "https://webcast.tiktok.com", "https://m.tiktok.com"]
+    for (const domain of domains) {
+      for (const [name, value] of Object.entries(config.cookies)) {
+        session.setCookie(name, value, domain)
       }
     }
   }
@@ -54,7 +63,10 @@ export async function createHttpClient(config: RecorderConfig): Promise<HttpClie
       const res = await session.fetch(url, {
         method: options?.method,
         body: options?.body as any,
-        headers: options?.headers,
+        headers: {
+          ...BROWSER_HEADERS,
+          ...options?.headers,
+        },
         signal: controller.signal,
       })
       return res as unknown as Response

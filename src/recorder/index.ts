@@ -99,7 +99,7 @@ export function createRecorder(config: RecorderConfig): RecorderController {
 
     logger.info(`Starting recorder for @${cfg.user}`)
     httpClient = await createHttpClient(cfg)
-    api = createTikTokApi(httpClient)
+    api = createTikTokApi(httpClient, logger)
     downloader = createStreamDownloader(logger)
     converter = createConverter(logger, stopAbortController.signal)
     audioNormalizer = cfg.normalizeAudio

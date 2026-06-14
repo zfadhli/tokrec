@@ -15,21 +15,16 @@ import { createRecorder } from "./lib"
 import { createDisplay } from "./ui"
 import { bytesToHuman, relativeTime } from "./utils"
 
-async function loadCookies(
-  cookiesPath?: string,
-): Promise<{ sessionid_ss: string; "tt-target-idc"?: string } | undefined> {
+async function loadCookies(cookiesPath?: string): Promise<Record<string, string> | undefined> {
   const path = cookiesPath ?? join(process.cwd(), "cookies.json")
   if (!existsSync(path)) {
     return undefined
   }
   try {
     const content = readFileSync(path, "utf-8")
-    const data = JSON.parse(content) as {
-      sessionid_ss?: string
-      "tt-target-idc"?: string
-    }
+    const data = JSON.parse(content) as Record<string, string | undefined>
     if (data.sessionid_ss && data.sessionid_ss.length > 0) {
-      return data as { sessionid_ss: string; "tt-target-idc"?: string }
+      return data as Record<string, string>
     }
     return undefined
   } catch {
@@ -63,7 +58,8 @@ async function main(): Promise<void> {
 
   if (config.cookies) {
     const source = firefoxCookies ? "Firefox" : "cookies.json"
-    const detail = config.cookies["tt-target-idc"] ? " (+ tt-target-idc)" : ""
+    const names = Object.keys(config.cookies)
+    const detail = names.length > 1 ? ` (${names.length} cookies)` : ""
     display.showInfo(`${source} cookies loaded${detail}`)
   } else {
     display.showWarning(

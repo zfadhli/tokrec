@@ -3,10 +3,12 @@
  * The single source of truth for every user-facing option.
  */
 
-export interface CookieAuth {
-  sessionid_ss: string
-  "tt-target-idc"?: string
-}
+/**
+ * TikTok cookie key-value pairs extracted from Firefox or cookies.json.
+ * Includes session cookies (sessionid_ss, tt-target-idc) and any WAF
+ * bypass cookies needed to avoid Slardar challenges on www.tiktok.com.
+ */
+export type CookieAuth = Record<string, string>
 
 export type LogLevel = "debug" | "info" | "warn" | "error"
 
