@@ -7,15 +7,19 @@
  */
 
 import type { SpinnerInstance } from "@zfadhli/koko-cli"
-import {
-  color,
-  createSpinner,
-  ICON_ERROR,
-  ICON_INFO,
-  ICON_SUCCESS,
-  ICON_WARN,
-} from "@zfadhli/koko-cli"
+import { color, createSpinner } from "@zfadhli/koko-cli"
 import { formatDuration } from "./utils"
+
+// ─── Tag helpers ──────────────────────────────────────────
+const tag = {
+  ok: color.bold(color.green("[OK] ")),
+  done: color.bold(color.green("[DONE] ")),
+  live: color.bold(color.green("[LIVE] ")),
+  info: color.bold(color.blue("[INFO] ")),
+  off: color.bold(color.blue("[OFF] ")),
+  warn: color.bold(color.yellow("[WARN] ")),
+  err: color.bold(color.red("[ERR] ")),
+}
 
 export interface Display {
   /** Called once when polling begins. */
@@ -87,15 +91,18 @@ export function createDisplay(): Display {
     activeSpinner = null
   }
 
-  /** Stop the current spinner and print a one-liner with the given icon. */
-  function finalize(icon: string, text: string): void {
+  /** Stop the current spinner and print a one-liner with the given tag prefix. */
+  function finalize(prefix: string, text: string): void {
     clearSpinner()
-    process.stdout.write(`${icon}${text}\n`)
+    process.stdout.write(`${prefix}${text}\n`)
   }
 
   return {
     pollingStarted(intervalMinutes: number): void {
-      finalize(ICON_SUCCESS, color.dim(`Polling started (every ${intervalMinutes} min)`))
+      finalize(
+        tag.info,
+        `${color.dim("Polling started (every ")}${color.bold(color.yellow(String(intervalMinutes)))}${color.dim(" min)")}`,
+      )
     },
 
     checkingUser(user: string): void {
@@ -105,22 +112,18 @@ export function createDisplay(): Display {
     },
 
     userOffline(user: string): void {
-      finalize(ICON_INFO, color.dim(`@${user} is offline`))
+      finalize(tag.off, `${color.bold(color.yellow(`@${user}`))}${color.dim(" is offline")}`)
       offlineLineShown = true
     },
 
     userOfflineRepeat(user: string, lastCheck: string): void {
       clearSpinner()
+      const text = `${tag.off}${color.bold(color.yellow(`@${user}`))}${color.dim(" is offline")} ${color.dim(`[last online: ${color.bold(color.yellow(lastCheck))}]`)}`
       if (offlineLineShown) {
         // Move cursor up one line and overwrite the previous offline message
-        process.stdout.write(
-          `\x1b[1A\r${ICON_INFO}${color.dim(`@${user} is offline`)} ${color.dim(`[last online: ${lastCheck}]`)}\x1b[K\n`,
-        )
+        process.stdout.write(`\x1b[1A\r${text}\x1b[K\n`)
       } else {
-        // Fallback if state is out of sync
-        process.stdout.write(
-          `${ICON_INFO}${color.dim(`@${user} is offline`)} ${color.dim(`[last online: ${lastCheck}]`)}\n`,
-        )
+        process.stdout.write(`${text}\n`)
         offlineLineShown = true
       }
     },
@@ -129,32 +132,34 @@ export function createDisplay(): Display {
       clearSpinner()
       offlineLineShown = false
       process.stdout.write(
-        `${ICON_SUCCESS}${color.green(`@${user} is LIVE!`)} ${color.dim(`(room: ${roomId})`)}\n`,
+        `${tag.live}${color.bold(color.green(`@${user}`))} ${color.dim(`(room: ${color.bold(color.yellow(roomId))})`)}\n`,
       )
     },
 
     startRecording(): void {
       clearSpinner()
       recordingStartTime = Date.now()
-      activeSpinner = createSpinner(`${color.cyan("Recording...")} ${color.dim("[0s]")}`)
+      activeSpinner = createSpinner(
+        `${color.cyan("Recording...")} ${color.dim(`[${color.bold(color.yellow("0s"))}]`)}`,
+      )
       activeSpinner.start()
 
       recordingTimer = setInterval(() => {
         if (!activeSpinner?.isSpinning || !recordingStartTime) return
         const elapsed = (Date.now() - recordingStartTime) / 1000
-        activeSpinner.text = `${color.cyan("Recording...")} ${color.dim(`[${formatDuration(elapsed)}]`)}`
+        activeSpinner.text = `${color.cyan("Recording...")} ${color.dim(`[${color.bold(color.yellow(formatDuration(elapsed)))}]`)}`
       }, 1000)
     },
 
     finishRecording(filename: string, duration: number, size: string): void {
       finalize(
-        ICON_SUCCESS,
-        `${color.green("Recording finished")} ${color.dim(`${filename} — ${size} in ${formatDuration(duration)}`)}`,
+        tag.done,
+        `${color.cyan(filename)}${color.dim(" — ")}${color.bold(color.yellow(size))}${color.dim(` in ${color.bold(color.yellow(formatDuration(duration)))}`)}`,
       )
     },
 
     recordingError(message: string): void {
-      finalize(ICON_ERROR, color.red(`Recording failed: ${message}`))
+      finalize(tag.err, color.red(`Recording failed: ${message}`))
     },
 
     startSegmenting(): void {
@@ -164,7 +169,10 @@ export function createDisplay(): Display {
     },
 
     segmentsCreated(count: number): void {
-      finalize(ICON_SUCCESS, color.green(`Created ${count} MP4 segment${count !== 1 ? "s" : ""}`))
+      finalize(
+        tag.ok,
+        `${color.dim("Created ")}${color.bold(color.yellow(String(count)))}${color.dim(` MP4 segment${count !== 1 ? "s" : ""}`)}`,
+      )
     },
 
     startConverting(): void {
@@ -174,7 +182,7 @@ export function createDisplay(): Display {
     },
 
     conversionDone(output: string): void {
-      finalize(ICON_SUCCESS, color.green(`Converted: ${output}`))
+      finalize(tag.done, `${color.cyan(output)}`)
     },
 
     normalizeStart(): void {
@@ -186,15 +194,15 @@ export function createDisplay(): Display {
     normalizeProgress(percent: number, phase: string): void {
       if (!activeSpinner?.isSpinning) return
       const label = phase === "analyzing" ? "Analyzing" : "Normalizing"
-      activeSpinner.text = ` ${label}... ${percent}%`
+      activeSpinner.text = ` ${label}... ${color.bold(color.yellow(`${percent}%`))}`
     },
 
     normalizeComplete(): void {
-      finalize(ICON_SUCCESS, color.green("Audio normalized"))
+      finalize(tag.ok, color.green("Audio normalized"))
     },
 
     normalizeError(message: string): void {
-      finalize(ICON_ERROR, color.red(`Normalization failed: ${message}`))
+      finalize(tag.err, color.red(`Normalization failed: ${message}`))
     },
 
     showVersion(name: string, version: string): void {
@@ -206,19 +214,19 @@ export function createDisplay(): Display {
     showError(message: string): void {
       clearSpinner()
       offlineLineShown = false
-      process.stdout.write(`${ICON_ERROR}${color.red(message)}\n`)
+      process.stdout.write(`${tag.err}${color.red(message)}\n`)
     },
 
     showInfo(message: string): void {
       clearSpinner()
       offlineLineShown = false
-      process.stdout.write(`${ICON_INFO}${color.dim(message)}\n`)
+      process.stdout.write(`${tag.info}${color.dim(message)}\n`)
     },
 
     showWarning(message: string): void {
       clearSpinner()
       offlineLineShown = false
-      process.stdout.write(`${ICON_WARN}${color.yellow(message)}\n`)
+      process.stdout.write(`${tag.warn}${color.yellow(message)}\n`)
     },
 
     stop(): void {

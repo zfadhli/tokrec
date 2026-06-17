@@ -83,7 +83,7 @@ export function formatDuration(seconds: number): string {
 
 /** Find FFmpeg binary via Bun.which() or PATH search. */
 export function findFfmpegPath(): string | null {
-  const bunWhich = (Bun as any)?.which
+  const bunWhich = (globalThis as { Bun?: { which?: (cmd: string) => string | null } }).Bun?.which
   if (typeof bunWhich === "function") {
     return (bunWhich("ffmpeg") as string) ?? null
   }

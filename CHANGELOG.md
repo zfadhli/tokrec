@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.4] — 2026-06-17
+
+### Fixed
+
+- **Duplicate version banner removed** — koko-cli's `createCLI` and `display.showVersion`
+  both printed a version line at startup. Now only koko-cli's styled banner is shown.
+
+- **All Biome linter warnings resolved** — replaced 29 remaining `noExplicitAny`,
+  `noNonNullAssertion`, and formatting issues across 7 source files.
+
+### Changed
+
+- **Terminal output uses colored bracket tags** — icons (`✔`, `ℹ`, `⚠`, `✘`) replaced with
+  bold tags (`[OK]`, `[DONE]`, `[LIVE]`, `[INFO]`, `[OFF]`, `[WARN]`, `[ERR]`). New color
+  palette: blue for info/offline, yellow bold for numbers/usernames/room IDs, cyan for
+  filenames, bold green for success/LIVE. Spinners remain cyan.
+
 ## [0.11.3] — 2026-06-17
 
 ### Fixed
