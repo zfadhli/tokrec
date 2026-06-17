@@ -1,8 +1,34 @@
+# Dependencies
 node_modules/
+
+# Build output
 dist/
-recordings/
+
+# TypeScript
+*.tsbuildinfo
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE / Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs & sessions
 *.log
 *.session
-.DS_Store
-scripts/
-docs/
+
+# Temp / cache
+tmp/
+
+# Project-specific
+my-lib/
+recordings/

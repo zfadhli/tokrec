@@ -10,7 +10,7 @@
  * the only difference is an optional label in the log messages.
  */
 
-import { createWriteStream } from "node:fs"
+import { createWriteStream, statSync } from "node:fs"
 import { join } from "node:path"
 import { TikTokError } from "../config"
 import type { Logger } from "../logger"
@@ -35,7 +35,9 @@ export async function downloadStream(
   logger?.info(`Recording${prefix}: ${filename}`)
 
   const startTime = Date.now()
-  let totalBytes = 0
+
+  /** File size read directly from disk — authoritative, avoids in-memory counter drift. */
+  let fileSize = 0
   let lastProgressTime = 0
 
   const ffmpegPath = findFfmpegPath()
@@ -56,16 +58,22 @@ export async function downloadStream(
   try {
     while (!signal.aborted) {
       const remaining = maxDuration > 0 ? Math.max(1, maxDuration - elapsed()) : undefined
-      const { bytes } = await pipeFfmpegSegment(ffmpegPath, liveUrl, writer, signal, remaining)
-      totalBytes += bytes
+      await pipeFfmpegSegment(ffmpegPath, liveUrl, writer, signal, remaining)
+
+      // Read actual file size from disk — always authoritative
+      try {
+        fileSize = statSync(filepath).size
+      } catch {
+        // File may not be accessible; leave fileSize at last known value
+      }
 
       // Report progress after each segment
       const now = Date.now()
       const e = elapsed()
       if (onProgress && now - lastProgressTime >= 1000) {
         lastProgressTime = now
-        const speed = e > 0 ? totalBytes / e : 0
-        onProgress({ bytes: totalBytes, elapsed: e, speed })
+        const speed = e > 0 ? fileSize / e : 0
+        onProgress({ bytes: fileSize, elapsed: e, speed })
       }
 
       if (signal.aborted) break
@@ -89,16 +97,22 @@ export async function downloadStream(
   }
 
   const duration = elapsed()
+  // Final authoritative size after flush
+  try {
+    fileSize = statSync(filepath).size
+  } catch {
+    // keep last known value
+  }
   if (onProgress) {
     onProgress({
-      bytes: totalBytes,
+      bytes: fileSize,
       elapsed: duration,
-      speed: duration > 0 ? totalBytes / duration : 0,
+      speed: duration > 0 ? fileSize / duration : 0,
     })
   }
   logger?.info(
-    `Recording finished: ${filename} (${formatDuration(duration)}, ${bytesToHuman(totalBytes)})`,
+    `Recording finished: ${filename} (${formatDuration(duration)}, ${bytesToHuman(fileSize)})`,
   )
 
-  return { file: filepath, duration, size: totalBytes }
+  return { file: filepath, duration, size: fileSize }
 }

@@ -26,11 +26,6 @@ const FFMPEG_BASE_ARGS = [
   "pipe:1",
 ]
 
-/** Result from a single FFmpeg segment download. */
-export interface FfmpegSegmentResult {
-  bytes: number
-}
-
 /**
  * Spawn an FFmpeg process to download from `url` and pipe its stdout to
  * `writer` with backpressure handling.
@@ -43,6 +38,10 @@ export interface FfmpegSegmentResult {
  * - Automatic cleanup when `signal` fires (uses spawn `signal` option)
  * - AbortError is swallowed — the promise resolves instead of rejecting,
  *   allowing the caller to check `signal.aborted` and react accordingly
+ *
+ * The caller is responsible for tracking file size via `statSync` — this
+ * function deliberately avoids maintaining its own byte counter to prevent
+ * divergence between the in-memory count and actual disk writes.
  */
 export async function pipeFfmpegSegment(
   ffmpegPath: string,
@@ -50,29 +49,32 @@ export async function pipeFfmpegSegment(
   writer: WriteStream,
   signal: AbortSignal,
   maxDuration?: number,
-): Promise<FfmpegSegmentResult> {
+): Promise<void> {
   const durationArgs = maxDuration ? ["-t", String(maxDuration)] : []
   const proc = spawn(ffmpegPath, ["-i", url, ...durationArgs, ...FFMPEG_BASE_ARGS], {
     stdio: ["ignore", "pipe", "pipe"],
     signal,
   })
 
-  let totalBytes = 0
   let stderr = ""
   let firstDataTimer: ReturnType<typeof setTimeout> | null = null
 
+  const clearStartupTimer = () => {
+    if (firstDataTimer) {
+      clearTimeout(firstDataTimer)
+      firstDataTimer = null
+    }
+  }
+
   proc.stderr?.on("data", (chunk: Buffer) => {
-    if (firstDataTimer) clearTimeout(firstDataTimer)
-    firstDataTimer = null
+    clearStartupTimer()
     stderr += chunk.toString()
     if (stderr.length > 10000) stderr = stderr.slice(-5000)
   })
 
   proc.stdout.on("data", (chunk: Buffer) => {
-    if (firstDataTimer) clearTimeout(firstDataTimer)
-    firstDataTimer = null
+    clearStartupTimer()
     const canContinue = writer.write(chunk)
-    totalBytes += chunk.length
     if (!canContinue) {
       proc.stdout.pause()
       writer.once("drain", () => proc.stdout.resume())
@@ -96,7 +98,7 @@ export async function pipeFfmpegSegment(
     }, FFMPEG_STARTUP_TIMEOUT)
 
     proc.on("close", (code) => {
-      if (firstDataTimer) clearTimeout(firstDataTimer)
+      clearStartupTimer()
       if (signal.aborted) {
         resolve()
         return
@@ -111,11 +113,9 @@ export async function pipeFfmpegSegment(
     })
 
     proc.on("error", (err) => {
-      if (firstDataTimer) clearTimeout(firstDataTimer)
+      clearStartupTimer()
       if (err instanceof Error && err.name === "AbortError") return
       reject(err)
     })
   })
-
-  return { bytes: totalBytes }
 }

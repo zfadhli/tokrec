@@ -1,23 +1,35 @@
 {
   "compilerOptions": {
+    // --- Language & Environment ---
     "target": "ESNext",
     "module": "ESNext",
     "moduleResolution": "bundler",
+    "lib": ["ES2022"],
+
+    // --- Type Checking ---
     "strict": true,
     "noUncheckedIndexedAccess": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "exactOptionalPropertyTypes": false,
-    "declaration": true,
-    "declarationMap": true,
-    "sourceMap": true,
-    "outDir": "dist",
-    "rootDir": "src",
-    "isolatedModules": true,
-    "esModuleInterop": true,
+    "noImplicitOverride": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "types": ["bun"]
+
+    // --- Module Resolution ---
+    "types": ["bun-types"],
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "esModuleInterop": true,
+
+    // --- Declaration Output (used by tsdown, not tsc) ---
+    "isolatedDeclarations": true,
+    "declaration": true,
+    "declarationMap": true,
+
+    // --- Build Output (tsdown controls this; tsc --noEmit) ---
+    "noEmit": true,
+    "outDir": "dist",
+    "declarationDir": "dist",
+    "sourceMap": true
   },
-  "include": ["src"]
+  "include": ["src", "test"],
+  "exclude": ["dist", "node_modules"]
 }

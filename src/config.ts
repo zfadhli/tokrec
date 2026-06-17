@@ -114,7 +114,7 @@ export class TikTokError extends Error {
   constructor(
     public readonly kind: AppErrorKind,
     message: string,
-    public readonly cause?: unknown,
+    public override readonly cause?: unknown,
   ) {
     super(message)
     this.name = "TikTokError"
