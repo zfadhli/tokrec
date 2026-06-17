@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.3] — 2026-06-17
+
+### Fixed
+
+- **Pipe byte counter replaced with `statSync` for authoritative file size** —
+  the in-memory counter in `pipeFfmpegSegment` (`totalBytes += chunk.length`)
+  could diverge from actual disk writes under backpressure, where queued `data`
+  events could fire synchronously after `resume()` before `pause()` took effect.
+  Now `downloadStream` reads the real file size from disk via `statSync` after
+  each segment and after `writer.end()` flushes — always accurate.
+
+### Changed
+
+- **Dependencies upgraded** — `@zfadhli/koko-cli` 0.1.0 → 0.2.1,
+  `peaknorm` 0.5.1 → 0.7.0, `tsdown` 0.22.2 → 0.22.3.
+- **Lefthook Git hooks added** — pre-commit runs typecheck + lint in parallel;
+  pre-push runs test + build.
+- **Configs restructured** — `biome.json` gains VCS integration and stricter lint
+  rules; `tsconfig.json` adds `isolatedDeclarations`, `noImplicitOverride`, and
+  `verbatimModuleSyntax`; `.gitignore` reorganized with dedicated sections.
+
 ## [0.11.2] — 2026-06-15
 
 ### Fixed

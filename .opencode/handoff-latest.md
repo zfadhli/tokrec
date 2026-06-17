@@ -1,50 +1,44 @@
-# Session Handoff — 2026-06-14 15:10
+# Session Handoff — 2026-06-15 18:53
 
 ## Goal
 
-Simplify the codebase through consolidation: merge near-duplicate modules, centralize utilities, remove dead code, and clean up module boundaries.
+Fix `--no-normalize` flag (it was silently ignored), fix post-processing guard (0-byte check skipped valid recordings due to wrong in-memory counter), and release both fixes as v0.11.2.
 
 ## Files Modified/Created
 
 | File | Summary of changes |
 |---|---|
-| `src/recorder/download-stream.ts` → `download.ts` | Renamed and merged with `download-hls.ts`. The unified `downloadStream()` function accepts an optional `label` parameter ("HLS") instead of having two nearly-identical functions. |
-| `src/recorder/download-hls.ts` | **Deleted** — merged into `download.ts`. |
-| `src/utils.ts` | Added `formatDuration()` and `findFfmpegPath()` — now the single source of truth for all pure utilities. |
-| `src/recorder/ffmpeg-utils.ts` | Removed `findFfmpegPath` and `formatDuration`. Now focused solely on `pipeFfmpegSegment` and constants. |
-| `src/recorder/convert.ts` | Updated import of `findFfmpegPath` from `../utils` instead of `./ffmpeg-utils`. |
-| `src/recorder/index.ts` | Updated import of `findFfmpegPath` from `../utils`. Removed `getFfmpegPath()` wrapper — `runFfmpeg()` calls `findFfmpegPath()` directly with inline error handling. |
-| `src/recorder/stream.ts` | Simplified to call unified `downloadStream()` with an optional `"HLS"` label based on URL detection. |
-| `src/ui.ts` | Replaced private `fmtDuration()` with shared `formatDuration()` from `utils`. Removed `updateProgress` from `Display` interface and implementation. |
-| `src/index.ts` | Removed the `download:progress` event subscription that called the no-op `updateProgress`. |
-| `CHANGELOG.md` | Added v0.9.1 with Changed entries for all refactoring. |
-| `package.json` | Version bumped 0.9.0 → 0.9.1. |
+| `src/cli.ts` | `if (opts.normalize) parsed.normalizeAudio = true` → `if (opts.normalize !== undefined) parsed.normalizeAudio = opts.normalize as boolean`. Propagates `false` from `--no-normalize` instead of ignoring it. |
+| `src/recorder/post-processing.ts` | `if (result.size === 0) return` → `try { if (statSync(result.file).size === 0) return } catch { return }`. Reads actual file size from disk instead of trusting the pipe byte counter. |
+| `test/config.test.ts` | Added 3 tests: `normalizeAudio` defaults to `true`, can be explicitly `false`, can be explicitly `true`. |
+| `package.json` | Version bumped `0.11.1` → `0.11.2`. |
+| `CHANGELOG.md` | Added `[0.11.2]` section with both fixes documented. |
 
 ## Key Decisions
 
-1. **Single `download.ts` over two specialized files** — `download-stream.ts` and `download-hls.ts` were 90% identical (same FFmpeg pipe, same progress loop, same error handling). The only difference was the log prefix `"Recording:"` vs `"Recording (HLS):"`. Parameterizing the label eliminates ~90 lines of duplicate code without losing any diagnostic information.
-
-2. **`utils.ts` as single utility hub** — `findFfmpegPath` and `formatDuration` are used by 3+ modules each. Having them in `utils.ts` (alongside `bytesToHuman`, `sleep`, etc.) creates a single import target instead of scattering utilities across module-specific files.
-
-3. **Inline `getFfmpegPath()` wrapper** — The wrapper added an error message around `findFfmpegPath()`, but it was only called from one place (`runFfmpeg()`). Inlining it removes a layer of indirection and keeps the error handling at the call site.
-
-4. **Remove no-op `updateProgress`** — The recording timer was migrated to an independent `setInterval` in a previous session. `updateProgress()` became a no-op but was still in the interface, misleading API consumers. Removed it while keeping the `download:progress` event in the recorder's event system for any external consumers.
+1. **`statSync` over `result.size`** — the pipe byte counter in `downloadStream`/`pipeFfmpegSegment` can diverge from actual disk writes under backpressure or error-recovery paths. Using `statSync(result.file).size` is always authoritative.
+2. **`!== undefined` check for boolean flags** — `cac`/`koko-cli` sets a flag to `false` when `--no-*` is passed. A truthy check (`if (val)`) silently treats `false` the same as unset. The fix applies to `--normalize` only; other boolean flags (`--debug`) are unaffected since they default to `false` and have no negation use case.
+3. **v0.11.2 is a patch release** — both commits were `fix:` conventional commits, so minor bump wasn't warranted.
 
 ## Current State
 
-- `src/` source files: **20** (was 22)
-- All 66 tests pass
-- Clean `tsc --noEmit`
-- v0.9.1 about to be released
+- **v0.11.2 released** — tag pushed, GitHub release published, release branch `release/v0.11.2` preserved from the tag.
+- All 71 tests pass. TypeScript typecheck clean.
+- Stale release branches (v0.2.0 through v0.9.1) pruned locally and remotely — only `release/v0.10.0`, `v0.11.0`, `v0.11.1`, `v0.11.2` remain.
+- Working tree is clean except for this handoff file.
 
 ## Next Steps / Pending
 
-- [ ] Merge `lib.ts` into `recorder/index.ts` (pure re-export file)
-- [ ] Inline `recorder-state.ts` + `recorder-events.ts` into `recorder/index.ts` (tiny single-use modules)
+- [ ] **Merge `lib.ts` into `recorder/index.ts`** — `lib.ts` is a pure re-export file, could be inlined.
+- [ ] **Inline `recorder-state.ts` + `recorder-events.ts` into `recorder/index.ts`** — tiny single-use modules carried over from previous sessions.
+- [ ] **Investigate pipe byte counter divergence** — the root cause of `result.size` being 0 for valid files is not fixed, only the symptom is patched. Likely a backpressure + pause race in `pipeFfmpegSegment` when the shared `WriteStream` stalls across consecutive FFmpeg segments.
 
 ## Important Context
 
-- **`downloadStream()` signature**: `(liveUrl, user, outputDir, maxDuration, onProgress, getNextUrl, signal, logger?, label?)` — same as old `downloadFlv`/`downloadHls` but with an extra optional `label` for HLS vs FLV distinction in logs.
-- **`formatDuration` in utils**: Now exported from `utils.ts` with a slightly different output — `"1m 5s"` when minutes > 0, `"30s"` when < 1 minute (was always `"0m 30s"` before).
-- **`findFfmpegPath` in utils**: Identical implementation, just moved location.
-- **Release**: `@zfadhli/tokrec` v0.9.1. Package: `@zfadhli/tokrec`.
+- **Package**: `@zfadhli/tokrec`, published to npm. Binary: `tokrec`.
+- **Runtime**: Bun ≥1.2 (Node.js 20+ for built package).
+- **CLI toolkit**: `@zfadhli/koko-cli` (v0.1.0) wraps `cac` for arg parsing, `picocolors` for color, `cli-spinners` for spinners.
+- **Release workflow**: Squash-merge release PR → tag → `gh release create`. Release branches are force-pushed from the tag to preserve the exact release commit.
+- **`--no-normalize` behavior**: `cac` auto-creates negation flags for boolean options. `opts.normalize` is `true`/`false`/`undefined`. Must always check `!== undefined` for boolean flags that have a meaningful `false` state.
+- **`bun:sqlite`** is a Bun built-in — the `browser-cookies.ts` module only works under Bun, not Node.js.
+- **`--normalize` is always on by default** (`DEFAULTS.normalizeAudio: true`). Use `--no-normalize` to disable.
