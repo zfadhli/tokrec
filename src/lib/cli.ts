@@ -4,7 +4,7 @@
  */
 
 import { createCLI } from "@zfadhli/koko-cli"
-import pkg from "../package.json"
+import pkg from "../../package.json"
 import type { LogLevel, RecorderConfig } from "./config"
 import { TikTokError } from "./config"
 import { sanitizeUser } from "./utils"

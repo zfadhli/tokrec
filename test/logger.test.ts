@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { existsSync, readFileSync, unlinkSync } from "node:fs"
-import { createLogger } from "../src/logger"
+import { createLogger } from "../src/lib/logger"
 
 describe("createLogger", () => {
   const testLog = "/tmp/test-tiktok-recorder.log"

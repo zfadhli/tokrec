@@ -2,8 +2,8 @@
  * State machine for the recorder lifecycle.
  */
 
-import type { RecorderStatus } from "../config"
-import type { Logger } from "../logger"
+import type { RecorderStatus } from "../../lib/config"
+import type { Logger } from "../../lib/logger"
 
 // Valid state transitions: [from] → [to, to, ...]
 const TRANSITIONS: Record<string, string[]> = {

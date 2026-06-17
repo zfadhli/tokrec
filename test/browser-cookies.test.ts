@@ -11,7 +11,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { parseFirefoxProfilesIni } from "../src/browser-cookies"
+import { parseFirefoxProfilesIni } from "../src/lib/browser-cookies"
 
 // ─── parseFirefoxProfilesIni ──────────────────────────────────────
 
