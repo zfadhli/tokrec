@@ -313,7 +313,7 @@ export function createTikTokApi(http: HttpClient, logger?: Logger, showDebug?: b
       const data = JSON.parse(text) as Record<string, unknown>
 
       // status_code 4003110 = live restriction / room not found
-      if ((data as any).status_code === 4003110) return null
+      if ((data as { status_code?: unknown }).status_code === 4003110) return null
 
       return extract(data)
     } catch {
@@ -360,14 +360,14 @@ export function createTikTokApi(http: HttpClient, logger?: Logger, showDebug?: b
    */
   async function fetchRoomInfoFromRoomApi(roomId: string): Promise<LiveInfo | null> {
     return fetchFromRoomApi(roomId, (data) => {
-      const roomData = (data as any).data
+      const roomData = (data as { data?: Record<string, unknown> }).data
       if (!roomData) return null
 
       const status = roomData.status ?? 4
       const isLive = status === 2
       const streamUrl = isLive ? findStreamUrlRecursively(roomData) : null
 
-      return { roomId, isLive, streamUrl, title: roomData.title ?? null }
+      return { roomId, isLive, streamUrl, title: (roomData.title as string | undefined) ?? null }
     })
   }
 
@@ -489,7 +489,7 @@ export function extractUserFromUniversalData(html: string): {
   if (!match?.[1]) return { userId: null, roomId: null }
   try {
     const data = JSON.parse(match[1])
-    const scope = (data as any).__DEFAULT_SCOPE__ ?? data
+    const scope = (data as Record<string, unknown>).__DEFAULT_SCOPE__ ?? data
     const userDetail = scope?.["webapp.user-detail"]
     const user = userDetail?.userInfo?.user
     const userId = user?.id ? String(user.id) : null
@@ -587,7 +587,7 @@ export function findStreamUrlRecursively(obj: unknown): string | null {
   walk(obj)
 
   // Prefer FLV (lower latency) over HLS
-  if (flvUrls.length > 0) return flvUrls[0]!
-  if (m3u8Urls.length > 0) return m3u8Urls[0]!
+  if (flvUrls.length > 0) return flvUrls[0] as string
+  if (m3u8Urls.length > 0) return m3u8Urls[0] as string
   return null
 }

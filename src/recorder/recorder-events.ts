@@ -12,18 +12,18 @@ export interface RecorderEventEmitter {
 }
 
 export function createEventEmitter(): RecorderEventEmitter {
-  const handlers = new Map<string, Array<(...args: any[]) => void>>()
+  const handlers = new Map<string, Array<(...args: unknown[]) => void>>()
 
   function on<E extends RecorderEvent>(event: E, handler: RecorderEventHandler[E]): void {
     const list = handlers.get(event) ?? []
-    list.push(handler as (...args: any[]) => void)
+    list.push(handler as (...args: unknown[]) => void)
     handlers.set(event, list)
   }
 
   function off<E extends RecorderEvent>(event: E, handler: RecorderEventHandler[E]): void {
     const list = handlers.get(event)
     if (!list) return
-    const idx = list.indexOf(handler as (...args: any[]) => void)
+    const idx = list.indexOf(handler as (...args: unknown[]) => void)
     if (idx !== -1) list.splice(idx, 1)
   }
 

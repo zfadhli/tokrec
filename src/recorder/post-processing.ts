@@ -24,7 +24,7 @@ export interface ProcessingDeps {
   audioNormalizer: AudioNormalizer | null
   stopAbortController: AbortController
   pendingRemuxes: Promise<unknown>[]
-  emit: (event: string, ...args: any[]) => void
+  emit: (event: string, ...args: unknown[]) => void
   setState: (partial: Record<string, unknown>) => void
   stopRequested: () => boolean
   logger: Logger
@@ -118,7 +118,7 @@ async function processSegmenting(
 
     // Emit events for each segment
     for (let i = 0; i < segmentFiles.length; i++) {
-      const filePath = join(parsed.dir, segmentFiles[i]!)
+      const filePath = join(parsed.dir, segmentFiles[i] as string)
       const stats = statSync(filePath)
       const isLast = i === segmentFiles.length - 1
       const estDuration = isLast
@@ -131,7 +131,7 @@ async function processSegmenting(
 
     // Set file modification times so segments sort chronologically
     for (let i = 0; i < segmentFiles.length; i++) {
-      const fp = join(parsed.dir, segmentFiles[i]!)
+      const fp = join(parsed.dir, segmentFiles[i] as string)
       const segStart = recStartMs + i * segmentDurationSec * 1000
       utimesSync(fp, new Date(segStart), new Date(segStart))
     }
@@ -154,7 +154,8 @@ async function processSegmenting(
     }
 
     deps.setState({
-      currentFile: segmentFiles.length > 0 ? join(parsed.dir, segmentFiles.at(-1)!) : result.file,
+      currentFile:
+        segmentFiles.length > 0 ? join(parsed.dir, segmentFiles.at(-1) as string) : result.file,
       sessionDuration: result.duration,
     })
   } catch (err) {
