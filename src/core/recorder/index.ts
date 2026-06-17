@@ -4,13 +4,13 @@
  */
 
 import { spawn } from "node:child_process"
+import type { RecorderConfig, RecorderController } from "../../lib/config"
+import { normalizeConfig, TikTokError } from "../../lib/config"
+import { createLogger } from "../../lib/logger"
+import { findFfmpegPath, sleep } from "../../lib/utils"
 import { createHttpClient } from "../api/client"
 import { createTikTokApi, type TikTokApi } from "../api/tiktok"
-import type { RecorderConfig, RecorderController } from "../config"
-import { normalizeConfig, TikTokError } from "../config"
-import { createLogger } from "../logger"
 import { createPollingMonitor, type PollingMonitor } from "../monitor"
-import { findFfmpegPath, sleep } from "../utils"
 import { type Converter, createConverter } from "./convert"
 import { type AudioNormalizer, createAudioNormalizer } from "./normalize"
 import { processRecording } from "./post-processing"

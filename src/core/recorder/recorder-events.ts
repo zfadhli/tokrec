@@ -2,7 +2,7 @@
  * Typed event emitter for recorder lifecycle events.
  */
 
-import type { RecorderEvent, RecorderEventHandler } from "../config"
+import type { RecorderEvent, RecorderEventHandler } from "../../lib/config"
 
 export interface RecorderEventEmitter {
   on<E extends RecorderEvent>(event: E, handler: RecorderEventHandler[E]): void

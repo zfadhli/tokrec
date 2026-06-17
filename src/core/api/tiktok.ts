@@ -17,7 +17,7 @@
  * 403 errors. All lookups go through room/info (reliable for live + offline).
  */
 
-import type { Logger } from "../logger"
+import type { Logger } from "../../lib/logger"
 import type { HttpClient } from "./client"
 
 export interface TikTokApi {

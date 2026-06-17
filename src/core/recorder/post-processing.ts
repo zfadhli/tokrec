@@ -11,9 +11,9 @@
 
 import { readdirSync, statSync, unlinkSync, utimesSync } from "node:fs"
 import { join, parse } from "node:path"
-import type { RecorderConfig } from "../config"
-import { TikTokError } from "../config"
-import type { Logger } from "../logger"
+import type { RecorderConfig } from "../../lib/config"
+import { TikTokError } from "../../lib/config"
+import type { Logger } from "../../lib/logger"
 import type { Converter } from "./convert"
 import type { AudioNormalizer } from "./normalize"
 import type { DownloadResult } from "./stream"

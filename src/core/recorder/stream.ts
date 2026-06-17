@@ -6,8 +6,8 @@
  * appropriate downloader based on URL format.
  */
 
-import type { Logger } from "../logger"
-import { ensureDir } from "../utils"
+import type { Logger } from "../../lib/logger"
+import { ensureDir } from "../../lib/utils"
 import { downloadStream } from "./download"
 
 export interface ProgressInfo {

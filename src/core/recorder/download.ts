@@ -12,9 +12,9 @@
 
 import { createWriteStream, statSync } from "node:fs"
 import { join } from "node:path"
-import { TikTokError } from "../config"
-import type { Logger } from "../logger"
-import { bytesToHuman, findFfmpegPath, formatDuration, formatFilename } from "../utils"
+import { TikTokError } from "../../lib/config"
+import type { Logger } from "../../lib/logger"
+import { bytesToHuman, findFfmpegPath, formatDuration, formatFilename } from "../../lib/utils"
 import { pipeFfmpegSegment } from "./ffmpeg-utils"
 import type { DownloadResult, ProgressInfo } from "./stream"
 
