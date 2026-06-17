@@ -22,7 +22,7 @@
     "dist"
   ],
   "scripts": {
-    "dev": "bun run src/index.ts",
+    "dev": "bun run src/bin.ts",
     "build": "tsdown",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
