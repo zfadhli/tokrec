@@ -127,20 +127,25 @@ export function createRecorder(config: RecorderConfig): RecorderController {
       onTick: async () => {
         if (stopRequested) return
 
+        // All dependencies are initialized by start() before onTick runs
+        const tikTokApi = api as TikTokApi
+        const streamDownloader = downloader as StreamDownloader
+        const pollingMonitor = monitor as PollingMonitor
+
         const user = cfg.user
-        api!.invalidateCache()
+        tikTokApi.invalidateCache()
 
         emitter.emit("checking", { user })
         logger.info(`Checking @${user}...`)
 
-        const roomId = await api!.getRoomId(user)
+        const roomId = await tikTokApi.getRoomId(user)
         if (!roomId) {
           logger.info(`@${user} is offline`)
           emitter.emit("tick", { user, isLive: false })
           return
         }
 
-        const liveUrl = await api!.getLiveUrl(roomId)
+        const liveUrl = await tikTokApi.getLiveUrl(roomId)
         if (!liveUrl) {
           logger.warn(`@${user} is live but no stream URL found`)
           emitter.emit("tick", { user, isLive: false, roomId })
@@ -156,17 +161,17 @@ export function createRecorder(config: RecorderConfig): RecorderController {
         const getNextUrl = async (): Promise<string | null> => {
           // Use the lightweight check_alive endpoint first — avoids a full
           // page re-scan + room/info call when the stream is still active.
-          const alive = await api!.isRoomAlive(roomId)
+          const alive = await tikTokApi.isRoomAlive(roomId)
           if (!alive) {
             logger.info(`@${user} is no longer live — stopping`)
             return null
           }
           // Still alive — invalidate cache and get a fresh stream URL.
-          api!.invalidateCache()
-          return api!.getLiveUrl(roomId)
+          tikTokApi.invalidateCache()
+          return tikTokApi.getLiveUrl(roomId)
         }
 
-        const result = await downloader!.download(
+        const result = await streamDownloader.download(
           liveUrl,
           user,
           cfg.outputDir,
@@ -183,11 +188,11 @@ export function createRecorder(config: RecorderConfig): RecorderController {
 
         await processRecording(result as DownloadResult, cfg, {
           runFfmpeg,
-          converter: converter!,
+          converter: converter as Converter,
           audioNormalizer,
           stopAbortController,
           pendingRemuxes,
-          emit: (event: string, ...args: any[]) => (emitter as any).emit(event, ...args),
+          emit: (emitter.emit as (event: string, ...args: unknown[]) => void).bind(emitter),
           setState: stateManager.setState,
           stopRequested: () => stopRequested,
           logger,
@@ -196,12 +201,12 @@ export function createRecorder(config: RecorderConfig): RecorderController {
         // One-shot mode: if a duration was set, stop after this recording
         if (cfg.duration > 0) {
           logger.info("Duration limit reached — exiting")
-          monitor!.stopAfterCurrentTick()
+          pollingMonitor.stopAfterCurrentTick()
         } else if (!stopRequested && roomId) {
           // Recording ended because the stream went offline (not user-initiated stop).
           // Immediately re-check via lightweight check_alive endpoint instead of
           // waiting for the next poll interval.
-          const alive = await api!.isRoomAlive(roomId)
+          const alive = await tikTokApi.isRoomAlive(roomId)
           if (!alive) {
             logger.info(`@${user} is offline`)
             emitter.emit("tick", { user, isLive: false })

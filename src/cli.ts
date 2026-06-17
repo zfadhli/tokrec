@@ -141,10 +141,10 @@ export function parseArgs(argv: string[] = process.argv): RecorderConfig {
  */
 function extractPositional(argv: string[]): string | null {
   for (let i = 2; i < argv.length; i++) {
-    const arg = argv[i]!
+    const arg = argv[i] as string
     // -- signals end of options; anything after is a positional
     if (arg === "--") {
-      const pos = argv.splice(i, 1)[0]!
+      const pos = argv.splice(i, 1)[0] as string
       return pos
     }
     // If this arg is a flag (-*) the next arg is its value

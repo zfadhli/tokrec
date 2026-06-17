@@ -66,7 +66,7 @@ export async function createHttpClient(config: RecorderConfig): Promise<HttpClie
       await rateLimiter.acquire(controller.signal)
       const res = await session.fetch(url, {
         method: options?.method,
-        body: options?.body as any,
+        body: options?.body as never,
         headers: {
           ...BROWSER_HEADERS,
           ...options?.headers,
@@ -84,7 +84,7 @@ export async function createHttpClient(config: RecorderConfig): Promise<HttpClie
     post: async (url: string, body?: _BodyInit, headers?: Record<string, string>) =>
       rateLimitedFetch(url, {
         method: "POST",
-        body: body as any,
+        body: body as never,
         headers: {
           "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
           ...headers,
