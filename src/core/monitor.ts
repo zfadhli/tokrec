@@ -6,8 +6,8 @@
  * ticks immediately, avoiding a busy 1-second polling loop.
  */
 
-import type { Logger } from "./logger"
-import { sleep } from "./utils"
+import type { Logger } from "../lib/logger"
+import { sleep } from "../lib/utils"
 
 export interface PollingMonitor {
   start: () => Promise<void>

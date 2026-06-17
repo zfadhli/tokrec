@@ -13,7 +13,7 @@ import {
   extractSigiState,
   extractUserFromUniversalData,
   findStreamUrlRecursively,
-} from "../src/api/tiktok"
+} from "../src/core/api/tiktok"
 import { createMockHttp, loadFixture } from "./utils/mock-http"
 
 // ─── Fixture paths ──────────────────────────────────────────────────
@@ -27,7 +27,7 @@ describe("extractSigiState", () => {
     const html = loadFixture(FIXTURES, "anomaliaa27-live.html")
     const sigi = extractSigiState(html)
     expect(sigi).not.toBeNull()
-    expect(sigi!.LiveRoom?.liveRoomUserInfo?.user?.roomId).toBeDefined()
+    expect(sigi?.LiveRoom?.liveRoomUserInfo?.user?.roomId).toBeDefined()
   })
 
   test("returns null when SIGI_STATE is absent (profile page SPA shell)", () => {

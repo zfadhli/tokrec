@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { parseArgs } from "../src/cli"
+import { parseArgs } from "../src/lib/cli"
 
 describe("parseArgs", () => {
   test("parses --user", () => {

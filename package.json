@@ -1,28 +1,28 @@
 {
   "name": "@zfadhli/tokrec",
-  "version": "0.11.4",
+  "version": "0.11.5",
   "description": "Minimal TikTok live stream recorder — Bun + TypeScript",
   "type": "module",
-  "main": "./dist/lib.mjs",
-  "types": "./dist/lib.d.mts",
+  "main": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
   "exports": {
     ".": {
-      "types": "./dist/lib.d.mts",
-      "default": "./dist/lib.mjs"
-    },
-    "./cli": {
       "types": "./dist/index.d.mts",
       "default": "./dist/index.mjs"
+    },
+    "./cli": {
+      "types": "./dist/bin.d.mts",
+      "default": "./dist/bin.mjs"
     }
   },
   "bin": {
-    "tokrec": "./dist/index.mjs"
+    "tokrec": "./dist/bin.mjs"
   },
   "files": [
     "dist"
   ],
   "scripts": {
-    "dev": "bun run src/index.ts",
+    "dev": "bun run src/bin.ts",
     "build": "tsdown",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
