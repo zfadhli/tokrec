@@ -4,7 +4,7 @@
 
 import { spawn } from "node:child_process"
 import type { WriteStream } from "node:fs"
-import { TikTokError } from "../config"
+import { TikTokError } from "../../lib/config"
 
 /** Kill FFmpeg if no output is received within this window after spawn. */
 export const FFMPEG_STARTUP_TIMEOUT = 30_000

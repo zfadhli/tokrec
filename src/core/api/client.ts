@@ -5,7 +5,7 @@
  */
 
 import { createSession, type Session } from "wreq-js"
-import type { RecorderConfig } from "../config"
+import type { RecorderConfig } from "../../lib/config"
 import { createRateLimiter } from "./rate-limiter"
 
 // BodyInit is only available inside declare module "bun" in bun-types, not as a global

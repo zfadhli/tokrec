@@ -5,7 +5,7 @@
 
 import type { NormalizeOptions, NormalizeResult } from "peaknorm"
 import { normalizeFile } from "peaknorm"
-import type { Logger } from "../logger"
+import type { Logger } from "../../lib/logger"
 
 export interface AudioNormalizer {
   /** Normalize a single audio/video file. Returns the normalize result. */
