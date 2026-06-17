@@ -1,36 +1,47 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.5.0/schema.json",
-  "assist": {
-    "enabled": true
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true,
+    "defaultBranch": "main"
   },
+  "files": {
+    "ignoreUnknown": false,
+    "includes": ["**", "!**/dist", "!**/node_modules", "!**/.changeset"]
+  },
+  "formatter": {
+    "enabled": true,
+    "formatWithErrors": false,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 100,
+    "lineEnding": "lf"
+  },
+  "assist": { "actions": { "source": { "organizeImports": "on" } } },
   "linter": {
     "enabled": true,
     "rules": {
       "preset": "recommended",
       "correctness": {
-        "noUnusedImports": "warn",
-        "noUnusedVariables": "warn"
+        "noUnusedVariables": "error",
+        "useExhaustiveDependencies": "warn",
+        "noSwitchDeclarations": "error"
       },
       "suspicious": {
-        "noExplicitAny": "off"
+        "noExplicitAny": "warn"
       },
       "style": {
-        "noNonNullAssertion": "off",
-        "useExplicitLengthCheck": "warn"
+        "noNonNullAssertion": "warn"
       }
     }
   },
-  "formatter": {
-    "enabled": true,
-    "indentStyle": "space",
-    "indentWidth": 2,
-    "lineWidth": 100
-  },
   "javascript": {
     "formatter": {
+      "quoteStyle": "double",
       "semicolons": "asNeeded",
       "trailingCommas": "all",
-      "quoteStyle": "double"
+      "arrowParentheses": "always"
     }
   }
 }
