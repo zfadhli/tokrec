@@ -32,6 +32,7 @@
   },
   "dependencies": {
     "@zfadhli/koko-cli": "^0.2.1",
+    "execa": "^9.6.1",
     "peaknorm": "^0.7.0",
     "wreq-js": "^2.3.1"
   },
