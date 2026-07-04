@@ -164,12 +164,21 @@ tokrec stop
 | `start`  | Start recorder in a tmux session         | `tokrec start -u username`                  |
 | `stop`   | Stop tmux session(s)                     | `tokrec stop -u username` (or `tokrec stop` to stop all) |
 | `status` | Show active tmux sessions                | `tokrec status`                             |
+| `setup`  | Check cookie status or create cookies.json | `tokrec setup`                            |
 
 ---
 
 ## Authentication
 
 TikTok's Slardar WAF blocks unauthenticated requests. You must provide a valid `sessionid_ss` cookie to bypass it.
+
+### Quick setup
+
+```bash
+tokrec setup
+```
+
+This checks for Firefox cookies (auto-detected) or `cookies.json`. If neither is found, it prompts you to enter your cookie value interactively.
 
 ### Option 1: Firefox (auto-detected)
 

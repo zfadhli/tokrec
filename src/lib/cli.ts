@@ -14,6 +14,7 @@ export type CLIResult =
   | { command: "start"; args: string[] }
   | { command: "stop"; user?: string }
   | { command: "status"; user?: string }
+  | { command: "setup" }
 
 /** Shared recorder options for both default and start commands. */
 function registerRecorderOptions(cmd: CommandBuilder) {
@@ -150,10 +151,16 @@ export function parseArgs(argv: string[] = process.argv): CLIResult {
     })
   })
 
+  cli.command("setup", "Check cookie status or create cookies.json interactively", (cmd) => {
+    cmd.action(() => {
+      result = { command: "setup" }
+    })
+  })
+
   // If the first bare argument (not a flag or flag value) looks like a username,
   // convert it to --user for cac (which only handles options on the default command).
   // Skip for subcommands — they have their own option parsing.
-  const subcommands = ["start", "stop", "status"]
+  const subcommands = ["start", "stop", "status", "setup"]
   if (!subcommands.includes(argv[2] ?? "")) {
     const positionalUser = extractPositional(argv)
     if (positionalUser) {

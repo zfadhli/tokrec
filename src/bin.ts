@@ -4,7 +4,7 @@
  * Uses the terminal Display manager for beautiful console output.
  */
 
-import { existsSync, readFileSync } from "node:fs"
+import { existsSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { color } from "@zfadhli/koko-cli"
 import { createRecorder } from "./index"
@@ -94,6 +94,58 @@ async function main(): Promise<void> {
         console.log(`  tmux attach -t ${s.session}   — view live output`)
       }
     }
+    return
+  }
+
+  if (result.command === "setup") {
+    // 1. Check Firefox cookies
+    const firefoxCookies = extractTikTokCookiesFromFirefox()
+    if (firefoxCookies) {
+      const names = Object.keys(firefoxCookies)
+      const detail = names.length > 1 ? ` (${names.length} cookies)` : ""
+      console.log(`${color.green("✓")} Firefox cookies detected${detail}`)
+      console.log(`  No setup needed — tokrec auto-detects Firefox cookies.`)
+      return
+    }
+
+    // 2. Check cookies.json
+    const cookiesPath = join(process.cwd(), "cookies.json")
+    if (existsSync(cookiesPath)) {
+      try {
+        const data = JSON.parse(readFileSync(cookiesPath, "utf-8"))
+        if (data.sessionid_ss) {
+          console.log(`${color.green("✓")} cookies.json found at ./cookies.json`)
+          return
+        }
+      } catch {
+        // invalid JSON, fall through to setup
+      }
+    }
+
+    // 3. No cookies found — interactive setup
+    console.log(`${color.yellow("⚠")} No TikTok cookies found.`)
+    console.log()
+    console.log(`You need a valid sessionid_ss cookie to bypass TikTok's WAF.`)
+    console.log(`Either log in to TikTok in Firefox (auto-detected), or enter manually:`)
+    console.log()
+
+    const sessionid = prompt("  sessionid_ss cookie value:")
+    if (!sessionid || sessionid.trim().length === 0) {
+      console.log(`${color.red("✗")} No cookie provided. Setup cancelled.`)
+      return
+    }
+
+    const cookies: Record<string, string> = { sessionid_ss: sessionid.trim() }
+
+    const idc = prompt("  tt-target-idc (optional, press Enter to skip):")
+    if (idc && idc.trim().length > 0) {
+      cookies["tt-target-idc"] = idc.trim()
+    }
+
+    writeFileSync(cookiesPath, `${JSON.stringify(cookies, null, 2)}\n`)
+    console.log()
+    console.log(`${color.green("✓")} cookies.json created at ./cookies.json`)
+    console.log(`  You can now run: tokrec -u <username>`)
     return
   }
 
