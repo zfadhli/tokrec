@@ -15,6 +15,7 @@ dist/
 # IDE / Editor
 .idea/
 .vscode/
+.opencode/
 *.swp
 *.swo
 
