@@ -44,7 +44,7 @@ function registerRecorderOptions(cmd: CommandBuilder) {
 function parseRecorderOpts(opts: Record<string, unknown>): RecorderConfig {
   const user = opts.user as string | undefined
   if (!user) {
-    throw new TikTokError("config-error", "<user> is required (positional or --user)")
+    throw new TikTokError("config-error", "<user> is required (--user or -u)")
   }
 
   const parsed: RecorderConfig = {
@@ -157,17 +157,6 @@ export function parseArgs(argv: string[] = process.argv): CLIResult {
     })
   })
 
-  // If the first bare argument (not a flag or flag value) looks like a username,
-  // convert it to --user for cac (which only handles options on the default command).
-  // Skip for subcommands — they have their own option parsing.
-  const subcommands = ["start", "stop", "status", "setup"]
-  if (!subcommands.includes(argv[2] ?? "")) {
-    const positionalUser = extractPositional(argv)
-    if (positionalUser) {
-      argv.push("--user", positionalUser)
-    }
-  }
-
   cli.parse(argv)
 
   if (error) {
@@ -177,37 +166,9 @@ export function parseArgs(argv: string[] = process.argv): CLIResult {
   if (!result) {
     throw new TikTokError(
       "config-error",
-      "<user> is required (positional or --user). Use --help for usage.",
+      "<user> is required (--user or -u). Use --help for usage.",
     )
   }
 
   return result
-}
-
-/**
- * Scan argv for the first bare argument that is neither a flag nor a flag's value.
- * Returns the value and removes it from the array, or null if none found.
- */
-function extractPositional(argv: string[]): string | null {
-  for (let i = 2; i < argv.length; i++) {
-    const arg = argv[i] as string
-    // -- signals end of options; anything after is a positional
-    if (arg === "--") {
-      const pos = argv.splice(i, 1)[0] as string
-      return pos
-    }
-    // If this arg is a flag (-*) the next arg is its value
-    if (arg.startsWith("-")) {
-      // Skip the value if this flag takes one (not a boolean flag like --help/--version)
-      const next = argv[i + 1]
-      if (next && !next.startsWith("-") && arg !== "--help" && arg !== "--version") {
-        i++ // skip the value
-      }
-      continue
-    }
-    // Found a bare positional — remove it and return
-    argv.splice(i, 1)
-    return arg
-  }
-  return null
 }
