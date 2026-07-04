@@ -2,8 +2,8 @@
  * Shared FFmpeg utilities — stream-download pipe primitive and constants.
  */
 
-import { spawn } from "node:child_process"
 import type { WriteStream } from "node:fs"
+import { execa } from "execa"
 import { TikTokError } from "../../lib/config"
 
 /** Kill FFmpeg if no output is received within this window after spawn. */
@@ -51,7 +51,7 @@ export async function pipeFfmpegSegment(
   maxDuration?: number,
 ): Promise<void> {
   const durationArgs = maxDuration ? ["-t", String(maxDuration)] : []
-  const proc = spawn(ffmpegPath, ["-i", url, ...durationArgs, ...FFMPEG_BASE_ARGS], {
+  const proc = execa(ffmpegPath, ["-i", url, ...durationArgs, ...FFMPEG_BASE_ARGS], {
     stdio: ["ignore", "pipe", "pipe"],
     signal,
   })

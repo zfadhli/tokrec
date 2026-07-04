@@ -1,40 +1,43 @@
 import { describe, expect, test } from "bun:test"
 import { parseArgs } from "../src/lib/cli"
+import type { RecorderConfig } from "../src/lib/config"
+
+/** Extract config from CLIResult for record commands. */
+function cfg(args: string[]): RecorderConfig {
+  const result = parseArgs(args)
+  if (result.command !== "record") throw new Error(`Expected record, got ${result.command}`)
+  return result.config
+}
 
 describe("parseArgs", () => {
   test("parses --user", () => {
-    const cfg = parseArgs(["bun", "test", "--user", "testuser"])
-    expect(cfg.user).toBe("testuser")
+    expect(cfg(["bun", "test", "--user", "testuser"]).user).toBe("testuser")
   })
 
   test("strips leading @ from user", () => {
-    const cfg = parseArgs(["bun", "test", "--user", "@testuser"])
-    expect(cfg.user).toBe("testuser")
+    expect(cfg(["bun", "test", "--user", "@testuser"]).user).toBe("testuser")
   })
 
   test("parses --output", () => {
-    const cfg = parseArgs(["bun", "test", "--user", "u", "--output", "/videos"])
-    expect(cfg.outputDir).toBe("/videos")
+    expect(cfg(["bun", "test", "--user", "u", "--output", "/videos"]).outputDir).toBe("/videos")
   })
 
   test("parses --interval", () => {
-    const cfg = parseArgs(["bun", "test", "--user", "u", "--interval", "10"])
-    expect(cfg.interval).toBe(10)
+    expect(cfg(["bun", "test", "--user", "u", "--interval", "10"]).interval).toBe(10)
   })
 
   test("parses --duration (minutes, converted to seconds)", () => {
-    const cfg = parseArgs(["bun", "test", "--user", "u", "--duration", "5"])
-    expect(cfg.duration).toBe(300)
+    expect(cfg(["bun", "test", "--user", "u", "--duration", "5"]).duration).toBe(300)
   })
 
   test("parses --proxy", () => {
-    const cfg = parseArgs(["bun", "test", "--user", "u", "--proxy", "http://proxy:8080"])
-    expect(cfg.proxy).toBe("http://proxy:8080")
+    expect(cfg(["bun", "test", "--user", "u", "--proxy", "http://proxy:8080"]).proxy).toBe(
+      "http://proxy:8080",
+    )
   })
 
   test("parses --log-level", () => {
-    const cfg = parseArgs(["bun", "test", "--user", "u", "--log-level", "debug"])
-    expect(cfg.logLevel).toBe("debug")
+    expect(cfg(["bun", "test", "--user", "u", "--log-level", "debug"]).logLevel).toBe("debug")
   })
 
   test("throws on missing --user", () => {
@@ -55,37 +58,34 @@ describe("parseArgs", () => {
   })
 
   test("parses -u as shorthand for --user", () => {
-    const cfg = parseArgs(["bun", "test", "-u", "testuser"])
-    expect(cfg.user).toBe("testuser")
+    expect(cfg(["bun", "test", "-u", "testuser"]).user).toBe("testuser")
   })
 
   test("parses -o as shorthand for --output", () => {
-    const cfg = parseArgs(["bun", "test", "-u", "u", "-o", "/videos"])
-    expect(cfg.outputDir).toBe("/videos")
+    expect(cfg(["bun", "test", "-u", "u", "-o", "/videos"]).outputDir).toBe("/videos")
   })
 
   test("parses -i as shorthand for --interval", () => {
-    const cfg = parseArgs(["bun", "test", "-u", "u", "-i", "10"])
-    expect(cfg.interval).toBe(10)
+    expect(cfg(["bun", "test", "-u", "u", "-i", "10"]).interval).toBe(10)
   })
 
   test("parses -d as shorthand for --duration", () => {
-    const cfg = parseArgs(["bun", "test", "-u", "u", "-d", "5"])
-    expect(cfg.duration).toBe(300)
+    expect(cfg(["bun", "test", "-u", "u", "-d", "5"]).duration).toBe(300)
   })
 
   test("parses -p as shorthand for --proxy", () => {
-    const cfg = parseArgs(["bun", "test", "-u", "u", "-p", "http://proxy:8080"])
-    expect(cfg.proxy).toBe("http://proxy:8080")
+    expect(cfg(["bun", "test", "-u", "u", "-p", "http://proxy:8080"]).proxy).toBe(
+      "http://proxy:8080",
+    )
   })
 
   test("parses -l as shorthand for --log-level", () => {
-    const cfg = parseArgs(["bun", "test", "-u", "u", "-l", "debug"])
-    expect(cfg.logLevel).toBe("debug")
+    expect(cfg(["bun", "test", "-u", "u", "-l", "debug"]).logLevel).toBe("debug")
   })
 
   test("parses -c as shorthand for --cookies", () => {
-    const cfg = parseArgs(["bun", "test", "-u", "u", "-c", "./custom-cookies.json"])
-    expect(cfg.cookiesPath).toBe("./custom-cookies.json")
+    expect(cfg(["bun", "test", "-u", "u", "-c", "./custom-cookies.json"]).cookiesPath).toBe(
+      "./custom-cookies.json",
+    )
   })
 })
