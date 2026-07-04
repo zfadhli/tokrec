@@ -122,7 +122,7 @@ export class TikTokError extends Error {
 }
 
 const DEFAULTS = {
-  outputDir: "./recordings",
+  outputDir: ".",
   interval: 3,
   duration: 0,
   logLevel: "info" as LogLevel,

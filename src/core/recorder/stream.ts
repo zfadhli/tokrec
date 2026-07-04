@@ -32,6 +32,8 @@ export interface StreamDownloader {
     onProgress?: (info: ProgressInfo) => void,
     /** Called when a stream segment ends and we attempt to fetch a fresh URL. */
     getNextUrl?: () => Promise<string | null>,
+    /** Cookies to pass to FFmpeg for CDN auth. */
+    cookies?: Record<string, string>,
   ) => Promise<DownloadResult>
   /** Abort an active download */
   abort: () => void
@@ -55,6 +57,7 @@ export function createStreamDownloader(logger?: Logger): StreamDownloader {
     maxDuration = 0,
     onProgress?: (info: ProgressInfo) => void,
     getNextUrl?: () => Promise<string | null>,
+    cookies?: Record<string, string>,
   ): Promise<DownloadResult> {
     abortController = new AbortController()
     ensureDir(outputDir)
@@ -69,6 +72,7 @@ export function createStreamDownloader(logger?: Logger): StreamDownloader {
       abortController.signal,
       logger,
       isHlsUrl(liveUrl) ? "HLS" : undefined,
+      cookies,
     )
   }
 

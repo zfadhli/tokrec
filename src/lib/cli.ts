@@ -20,7 +20,7 @@ export type CLIResult =
 function registerRecorderOptions(cmd: CommandBuilder) {
   cmd.option("-u, --user <name>", "TikTok username (or pass as first argument)")
   cmd.option("-o, --output <dir>", "Output directory", {
-    default: "./recordings",
+    default: ".",
   })
   cmd.option("-i, --interval <minutes>", "Polling interval in minutes", {
     default: "3",
