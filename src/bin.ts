@@ -9,9 +9,10 @@ import { join } from "node:path"
 import { color } from "@zfadhli/koko-cli"
 import { createRecorder } from "./index"
 import { extractTikTokCookiesFromFirefox } from "./lib/browser-cookies"
-import { parseArgs } from "./lib/cli"
+import { type CLIResult, parseArgs } from "./lib/cli"
 import type { RecorderConfig } from "./lib/config"
-import { TikTokError, validateConfig } from "./lib/config"
+import { TikTokError } from "./lib/config"
+import { tmuxStart, tmuxStatus, tmuxStop } from "./lib/tmux"
 import { createDisplay } from "./lib/ui"
 import { bytesToHuman, relativeTime } from "./lib/utils"
 
@@ -33,11 +34,10 @@ async function loadCookies(cookiesPath?: string): Promise<Record<string, string>
 }
 
 async function main(): Promise<void> {
-  let config: RecorderConfig
+  let result: CLIResult
 
   try {
-    config = parseArgs()
-    validateConfig(config)
+    result = parseArgs()
   } catch (err) {
     if (err instanceof TikTokError && err.kind === "config-error") {
       console.error(`${color.red("Error:")} ${err.message}`)
@@ -45,6 +45,60 @@ async function main(): Promise<void> {
     }
     throw err
   }
+
+  // Handle tmux subcommands
+  if (result.command === "start") {
+    // Extract user from args to build session name
+    const userMatch = result.args.find((_, i, a) => a[i - 1] === "--user" || a[i - 1] === "-u")
+    if (!userMatch) {
+      console.error(`${color.red("Error:")} --user is required for "start" command`)
+      process.exit(1)
+    }
+    const cmd = `tokrec ${result.args.join(" ")}`
+    try {
+      await tmuxStart(userMatch, cmd)
+      console.log(`${color.green("✓")} Session "tokrec-${userMatch}" started in background`)
+      console.log(`  tmux attach -t tokrec-${userMatch}   — view live output`)
+      console.log(`  tokrec stop -u ${userMatch}             — stop recording`)
+    } catch (err) {
+      console.error(`${color.red("Error:")} ${err instanceof Error ? err.message : String(err)}`)
+      process.exit(1)
+    }
+    return
+  }
+
+  if (result.command === "stop") {
+    try {
+      await tmuxStop(result.user)
+      if (result.user) {
+        console.log(`${color.green("✓")} Session "tokrec-${result.user}" stopped`)
+      } else {
+        console.log(`${color.green("✓")} All tokrec sessions stopped`)
+      }
+    } catch (err) {
+      console.error(`${color.red("Error:")} ${err instanceof Error ? err.message : String(err)}`)
+      process.exit(1)
+    }
+    return
+  }
+
+  if (result.command === "status") {
+    const sessions = await tmuxStatus(result.user)
+    if (sessions.length === 0) {
+      console.log(
+        `${color.gray("○")} No active session${result.user ? ` for "${result.user}"` : ""}`,
+      )
+    } else {
+      for (const s of sessions) {
+        console.log(`${color.green("●")} tokrec-${s.user}`)
+        console.log(`  tmux attach -t ${s.session}   — view live output`)
+      }
+    }
+    return
+  }
+
+  // Record command — full recorder flow
+  const config: RecorderConfig = result.config
 
   // Load cookies: try Firefox browser first, then fall back to cookies.json
   const firefoxCookies = extractTikTokCookiesFromFirefox()
