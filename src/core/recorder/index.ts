@@ -3,7 +3,7 @@
  * and converter into a single RecorderController.
  */
 
-import { spawn } from "node:child_process"
+import { execa } from "execa"
 import type { RecorderConfig, RecorderController } from "../../lib/config"
 import { normalizeConfig, TikTokError } from "../../lib/config"
 import { createLogger } from "../../lib/logger"
@@ -41,48 +41,23 @@ export function createRecorder(config: RecorderConfig): RecorderController {
   let stopAbortController = new AbortController()
   let pendingRemuxes: Promise<unknown>[] = []
 
-  function runFfmpeg(args: string[], signal?: AbortSignal): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const ffmpegPath = findFfmpegPath()
-      if (!ffmpegPath) {
-        reject(
-          new TikTokError(
-            "ffmpeg-not-found",
-            "FFmpeg not found. Install it:\n  Linux: apt install ffmpeg\n  macOS: brew install ffmpeg",
-          ),
-        )
-        return
+  async function runFfmpeg(args: string[], signal?: AbortSignal): Promise<void> {
+    const ffmpegPath = findFfmpegPath()
+    if (!ffmpegPath) {
+      throw new TikTokError(
+        "ffmpeg-not-found",
+        "FFmpeg not found. Install it:\n  Linux: apt install ffmpeg\n  macOS: brew install ffmpeg",
+      )
+    }
+    try {
+      await execa(ffmpegPath, args, { signal, stdio: ["ignore", "pipe", "pipe"] })
+    } catch (err: unknown) {
+      if (signal?.aborted) {
+        throw new TikTokError("unknown", "Aborted by user")
       }
-      const proc = spawn(ffmpegPath, args, {
-        stdio: ["ignore", "pipe", "pipe"],
-        signal,
-      })
-
-      let stderr = ""
-      proc.stderr?.on("data", (chunk: Buffer) => {
-        stderr += chunk.toString()
-        if (stderr.length > 10000) stderr = stderr.slice(-5000)
-      })
-
-      proc.on("close", (code) => {
-        if (signal?.aborted) {
-          reject(new TikTokError("unknown", "Aborted by user"))
-          return
-        }
-        if (code === 0) {
-          resolve()
-        } else {
-          reject(
-            new TikTokError("unknown", `FFmpeg exited with code ${code}\n${stderr.slice(-500)}`),
-          )
-        }
-      })
-
-      proc.on("error", (err) => {
-        if (err instanceof Error && err.name === "AbortError") return
-        reject(new TikTokError("unknown", `Failed to spawn FFmpeg: ${err.message}`))
-      })
-    })
+      const message = err instanceof Error ? err.message : String(err)
+      throw new TikTokError("unknown", `FFmpeg failed: ${message}`)
+    }
   }
 
   async function start(): Promise<void> {

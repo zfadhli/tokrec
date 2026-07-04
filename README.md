@@ -10,7 +10,7 @@
 [![Bun](https://img.shields.io/badge/Bun-%3E%3D1.2-14151a?style=flat-square&logo=bun)](https://bun.sh)
 [![License](https://img.shields.io/npm/l/@zfadhli/tokrec?style=flat-square)](LICENSE)
 
-[Features](#features) · [Installation](#installation) · [Quick start](#quick-start) · [CLI options](#cli-options) · [Authentication](#authentication) · [How it works](#how-it-works) · [Library API](#library-api) · [FAQ](#faq)
+[Features](#features) · [Installation](#installation) · [Quick start](#quick-start) · [CLI options](#cli-options) · [Background recording](#background-recording-tmux) · [Authentication](#authentication) · [How it works](#how-it-works) · [Library API](#library-api) · [FAQ](#faq)
 
 </div>
 
@@ -34,7 +34,9 @@
 - **Typed event system** — 15 events with typed payloads for lifecycle tracking
 - **Proxy support** — route traffic through an HTTP proxy for regional access
 - **FLV + HLS support** — automatically detects and handles both stream formats
-- **68+ passing tests** — unit tests with real TikTok HTML/API fixtures
+- **Background recording** — tmux integration keeps recordings alive after terminal close, with per-user session management
+- **Multi-user** — record multiple users simultaneously, each in its own tmux session
+- **71+ passing tests** — unit tests with real TikTok HTML/API fixtures
 
 ---
 
@@ -106,6 +108,31 @@ tokrec -u username -o ./videos -p http://127.0.0.1:8080
 tokrec -u username --normalize
 ```
 
+### Background recording (tmux)
+
+```bash
+# Start in background — survives terminal close
+tokrec start -u username
+
+# Record multiple users simultaneously
+tokrec start -u user1
+tokrec start -u user2
+
+# Check active sessions
+tokrec status
+
+# Reattach to see live output
+tmux attach -t tokrec-user1
+
+# Detach without killing (Ctrl+B, D)
+
+# Stop a specific user
+tokrec stop -u user1
+
+# Stop all sessions
+tokrec stop
+```
+
 > [!TIP]
 > Both `-d` and `-s` accept values in **minutes** (the tool converts them internally).
 
@@ -130,11 +157,28 @@ tokrec -u username --normalize
 | `--rate <n>`                  | _(none)_  | `5`              | Max API requests/sec (0 = unlimited). Prevents WAF triggering                              |
 | `--debug`                     | _(none)_  | off              | Show API debug logging on stderr                                                           |
 
+### Subcommands
+
+| Command  | Description                              | Example                                     |
+| -------- | ---------------------------------------- | ------------------------------------------- |
+| `start`  | Start recorder in a tmux session         | `tokrec start -u username`                  |
+| `stop`   | Stop tmux session(s)                     | `tokrec stop -u username` (or `tokrec stop` to stop all) |
+| `status` | Show active tmux sessions                | `tokrec status`                             |
+| `setup`  | Check cookie status or create cookies.json | `tokrec setup`                            |
+
 ---
 
 ## Authentication
 
 TikTok's Slardar WAF blocks unauthenticated requests. You must provide a valid `sessionid_ss` cookie to bypass it.
+
+### Quick setup
+
+```bash
+tokrec setup
+```
+
+This checks for Firefox cookies (auto-detected) or `cookies.json`. If neither is found, it prompts you to enter your cookie value interactively.
 
 ### Option 1: Firefox (auto-detected)
 
@@ -338,7 +382,15 @@ TikTok serves live streams as short FLV segments (~30-60s). `tokrec` handles rec
 
 ### Can I record multiple users at once?
 
-Run multiple instances of the CLI in separate terminals, each with a different `--user` and `--output`.
+Yes. Use tmux background sessions:
+
+```bash
+tokrec start -u user1
+tokrec start -u user2
+tokrec status   # shows all active sessions
+```
+
+Each user gets an independent tmux session (`tokrec-{user}`), so they run in parallel without interfering.
 
 ### Can I use this with Node.js instead of Bun?
 
@@ -350,7 +402,12 @@ Yes. The package is built to ESM for Node.js 20+. Bun is optional for developmen
 
 ### Does it work if the user goes live while I'm not running it?
 
-No. `tokrec` only polls while it's running. If you want 24/7 monitoring, leave it running in a background process (e.g., tmux, systemd, or a Docker container).
+No. `tokrec` only polls while it's running. Use tmux background sessions for always-on monitoring:
+
+```bash
+tokrec start -u username   # runs in tmux, survives terminal close
+tmux attach -t tokrec-username   # reattach to view output
+```
 
 ---
 

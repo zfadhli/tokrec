@@ -3,8 +3,8 @@
  * Deletes the original file on success.
  */
 
-import { spawn } from "node:child_process"
 import { unlinkSync } from "node:fs"
+import { execa } from "execa"
 import { TikTokError } from "../../lib/config"
 import type { Logger } from "../../lib/logger"
 import { findFfmpegPath } from "../../lib/utils"
@@ -48,51 +48,24 @@ export function createConverter(logger?: Logger, signal?: AbortSignal): Converte
   return { convert }
 }
 
-function runFfmpeg(
+async function runFfmpeg(
   ffmpegPath: string,
   input: string,
   output: string,
   signal?: AbortSignal,
 ): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const args = [
-      "-i",
-      input,
-      "-c",
-      "copy", // stream copy — no re-encode, fast
-      "-y", // overwrite output
-      output,
-    ]
+  const args = ["-i", input, "-c", "copy", "-y", output]
 
-    const proc = spawn(ffmpegPath, args, {
-      stdio: ["ignore", "pipe", "pipe"],
-      signal,
-    })
-
-    let stderr = ""
-
-    proc.stderr?.on("data", (chunk: Buffer) => {
-      stderr += chunk.toString()
-      if (stderr.length > 10000) stderr = stderr.slice(-5000)
-    })
-
-    proc.on("close", (code) => {
-      if (signal?.aborted) {
-        reject(new TikTokError("aborted", "Aborted by user"))
-        return
-      }
-      if (code === 0) {
-        resolve()
-      } else {
-        reject(
-          new TikTokError("ffmpeg-error", `FFmpeg exited with code ${code}\n${stderr.slice(-500)}`),
-        )
-      }
-    })
-
-    proc.on("error", (err) => {
-      if (err instanceof Error && err.name === "AbortError") return
-      reject(new TikTokError("ffmpeg-error", `Failed to spawn FFmpeg: ${err.message}`))
-    })
-  })
+  try {
+    await execa(ffmpegPath, args, { signal, stdio: ["ignore", "pipe", "pipe"] })
+  } catch (err: unknown) {
+    if (signal?.aborted) {
+      throw new TikTokError("aborted", "Aborted by user")
+    }
+    const stderr = (err as { stderr?: string }).stderr ?? ""
+    throw new TikTokError(
+      "ffmpeg-error",
+      `FFmpeg exited with code ${(err as { exitCode?: number }).exitCode}\n${stderr.slice(-500)}`,
+    )
+  }
 }

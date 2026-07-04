@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0] — 2026-07-05
+
+### Added
+
+- **tmux background recording** — new `start`, `stop`, `status` subcommands for
+  running the recorder in tmux sessions that survive terminal close. Each user
+  gets an independent session (`tokrec-{user}`), allowing multiple concurrent
+  recordings. Use `tmux attach -t tokrec-{user}` to view live output.
+- **execa dependency** — replaced all `node:child_process.spawn` usage with
+  `execa` for cleaner promise-based process management, automatic stderr
+  capture, and built-in abort signal handling.
+
+### Changed
+
+- **FFmpeg process spawning simplified** — `convert.ts` and `index.ts` each lost
+  ~25 lines of manual Promise wrapping. `ffmpeg-utils.ts` streaming/backpressure
+  logic preserved with execa swap.
+
 ## [0.11.5] — 2026-06-17
 
 ### Changed
