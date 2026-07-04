@@ -33,3 +33,4 @@ tmp/
 # Project-specific
 my-lib/
 recordings/
+cookies.json
