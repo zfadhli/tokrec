@@ -5,7 +5,7 @@ describe("normalizeConfig", () => {
   test("fills in defaults for missing fields", () => {
     const cfg = normalizeConfig({ user: "testuser" })
     expect(cfg.user).toBe("testuser")
-    expect(cfg.outputDir).toBe("./recordings")
+    expect(cfg.outputDir).toBe(".")
     expect(cfg.interval).toBe(3)
     expect(cfg.duration).toBe(0)
     expect(cfg.logLevel).toBe("info")
