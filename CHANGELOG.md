@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.2] — 2026-07-05
+
+### Fixed
+
+- **execa v9 breaking changes** — `signal` option renamed to `cancelSignal`; stdout
+  encoding defaults to UTF-8 which corrupted binary MPEG-TS data. Switched
+  `pipeFfmpegSegment` to `child_process.spawn` for raw binary output.
+- **FFmpeg stream download 0 bytes** — TikTok's CDN requires session cookies and
+  a `Referer` header to serve the stream. Added `-user_agent`, `-headers`, and
+  `-cookies` FFmpeg input options (before `-i`) with the user's TikTok cookies.
+
+### Changed
+
+- **Graceful tmux stop** — `tokrec stop` now sends Ctrl-C and waits for pending
+  conversions (up to 10 min) before force-killing the session.
+- **Pending remux timeout** — increased from 60s to 10 min to accommodate long
+  streams with audio normalization.
+- **Default output directory** — changed from `./recordings` to `.` (current directory).
+
 ## [0.12.1] — 2026-07-05
 
 ### Changed
