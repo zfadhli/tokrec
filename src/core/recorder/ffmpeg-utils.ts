@@ -2,12 +2,36 @@
  * Shared FFmpeg utilities — stream-download pipe primitive and constants.
  */
 
+import { type ChildProcess, spawn } from "node:child_process"
 import type { WriteStream } from "node:fs"
-import { execa } from "execa"
 import { TikTokError } from "../../lib/config"
 
 /** Kill FFmpeg if no output is received within this window after spawn. */
 export const FFMPEG_STARTUP_TIMEOUT = 30_000
+
+/**
+ * Build FFmpeg HTTP option arguments for cookies and headers.
+ * TikTok's CDN requires session cookies and a Referer to serve the stream.
+ */
+function buildHttpArgs(cookies?: Record<string, string>): string[] {
+  const args: string[] = []
+
+  // ponytail: user-agent header, CDNs tend to be picky
+  args.push(
+    "-user_agent",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:149.0) Gecko/20100101 Firefox/149.0",
+  )
+  args.push("-headers", "Referer: https://www.tiktok.com/\r\n")
+
+  if (cookies && Object.keys(cookies).length > 0) {
+    const cookieStr = Object.entries(cookies)
+      .map(([k, v]) => `${k}=${v}`)
+      .join("\r\n")
+    args.push("-cookies", cookieStr)
+  }
+
+  return args
+}
 
 /** Standard FFmpeg reconnect + mpegts pipe arguments. */
 const FFMPEG_BASE_ARGS = [
@@ -30,18 +54,8 @@ const FFMPEG_BASE_ARGS = [
  * Spawn an FFmpeg process to download from `url` and pipe its stdout to
  * `writer` with backpressure handling.
  *
- * Features:
- * - Transparent HTTP reconnection via FFmpeg `-reconnect` flags
- * - `FFMPEG_STARTUP_TIMEOUT` (30s) startup guard with SIGTERM → SIGKILL
- *   escalation to prevent orphaned processes
- * - Bounded stderr capture (10k chars) for error diagnostics
- * - Automatic cleanup when `signal` fires (uses spawn `signal` option)
- * - AbortError is swallowed — the promise resolves instead of rejecting,
- *   allowing the caller to check `signal.aborted` and react accordingly
- *
- * The caller is responsible for tracking file size via `statSync` — this
- * function deliberately avoids maintaining its own byte counter to prevent
- * divergence between the in-memory count and actual disk writes.
+ * Uses child_process.spawn directly (not execa) because execa v9 defaults
+ * to encoding stdout as UTF-8, which corrupts binary MPEG-TS data.
  */
 export async function pipeFfmpegSegment(
   ffmpegPath: string,
@@ -49,11 +63,14 @@ export async function pipeFfmpegSegment(
   writer: WriteStream,
   signal: AbortSignal,
   maxDuration?: number,
+  cookies?: Record<string, string>,
 ): Promise<void> {
   const durationArgs = maxDuration ? ["-t", String(maxDuration)] : []
-  const proc = execa(ffmpegPath, ["-i", url, ...durationArgs, ...FFMPEG_BASE_ARGS], {
+  const httpArgs = buildHttpArgs(cookies)
+  // ponytail: input options (-headers, -cookies, -user_agent) must come before -i
+  const args = [...httpArgs, "-i", url, ...durationArgs, ...FFMPEG_BASE_ARGS]
+  const proc: ChildProcess = spawn(ffmpegPath, args, {
     stdio: ["ignore", "pipe", "pipe"],
-    signal,
   })
 
   let stderr = ""
@@ -66,18 +83,24 @@ export async function pipeFfmpegSegment(
     }
   }
 
+  // Forward abort signal to process
+  const onAbort = () => {
+    if (!proc.killed) proc.kill("SIGTERM")
+  }
+  signal.addEventListener("abort", onAbort, { once: true })
+
   proc.stderr?.on("data", (chunk: Buffer) => {
     clearStartupTimer()
     stderr += chunk.toString()
     if (stderr.length > 10000) stderr = stderr.slice(-5000)
   })
 
-  proc.stdout.on("data", (chunk: Buffer) => {
+  proc.stdout?.on("data", (chunk: Buffer) => {
     clearStartupTimer()
     const canContinue = writer.write(chunk)
     if (!canContinue) {
-      proc.stdout.pause()
-      writer.once("drain", () => proc.stdout.resume())
+      proc.stdout?.pause()
+      writer.once("drain", () => proc.stdout?.resume())
     }
   })
 
@@ -99,6 +122,7 @@ export async function pipeFfmpegSegment(
 
     proc.on("close", (code) => {
       clearStartupTimer()
+      signal.removeEventListener("abort", onAbort)
       if (signal.aborted) {
         resolve()
         return
@@ -114,7 +138,7 @@ export async function pipeFfmpegSegment(
 
     proc.on("error", (err) => {
       clearStartupTimer()
-      if (err instanceof Error && err.name === "AbortError") return
+      signal.removeEventListener("abort", onAbort)
       reject(err)
     })
   })

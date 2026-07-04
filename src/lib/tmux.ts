@@ -30,7 +30,7 @@ export async function tmuxStop(user?: string): Promise<void> {
     if (!(await hasSession(name))) {
       throw new Error(`No session "${name}" found.`)
     }
-    await execa("tmux", ["kill-session", "-t", name])
+    await gracefulStop(name)
     return
   }
 
@@ -45,7 +45,28 @@ export async function tmuxStop(user?: string): Promise<void> {
   }
 
   for (const s of sessions) {
-    await execa("tmux", ["kill-session", "-t", s])
+    await gracefulStop(s)
+  }
+}
+
+/**
+ * Send Ctrl-C to the tmux session and wait for it to exit.
+ * Falls back to kill-session after the timeout.
+ */
+async function gracefulStop(name: string): Promise<void> {
+  // Send SIGINT via Ctrl-C
+  await execa("tmux", ["send-keys", "-t", name, "C-c"])
+
+  // Wait up to 11 min for graceful shutdown (10 min pending conversion timeout + margin)
+  const deadline = Date.now() + 660_000
+  while (Date.now() < deadline) {
+    if (!(await hasSession(name))) return
+    await new Promise((r) => setTimeout(r, 500))
+  }
+
+  // Force kill if still alive
+  if (await hasSession(name)) {
+    await execa("tmux", ["kill-session", "-t", name])
   }
 }
 

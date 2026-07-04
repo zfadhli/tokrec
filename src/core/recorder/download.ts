@@ -28,6 +28,7 @@ export async function downloadStream(
   signal: AbortSignal,
   logger?: Logger,
   label?: string,
+  cookies?: Record<string, string>,
 ): Promise<DownloadResult> {
   const filename = formatFilename(user, "ts")
   const filepath = join(outputDir, filename)
@@ -58,7 +59,7 @@ export async function downloadStream(
   try {
     while (!signal.aborted) {
       const remaining = maxDuration > 0 ? Math.max(1, maxDuration - elapsed()) : undefined
-      await pipeFfmpegSegment(ffmpegPath, liveUrl, writer, signal, remaining)
+      await pipeFfmpegSegment(ffmpegPath, liveUrl, writer, signal, remaining, cookies)
 
       // Read actual file size from disk — always authoritative
       try {
