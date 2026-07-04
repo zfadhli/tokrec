@@ -57,7 +57,7 @@ async function runFfmpeg(
   const args = ["-i", input, "-c", "copy", "-y", output]
 
   try {
-    await execa(ffmpegPath, args, { signal, stdio: ["ignore", "pipe", "pipe"] })
+    await execa(ffmpegPath, args, { cancelSignal: signal, stdio: ["ignore", "pipe", "pipe"] })
   } catch (err: unknown) {
     if (signal?.aborted) {
       throw new TikTokError("aborted", "Aborted by user")

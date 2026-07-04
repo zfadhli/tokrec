@@ -50,7 +50,7 @@ export function createRecorder(config: RecorderConfig): RecorderController {
       )
     }
     try {
-      await execa(ffmpegPath, args, { signal, stdio: ["ignore", "pipe", "pipe"] })
+      await execa(ffmpegPath, args, { cancelSignal: signal, stdio: ["ignore", "pipe", "pipe"] })
     } catch (err: unknown) {
       if (signal?.aborted) {
         throw new TikTokError("unknown", "Aborted by user")
@@ -153,6 +153,7 @@ export function createRecorder(config: RecorderConfig): RecorderController {
           cfg.duration,
           (info) => emitter.emit("download:progress", info),
           getNextUrl,
+          cfg.cookies,
         )
 
         emitter.emit("download:end", {
@@ -203,11 +204,11 @@ export function createRecorder(config: RecorderConfig): RecorderController {
     logger.info("Stopping recorder...")
 
     if (pendingRemuxes.length > 0) {
-      logger.info(`Waiting for ${pendingRemuxes.length} pending conversion(s) (max 60s)...`)
+      logger.info(`Waiting for ${pendingRemuxes.length} pending conversion(s) (max 10 min)...`)
       const abortTimeout = new AbortController()
       await Promise.race([
         Promise.allSettled(pendingRemuxes).finally(() => abortTimeout.abort()),
-        sleep(60_000, abortTimeout.signal),
+        sleep(600_000, abortTimeout.signal),
       ])
       pendingRemuxes = []
     }
