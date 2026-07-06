@@ -41,9 +41,9 @@ describe("normalizeConfig", () => {
     expect(cfg.normalizeBitrate).toBe("192k")
   })
 
-  test("normalizeAudio defaults to true", () => {
+  test("normalizeAudio defaults to false", () => {
     const cfg = normalizeConfig({ user: "testuser" })
-    expect(cfg.normalizeAudio).toBe(true)
+    expect(cfg.normalizeAudio).toBe(false)
   })
 
   test("normalizeAudio can be explicitly set to false", () => {
