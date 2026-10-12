@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
-import { parseArgs } from "../src/lib/cli"
-import type { RecorderConfig } from "../src/lib/config"
+import type { RecorderConfig } from "@zfadhli/tokrec"
+import { parseArgs } from "../src/cli"
 
 /** Extract config from CLIResult for record commands. */
 function cfg(args: string[]): RecorderConfig {

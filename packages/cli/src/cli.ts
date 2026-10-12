@@ -4,10 +4,9 @@
  */
 
 import { type CommandBuilder, createCLI } from "@zfadhli/koko-cli"
-import pkg from "../../package.json"
-import type { LogLevel, RecorderConfig } from "./config"
-import { TikTokError } from "./config"
-import { sanitizeUser } from "./utils"
+import type { LogLevel, RecorderConfig } from "@zfadhli/tokrec"
+import { sanitizeUser, TikTokError } from "@zfadhli/tokrec"
+import pkg from "../package.json"
 
 export type CLIResult =
   | { command: "record"; config: RecorderConfig }

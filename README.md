@@ -55,7 +55,7 @@
 ### CLI tool (global)
 
 ```bash
-npm install -g @zfadhli/tokrec
+npm install -g @zfadhli/tokrec-cli
 ```
 
 Then run:
@@ -67,7 +67,7 @@ tokrec -u username
 ### One-off use (npx)
 
 ```bash
-npx @zfadhli/tokrec -u username
+npx @zfadhli/tokrec-cli -u username
 ```
 
 ### As a library

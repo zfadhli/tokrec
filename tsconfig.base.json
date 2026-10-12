@@ -14,10 +14,11 @@
     "forceConsistentCasingInFileNames": true,
 
     // --- Module Resolution ---
-    "types": ["bun-types"],
+    "types": ["bun"],
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
     "esModuleInterop": true,
+    "customConditions": ["bun"],
 
     // --- Declaration Output (used by tsdown, not tsc) ---
     "isolatedDeclarations": true,
@@ -29,7 +30,5 @@
     "outDir": "dist",
     "declarationDir": "dist",
     "sourceMap": true
-  },
-  "include": ["src", "test"],
-  "exclude": ["dist", "node_modules"]
+  }
 }

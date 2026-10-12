@@ -1,0 +1,40 @@
+{
+  "name": "@zfadhli/tokrec",
+  "version": "0.13.0",
+  "description": "Minimal TikTok live stream recorder — Bun + TypeScript",
+  "type": "module",
+  "main": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
+  "exports": {
+    ".": {
+      "bun": "./src/index.ts",
+      "types": "./dist/index.d.mts",
+      "default": "./dist/index.mjs"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsdown",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "execa": "^9.6.1",
+    "peaknorm": "^0.7.0",
+    "wreq-js": "^2.3.1"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zfadhli/tokrec.git"
+  },
+  "bugs": {
+    "url": "https://github.com/zfadhli/tokrec/issues"
+  },
+  "homepage": "https://github.com/zfadhli/tokrec",
+  "publishConfig": {
+    "access": "public"
+  }
+}

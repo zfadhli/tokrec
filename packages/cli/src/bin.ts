@@ -7,14 +7,12 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { color } from "@zfadhli/koko-cli"
-import { createRecorder } from "./index"
-import { extractTikTokCookiesFromFirefox } from "./lib/browser-cookies"
-import { type CLIResult, parseArgs } from "./lib/cli"
-import type { RecorderConfig } from "./lib/config"
-import { TikTokError } from "./lib/config"
-import { tmuxStart, tmuxStatus, tmuxStop } from "./lib/tmux"
-import { createDisplay } from "./lib/ui"
-import { bytesToHuman, relativeTime } from "./lib/utils"
+import type { RecorderConfig } from "@zfadhli/tokrec"
+import { bytesToHuman, createRecorder, relativeTime, TikTokError } from "@zfadhli/tokrec"
+import { extractTikTokCookiesFromFirefox } from "./browser-cookies"
+import { type CLIResult, parseArgs } from "./cli"
+import { tmuxStart, tmuxStatus, tmuxStop } from "./tmux"
+import { createDisplay } from "./ui"
 
 async function loadCookies(cookiesPath?: string): Promise<Record<string, string> | undefined> {
   const path = cookiesPath ?? join(process.cwd(), "cookies.json")

@@ -8,7 +8,7 @@
 
 import type { SpinnerInstance } from "@zfadhli/koko-cli"
 import { color, createSpinner } from "@zfadhli/koko-cli"
-import { formatDuration } from "./utils"
+import { formatDuration } from "@zfadhli/tokrec"
 
 // ─── Tag helpers ──────────────────────────────────────────
 const tag = {

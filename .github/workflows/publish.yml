@@ -26,10 +26,15 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Build
-        run: bunx tsdown
+        run: bun run build
 
-      - name: Publish to npm
-        run: npm publish --provenance --access public
+      - name: Publish lib to npm
+        run: npm publish --workspace packages/lib --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish cli to npm
+        run: npm publish --workspace packages/cli --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
@@ -37,6 +42,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist/
+            packages/*/dist/**
             LICENSE
           generate_release_notes: true

@@ -1,40 +1,18 @@
 {
-  "name": "@zfadhli/tokrec",
-  "version": "0.13.0",
-  "description": "Minimal TikTok live stream recorder — Bun + TypeScript",
+  "name": "tokrec-monorepo",
+  "private": true,
   "type": "module",
-  "main": "./dist/index.mjs",
-  "types": "./dist/index.d.mts",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.mts",
-      "default": "./dist/index.mjs"
-    },
-    "./cli": {
-      "types": "./dist/bin.d.mts",
-      "default": "./dist/bin.mjs"
-    }
-  },
-  "bin": {
-    "tokrec": "./dist/bin.mjs"
-  },
-  "files": [
-    "dist"
+  "workspaces": [
+    "packages/*"
   ],
   "scripts": {
-    "dev": "bun run src/bin.ts",
-    "build": "tsdown",
-    "typecheck": "tsc --noEmit",
+    "dev": "bun run --cwd packages/cli src/bin.ts",
+    "build": "bun run --cwd packages/lib build && bun run --cwd packages/cli build",
+    "typecheck": "bun run --cwd packages/lib typecheck && bun run --cwd packages/cli typecheck",
     "test": "bun test",
-    "lint": "biome check src/",
-    "lint:fix": "biome check --write src/",
-    "format": "biome format --write src/"
-  },
-  "dependencies": {
-    "@zfadhli/koko-cli": "^0.2.1",
-    "execa": "^9.6.1",
-    "peaknorm": "^0.7.0",
-    "wreq-js": "^2.3.1"
+    "lint": "biome check packages/",
+    "lint:fix": "biome check --write packages/",
+    "format": "biome format --write packages/"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.0",
@@ -45,17 +23,5 @@
   },
   "engines": {
     "bun": ">=1.2"
-  },
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/zfadhli/tokrec.git"
-  },
-  "bugs": {
-    "url": "https://github.com/zfadhli/tokrec/issues"
-  },
-  "homepage": "https://github.com/zfadhli/tokrec",
-  "publishConfig": {
-    "access": "public"
   }
 }

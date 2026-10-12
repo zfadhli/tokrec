@@ -5,7 +5,7 @@
  *
  * Usage: bun run scripts/capture-fixtures.ts
  *
- * Output: test/fixtures/tiktok/<user>/
+ * Output: packages/lib/test/fixtures/tiktok/<user>/
  *   - live-profile.html  — /@<liveUser> profile page (with __UNIVERSAL_DATA_FOR_REHYDRATION__)
  *   - live-live.html     — /@<liveUser>/live page
  *   - offline-profile.html — /@<offlineUser> profile page
@@ -19,7 +19,7 @@ import { fileURLToPath } from "node:url"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = join(__dirname, "..")
-const FIXTURE_DIR = join(ROOT, "test", "fixtures", "tiktok")
+const FIXTURE_DIR = join(ROOT, "packages/lib/test/fixtures/tiktok")
 
 interface Cookies {
   sessionid_ss: string
@@ -30,7 +30,7 @@ async function loadCookies(): Promise<Cookies | null> {
   // Try Firefox first
   try {
     const { extractTikTokCookiesFromFirefox } = await import(
-      join(ROOT, "src", "browser-cookies.ts")
+      join(ROOT, "packages/cli/src/browser-cookies.ts")
     )
     const ff = extractTikTokCookiesFromFirefox()
     if (ff) {
@@ -64,7 +64,7 @@ async function capture() {
     process.exit(1)
   }
 
-  const { createHttpClient } = await import(join(ROOT, "src", "api", "client.ts"))
+  const { createHttpClient } = await import(join(ROOT, "packages/lib/src/core/api/client.ts"))
   const config = {
     cookies,
     outputDir: "./recordings",
@@ -100,7 +100,7 @@ async function capture() {
 
     // Check for room ID from SIGI_STATE (live page) or universal data (profile)
     const { extractUserFromUniversalData, extractSigiState } = await import(
-      join(ROOT, "src", "api", "tiktok.ts")
+      join(ROOT, "packages/lib/src/core/api/tiktok.ts")
     )
 
     // Try SIGI_STATE first (from /live page)

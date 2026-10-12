@@ -1,0 +1,33 @@
+{
+  "name": "@zfadhli/tokrec-cli",
+  "version": "0.13.0",
+  "description": "TikTok live stream recorder CLI",
+  "type": "module",
+  "bin": {
+    "tokrec": "./dist/bin.mjs"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsdown",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@zfadhli/tokrec": "workspace:^",
+    "@zfadhli/koko-cli": "^0.2.1",
+    "execa": "^9.6.1"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zfadhli/tokrec.git"
+  },
+  "bugs": {
+    "url": "https://github.com/zfadhli/tokrec/issues"
+  },
+  "homepage": "https://github.com/zfadhli/tokrec",
+  "publishConfig": {
+    "access": "public"
+  }
+}

@@ -19,13 +19,13 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Lint & format check
-        run: bunx biome ci src/
+        run: bunx biome ci packages/
 
       - name: Type check
-        run: bunx tsc --noEmit
+        run: bun run typecheck
 
       - name: Run tests
         run: bun test
 
       - name: Build
-        run: bunx tsdown
+        run: bun run build

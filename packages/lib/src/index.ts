@@ -13,10 +13,12 @@
 export { createRecorder } from "./core/recorder/index"
 export type {
   AppErrorKind,
+  LogLevel,
   RecorderConfig,
   RecorderController,
   RecorderEvent,
   RecorderEventHandler,
   RecorderStatus,
-  TikTokError,
 } from "./lib/config"
+export { TikTokError } from "./lib/config"
+export { bytesToHuman, formatDuration, relativeTime, sanitizeUser } from "./lib/utils"

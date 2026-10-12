@@ -8,7 +8,7 @@
   },
   "files": {
     "ignoreUnknown": false,
-    "includes": ["**", "!**/dist", "!**/node_modules", "!**/.changeset"]
+    "includes": ["**", "!**/dist", "!**/node_modules", "!**/.changeset", "!**/test/fixtures"]
   },
   "formatter": {
     "enabled": true,

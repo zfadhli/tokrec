@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Changed
+
+- **Package split** — `@zfadhli/tokrec` is now the library only (programmatic API), and the CLI (`tokrec` bin) moved to `@zfadhli/tokrec-cli`.
+- **Removed `./cli` subpath export and deep imports** — breaking, pre-1.0. Import the CLI from `@zfadhli/tokrec-cli` instead.
+- **CLI install and one-off commands now use `@zfadhli/tokrec-cli`** — e.g. `npm install -g @zfadhli/tokrec-cli` and `npx @zfadhli/tokrec-cli`.
+
 ## [0.13.0] — 2026-07-06
 
 ### Changed
