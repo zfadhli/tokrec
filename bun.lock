@@ -24,7 +24,7 @@
         "execa": "^9.6.1",
       },
     },
-    "packages/lib": {
+    "packages/tokrec": {
       "name": "@zfadhli/tokrec",
       "version": "0.13.0",
       "dependencies": {
@@ -131,7 +131,7 @@
 
     "@zfadhli/koko-cli": ["@zfadhli/koko-cli@0.2.1", "", { "dependencies": { "cac": "^7.0.0", "cli-progress": "^3.12.0", "cli-spinners": "^3.4.0", "picocolors": "^1.1.1" } }, "sha512-OMG5O94yeC5Nti06dQn/5clCiP0cwsaD0/B0UjqPtTzcQB7PVtO58gaC1DAMAjy49I93GLWrV8cW5kEU6mEIvg=="],
 
-    "@zfadhli/tokrec": ["@zfadhli/tokrec@workspace:packages/lib"],
+    "@zfadhli/tokrec": ["@zfadhli/tokrec@workspace:packages/tokrec"],
 
     "@zfadhli/tokrec-cli": ["@zfadhli/tokrec-cli@workspace:packages/cli"],
 

@@ -8,7 +8,7 @@
  * status and stream URL.
  *
  * Architecture:
- *   createTikTokApi(httpClient) → { getRoomId, isRoomAlive, getLiveUrl }
+ *   createTikTokApi(httpClient) → { getRoomId, isRoomAlive, getLiveUrl, getLiveInfo }
  *
  * All public methods share a per-tick cache so the page is fetched at most once
  * per poll cycle.
@@ -17,6 +17,7 @@
  * 403 errors. All lookups go through room/info (reliable for live + offline).
  */
 
+import type { LiveReason } from "../../lib/config"
 import type { Logger } from "../../lib/logger"
 import type { HttpClient } from "./client"
 
@@ -27,12 +28,22 @@ export interface TikTokApi {
   isRoomAlive(roomId: string): Promise<boolean>
   /** Get the best-quality FLV stream URL for a room. Returns null on failure. */
   getLiveUrl(roomId: string): Promise<string | null>
+  /** Full per-tick verdict with machine-readable reason and discovery source. */
+  getLiveInfo(user: string): Promise<LiveInfo>
   /** Invalidate per-tick cache (call at start of each poll tick). */
   invalidateCache(): void
 }
 
 const TIKTOK_BASES = ["https://www.tiktok.com", "https://m.tiktok.com"]
 const WEBCAST_BASE = "https://webcast.tiktok.com"
+
+/**
+ * Discriminated room/info result: refusals (notably status_code 4003110)
+ * and transport failures surface as `{ ok: false }` instead of null.
+ */
+type RoomApiResult<T> =
+  | { ok: true; value: T | null }
+  | { ok: false; statusCode: number; body: string }
 
 export function createTikTokApi(http: HttpClient, logger?: Logger, showDebug?: boolean): TikTokApi {
   // Debug logging helper — writes to stderr only when --debug is passed.
@@ -42,6 +53,7 @@ export function createTikTokApi(http: HttpClient, logger?: Logger, showDebug?: b
   }
   let cached: LiveInfo | null = null
   let cachedUser = ""
+  let lastFetchHadError = false
 
   async function ensureCache(user: string): Promise<LiveInfo | null> {
     if (cached && cachedUser === user) return cached
@@ -57,6 +69,41 @@ export function createTikTokApi(http: HttpClient, logger?: Logger, showDebug?: b
 
   return {
     invalidateCache,
+
+    async getLiveInfo(user: string): Promise<LiveInfo> {
+      try {
+        const info = await ensureCache(user)
+        if (info) return info
+        if (lastFetchHadError) {
+          return {
+            roomId: null,
+            isLive: false,
+            streamUrl: null,
+            title: null,
+            reason: "error",
+            source: "none",
+          }
+        }
+        return {
+          roomId: null,
+          isLive: false,
+          streamUrl: null,
+          title: null,
+          reason: "no-room-id",
+          source: "none",
+        }
+      } catch (err) {
+        debug(`getLiveInfo: caught error — ${err instanceof Error ? err.message : String(err)}`)
+        return {
+          roomId: null,
+          isLive: false,
+          streamUrl: null,
+          title: null,
+          reason: "error",
+          source: "none",
+        }
+      }
+    },
 
     async getRoomId(user: string): Promise<string | null> {
       const info = await ensureCache(user)
@@ -114,6 +161,7 @@ export function createTikTokApi(http: HttpClient, logger?: Logger, showDebug?: b
   async function fetchLiveInfo(user: string): Promise<LiveInfo | null> {
     let sigi: SigiState | null = null
     let html = ""
+    lastFetchHadError = false
 
     try {
       const page = await tryFetchPage(user, "/live")
@@ -145,16 +193,56 @@ export function createTikTokApi(http: HttpClient, logger?: Logger, showDebug?: b
             debug(
               `fetchLiveInfo: primary path — roomId=${roomId}, status=${liveRoom.status}, isLive=${isLive}`,
             )
-
-            // Extract stream URL: try SIGI_STATE first, then Webcast API fallback
-            let streamUrl: string | null = null
-            if (isLive) {
-              streamUrl = extractStreamUrlFast(liveRoom)
-              if (!streamUrl) streamUrl = findStreamUrlRecursively(sigi)
-              if (!streamUrl) streamUrl = await fetchStreamUrlFromApi(roomId)
+            const title = liveRoom.title ?? null
+            if (!isLive) {
+              return {
+                roomId,
+                isLive: false,
+                streamUrl: null,
+                title,
+                reason: "offline",
+                source: "sigi",
+              }
             }
 
-            return { roomId, isLive, streamUrl, title: liveRoom.title ?? null }
+            // Extract stream URL: try SIGI_STATE first, then Webcast API fallback
+            let streamUrl = extractStreamUrlFast(liveRoom)
+            if (!streamUrl) streamUrl = findStreamUrlRecursively(sigi)
+            if (streamUrl) {
+              return { roomId, isLive: true, streamUrl, title, reason: "live", source: "sigi" }
+            }
+            const streamRes = await fetchStreamUrlFromApi(roomId)
+            if (streamRes.ok) {
+              if (streamRes.value) {
+                return {
+                  roomId,
+                  isLive: true,
+                  streamUrl: streamRes.value,
+                  title,
+                  reason: "live",
+                  source: "sigi",
+                }
+              }
+              return {
+                roomId,
+                isLive: true,
+                streamUrl: null,
+                title,
+                reason: "no-stream-url",
+                source: "sigi",
+              }
+            }
+            if (streamRes.statusCode === 4003110) {
+              return resolveRefusedRoom(roomId, "sigi", title)
+            }
+            return {
+              roomId,
+              isLive: true,
+              streamUrl: null,
+              title,
+              reason: "no-stream-url",
+              source: "sigi",
+            }
           }
 
           // ── Fallback: userInfo has roomId, but liveRoom is async-loaded ──
@@ -176,21 +264,13 @@ export function createTikTokApi(http: HttpClient, logger?: Logger, showDebug?: b
         } // end if (sigi)
       } // end else (page loaded)
     } catch (_err) {
-      // Timeout (15s) or network error → treat as offline
+      // Timeout (15s) or network error → treated as a fetch error
       debug(`fetchLiveInfo: caught error — ${_err instanceof Error ? _err.message : String(_err)}`)
+      lastFetchHadError = true
       return null
     }
 
-    // ── API fallback: when page scraping fails (WAF), use TikTok API directly ──
-    // The /api-live/user/room/ endpoint returns roomId + live status without
-    // the Slardar WAF that blocks www.tiktok.com HTML pages.
-    if (!html || html.length < 5000) {
-      debug("fetchLiveInfo: trying API fallback (api-live/user/room)")
-      const apiResult = await fetchLiveInfoFromApi(user)
-      if (apiResult) return apiResult
-    }
-
-    // ── New fallback: TikTok's unified page structure ──
+    // ── Universal data from the already-fetched /live html ──
     // TikTok migrated from SIGI_STATE to __UNIVERSAL_DATA_FOR_REHYDRATION__.
     // The /live page may not have it, so try the main profile page.
     debug(`fetchLiveInfo: trying universal data fallback (html length ${html.length})`)
@@ -202,6 +282,13 @@ export function createTikTokApi(http: HttpClient, logger?: Logger, showDebug?: b
       debug(`fetchLiveInfo: universal data Webcast API ${result ? "succeeded" : "returned null"}`)
       if (result) return result
     }
+
+    // ── API fallback: whenever page paths produced no roomId, use TikTok API directly ──
+    // The /api-live/user/room/ endpoint returns roomId + live status without
+    // the Slardar WAF that blocks www.tiktok.com HTML pages.
+    debug("fetchLiveInfo: trying API fallback (api-live/user/room)")
+    const apiResult = await fetchLiveInfoFromApi(user)
+    if (apiResult) return apiResult
     // No roomId available — fall through to profile page to check for
     // __UNIVERSAL_DATA_FOR_REHYDRATION__ which may have the roomId when live.
 
@@ -241,6 +328,7 @@ export function createTikTokApi(http: HttpClient, logger?: Logger, showDebug?: b
       // No roomId means the user is offline (room/enter was unreliable).
       return null
     } catch {
+      lastFetchHadError = true
       return null
     }
   }
@@ -280,44 +368,87 @@ export function createTikTokApi(http: HttpClient, logger?: Logger, showDebug?: b
       debug(`fetchLiveInfoFromApi: roomId=${roomId}, status=${userData.status}, isLive=${isLive}`)
 
       if (!isLive) {
-        return { roomId, isLive: false, streamUrl: null, title: null }
+        return {
+          roomId,
+          isLive: false,
+          streamUrl: null,
+          title: null,
+          reason: "offline",
+          source: "api-live",
+        }
       }
 
       // Query Webcast API for stream URL
-      const streamUrl = await fetchStreamUrlFromApi(roomId)
-      return { roomId, isLive: true, streamUrl, title: null }
+      const streamRes = await fetchStreamUrlFromApi(roomId)
+      if (streamRes.ok) {
+        if (streamRes.value) {
+          return {
+            roomId,
+            isLive: true,
+            streamUrl: streamRes.value,
+            title: null,
+            reason: "live",
+            source: "api-live",
+          }
+        }
+        return {
+          roomId,
+          isLive: true,
+          streamUrl: null,
+          title: null,
+          reason: "no-stream-url",
+          source: "api-live",
+        }
+      }
+      if (streamRes.statusCode === 4003110) {
+        return resolveRefusedRoom(roomId, "api-live", null)
+      }
+      return {
+        roomId,
+        isLive: true,
+        streamUrl: null,
+        title: null,
+        reason: "no-stream-url",
+        source: "api-live",
+      }
     } catch {
+      lastFetchHadError = true
       return null
     }
   }
 
   /**
    * Shared boilerplate for Webcast room/info API calls.
-   * Handles URL construction, HTTP GET, JSON parsing, status code checks,
-   * and error handling. The caller provides an extractor for the response data.
+   * Handles URL construction, HTTP GET, JSON parsing, and error handling.
+   * Room-gate refusals (status_code 4003110) are reported to the caller
+   * instead of being collapsed into null; callers map failures.
+   * The caller provides an extractor for the response data.
    */
   async function fetchFromRoomApi<T>(
     roomId: string,
     extract: (data: Record<string, unknown>) => T | null,
-  ): Promise<T | null> {
+  ): Promise<RoomApiResult<T>> {
     try {
       const url = `${WEBCAST_BASE}/webcast/room/info/?aid=1988&room_id=${roomId}&type=live`
       const res = await http.get(url)
       debug(`fetchFromRoomApi: roomId=${roomId} status=${res.status}, ok=${res.ok}`)
-      if (!res.ok) return null
+      if (!res.ok) return { ok: false, statusCode: res.status, body: "" }
 
       const text = await res.text()
       debug(`fetchFromRoomApi: roomId=${roomId} returned ${text.length} bytes`)
-      if (text.length === 0) return null
+      if (text.length === 0) return { ok: true, value: null }
 
       const data = JSON.parse(text) as Record<string, unknown>
 
-      // status_code 4003110 = live restriction / room not found
-      if ((data as { status_code?: unknown }).status_code === 4003110) return null
+      // status_code 4003110 = age-protected/restricted room: report it
+      if ((data as { status_code?: unknown }).status_code === 4003110) {
+        return { ok: false, statusCode: 4003110, body: text }
+      }
 
-      return extract(data)
+      return { ok: true, value: extract(data) }
     } catch {
-      return null
+      lastFetchHadError = true
+      return { ok: false, statusCode: 0, body: "" }
     }
   }
 
@@ -356,19 +487,66 @@ export function createTikTokApi(http: HttpClient, logger?: Logger, showDebug?: b
   }
 
   /**
+   * Resolve a 4003110 room-gate refusal via check_alive: alive → restricted,
+   * otherwise offline. Single home for this mapping so call sites don't repeat it.
+   */
+  async function resolveRefusedRoom(
+    roomId: string,
+    source: string,
+    title: string | null,
+  ): Promise<LiveInfo> {
+    debug(`resolveRefusedRoom: room/info refused roomId=${roomId} (status_code 4003110)`)
+    const alive = await fetchCheckAlive(roomId)
+    if (alive) {
+      return { roomId, isLive: true, streamUrl: null, title, reason: "restricted", source }
+    }
+    return { roomId, isLive: false, streamUrl: null, title, reason: "offline", source }
+  }
+
+  /**
    * Fetch room info from the Webcast room/info API. Requires a known roomId.
+   * A 4003110 refusal is resolved via check_alive: alive → restricted,
+   * otherwise offline.
    */
   async function fetchRoomInfoFromRoomApi(roomId: string): Promise<LiveInfo | null> {
-    return fetchFromRoomApi(roomId, (data) => {
-      const roomData = (data as { data?: Record<string, unknown> }).data
-      if (!roomData) return null
+    const res = await fetchFromRoomApi<Record<string, unknown>>(
+      roomId,
+      (data) => (data as { data?: Record<string, unknown> }).data ?? null,
+    )
+    if (!res.ok) {
+      if (res.statusCode === 4003110) {
+        return resolveRefusedRoom(roomId, "room-info", null)
+      }
+      return null
+    }
+    const roomData = res.value
+    if (!roomData) return null
 
-      const status = roomData.status ?? 4
-      const isLive = status === 2
-      const streamUrl = isLive ? findStreamUrlRecursively(roomData) : null
-
-      return { roomId, isLive, streamUrl, title: (roomData.title as string | undefined) ?? null }
-    })
+    const status = roomData.status ?? 4
+    const isLive = status === 2
+    const title = (roomData.title as string | undefined) ?? null
+    if (!isLive) {
+      return {
+        roomId,
+        isLive: false,
+        streamUrl: null,
+        title,
+        reason: "offline",
+        source: "room-info",
+      }
+    }
+    const streamUrl = findStreamUrlRecursively(roomData)
+    if (streamUrl) {
+      return { roomId, isLive: true, streamUrl, title, reason: "live", source: "room-info" }
+    }
+    return {
+      roomId,
+      isLive: true,
+      streamUrl: null,
+      title,
+      reason: "no-stream-url",
+      source: "room-info",
+    }
   }
 
   /**
@@ -394,8 +572,48 @@ export function createTikTokApi(http: HttpClient, logger?: Logger, showDebug?: b
 
     // If we have a roomId, use Webcast room/info for the stream URL
     if (roomId) {
-      const streamUrl = isLive ? await fetchStreamUrlFromApi(roomId) : null
-      return { roomId, isLive, streamUrl, title: null }
+      if (!isLive) {
+        return {
+          roomId,
+          isLive: false,
+          streamUrl: null,
+          title: null,
+          reason: "offline",
+          source: "sigi",
+        }
+      }
+      const streamRes = await fetchStreamUrlFromApi(roomId)
+      if (streamRes.ok) {
+        if (streamRes.value) {
+          return {
+            roomId,
+            isLive: true,
+            streamUrl: streamRes.value,
+            title: null,
+            reason: "live",
+            source: "sigi",
+          }
+        }
+        return {
+          roomId,
+          isLive: true,
+          streamUrl: null,
+          title: null,
+          reason: "no-stream-url",
+          source: "sigi",
+        }
+      }
+      if (streamRes.statusCode === 4003110) {
+        return resolveRefusedRoom(roomId, "sigi", null)
+      }
+      return {
+        roomId,
+        isLive: true,
+        streamUrl: null,
+        title: null,
+        reason: "no-stream-url",
+        source: "sigi",
+      }
     }
 
     // No roomId available — treat as offline (room/enter was unreliable).
@@ -405,19 +623,23 @@ export function createTikTokApi(http: HttpClient, logger?: Logger, showDebug?: b
   /**
    * Fetch stream URL from the Webcast API.
    * Covers cases where SIGI_STATE doesn't include stream data.
+   * Refusals (4003110) and transport failures are reported so callers
+   * can distinguish restricted rooms from missing URLs.
    */
-  async function fetchStreamUrlFromApi(roomId: string): Promise<string | null> {
+  async function fetchStreamUrlFromApi(roomId: string): Promise<RoomApiResult<string>> {
     return fetchFromRoomApi(roomId, (data) => findStreamUrlRecursively(data))
   }
 }
 
 // ─── Types ──────────────────────────────────────────────────
 
-interface LiveInfo {
-  roomId: string
+export interface LiveInfo {
+  roomId: string | null
   isLive: boolean
   streamUrl: string | null
   title: string | null
+  reason: LiveReason
+  source: string
 }
 
 interface SigiState {

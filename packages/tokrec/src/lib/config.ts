@@ -12,6 +12,22 @@ export type CookieAuth = Record<string, string>
 
 export type LogLevel = "debug" | "info" | "warn" | "error"
 
+/**
+ * Machine-readable reason for a LIVE status verdict.
+ * "live" = stream URL resolved; "offline" = room not live;
+ * "restricted" = live but age-protected/gated (stream refused);
+ * "no-stream-url" = live but no URL and no gate evidence;
+ * "no-room-id" = no discovery path produced a room ID;
+ * "error" = network/parse failure across paths.
+ */
+export type LiveReason =
+  | "live"
+  | "offline"
+  | "restricted"
+  | "no-stream-url"
+  | "no-room-id"
+  | "error"
+
 export interface RecorderConfig {
   /** TikTok username (required) */
   user: string
@@ -77,7 +93,7 @@ export type RecorderEvent = keyof RecorderEventHandler
 
 export interface RecorderEventHandler {
   checking: (info: { user: string }) => void
-  tick: (info: { user: string; isLive: boolean; roomId?: string }) => void
+  tick: (info: { user: string; isLive: boolean; roomId?: string; reason?: LiveReason }) => void
   "recording:start": (info: { user: string; file: string }) => void
   "download:progress": (info: { bytes: number; elapsed: number; speed: number }) => void
   "download:end": (info: { file: string; duration: number; size: number }) => void

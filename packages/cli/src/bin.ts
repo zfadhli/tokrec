@@ -182,7 +182,11 @@ async function main(): Promise<void> {
   })
 
   recorder.on("tick", (info) => {
-    if (info.isLive) {
+    if (info.reason === "restricted") {
+      display.userRestricted(info.user)
+    } else if (info.reason === "no-stream-url") {
+      display.userLiveNoStream(info.user, info.roomId ?? "?")
+    } else if (info.isLive) {
       display.userLive(info.user, info.roomId ?? "?")
     } else if (lastWasLive === null || lastWasLive === true) {
       display.userOffline(info.user)

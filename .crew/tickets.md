@@ -1,105 +1,79 @@
-# Tickets — split tokrec into lib + cli bun workspaces
+# Tickets — honest LIVE status reporting (age-protected / restricted rooms)
 
-Spec: `.crew/spec.md` · ADR: `.crew/adr/001-split-lib-and-cli-into-bun-workspaces.md`. All tickets run in `/home/envs4/workspaces/tokrec`. After the run, at the user's request: `HANDOFF.md` deleted (`git rm`, staged) and `.rail/` (PROJECT.md, ROADMAP.md, STATE.md, empty phases/) removed.
+Spec: `.crew/spec.md` · Evidence: `.crew/research/age-protected-live-evidence.md` · All tickets run in `/home/envs4/workspaces/tokrec`. Supersedes the workspace-split ledger, whose tickets are archived in git at `166f7af`.
 
 ## Ledger
 
-- [x] t1 scaffold workspace manifests + tsconfig base (smith) — done — evidence: root `tokrec-monorepo` private/workspaces `packages/*`, lib `@zfadhli/tokrec` (no bin, no ./cli, bun condition, files dist+src), cli `@zfadhli/tokrec-cli` (bin tokrec), `tsconfig.base.json` customConditions ["bun"], link `packages/cli/node_modules/@zfadhli/tokrec → ../../../lib`; deviation accepted: package tsconfigs extend `../../tsconfig.base.json` (ticket brief had a wrong one-level path). Side note: `HANDOFF.md` was missing from the worktree after this wave; t1's command log shows no deletion, no backup existed, its uncommitted edits are unrecoverable — restored HEAD version (`git checkout -- HANDOFF.md`).
-- [x] t2 move files with git mv (smith) — done — evidence: `38 files changed, 0 insertions(+), 0 deletions(-)`, root `src/`+`test/` gone; verified: lib src = core+index+lib{config,logger,utils}, cli src = bin,browser-cookies,cli,tmux,ui; cli test = cli,browser-cookies. `HANDOFF.md` intact.
-- [x] t3 rewrite cli imports + widen lib public API (smith) — done — evidence: lib index.ts now exports value `TikTokError` + `LogLevel` type + 4 utils; cli cross-package imports are public-entry only (`rg '@zfadhli/tokrec' packages/cli/src` = 5 lines); `rg 'bun:sqlite|koko-cli' packages/lib` empty; `bun test packages/lib` 47 pass, `bun test packages/cli` 24 pass; both typechecks exit 0. Orchestrator fix during reconcile: `tsconfig.base.json` `types: ["bun-types"]` → `["bun"]` (root cause: bun-types is not hoisted in this workspace → TS2688 in both packages, pre-existing but gate-blocking).
-- [x] t4 per-package tsdown configs (smith) — done — evidence: `packages/lib/tsdown.config.ts` (entry src/index.ts, dts true), `packages/cli/tsdown.config.ts` (entry src/bin.ts, dts false), root config `git rm`'d; both builds exit 0; `head -1 packages/cli/dist/bin.mjs` = `#!/usr/bin/env bun`; lib dist has index.mjs/index.d.mts/core/lib.
-- [x] t5 CI + publish workflows (smith) — done — evidence: ci.yml = `biome ci packages/` + `bun run typecheck` + `bun test` + `bun run build`; publish.yml = `bun run build`, `npm publish --workspace packages/lib` then `--workspace packages/cli` (lib first), release glob `packages/*/dist/**`; lefthook needed no change. Orchestrator fix: root `biome check packages/` surfaced 13 errors that old `src/`-scoped lint never saw — added `!**/test/fixtures` to biome.json includes (captured HTML is not source) and ran `biome check --write packages/` (8 files formatted/organizeImports); `bun run lint` now 0 errors, 5 pre-existing warnings (`noNonNullAssertion` in tiktok-api.test.ts).
-- [x] t6 repoint dev script (smith) — done — evidence: `FIXTURE_DIR` → `packages/lib/test/fixtures/tiktok`, dynamic imports → `packages/cli/src/browser-cookies.ts`, `packages/lib/src/core/api/{client,tiktok}.ts` (stale `src/api/*` fixed too); script not executed (needs live cookies/network).
-- [x] t7 README install commands (smith) — done — evidence: L58 `npm install -g @zfadhli/tokrec-cli`, L70 `npx @zfadhli/tokrec-cli -u username`; library examples untouched.
-- [x] t8 CHANGELOG breaking entry (smith) — done — evidence: `## Unreleased` above latest release with 3 bullets: package split, `./cli` subpath + deep imports removed (breaking, pre-1.0), CLI commands now `@zfadhli/tokrec-cli`; only CHANGELOG.md modified.
-- [x] t9 full green gate + pack shape (smith) — done — evidence (orchestrator re-verified): lint 0 errors/5 pre-existing warnings, both typechecks exit 0, `bun test` 71 pass, both builds exit 0; lib pack 58 files = `dist/**` + `src/**` incl `src/index.ts` + package.json, zero `test/` entries; cli pack 13 files = `dist/**` + package.json only; no stray `.tgz`. Caveat on criterion 4: `bun run packages/cli/dist/bin.mjs --version` prints `tokrec/0.13.0 linux-x64 bun-v26.3.0` then exits 1 with `<user> is required (--user or -u)` — `createCLI(version)` does not halt and `parseArgs` leaves the result undefined; code path byte-identical at HEAD (pre-existing, split-independent), left unfixed under "no behavior changes".
-- [x] t10a spec-axis review (sage) — done, wrapped at turn limit — verdict: faithful, **no criticals**; C1,C3,C4-auto,C5–C10 pass; C4 fail-as-written (MAJOR, pre-existing `--version` exit 1, pre-existence independently confirmed against HEAD); publish path sound (`workspace:^` rewrite at pack time, lib-first ordering correct); all out-of-scope diffs ticket-explained.
-- [x] t10b standards-axis review (scout) — done — no criticals, no debris/secrets; both orchestrator fixes confirmed as root-causes (fixture ignore scoped to captured data only); 5 lint warnings pre-existing; fresh `bun install && bun run build` passes. MINORs: `--version` (dupe of t10a), boundary-smoke-test coverage gap (out of scope per spec), stale comment in `scripts/capture-fixtures.ts:8` (fixed inline by orchestrator).
-
-## Follow-ups (reported, not built — out of scope)
-
-- `--version` exits 1: `packages/cli/src/cli.ts` runs `parseArgs` before cac's version handling; short-circuit would be a behavior change. Pre-existing at HEAD.
-- No test covers the new boundaries (built bin shebang/`--version`, existence of the `bun` export target). Smallest useful test: spawn `packages/cli/dist/bin.mjs --version` and assert output + exit 0; spec excluded new tests.
-
-Retro artifacts: `AGENTS.md` created at the repo root (layout, workspace invariants, agent working rules); `scripts/capture-fixtures.ts:8` comment corrected.
-
-Parallel wave 1: t1. Wave 2: t2. Wave 3: t3. Wave 4: t4, t5, t6, t7, t8 (all independent files). Wave 5: t9. Wave 6: t10.
+- [x] t1 room/info + page reason taxonomy (smith) — done — evidence: `bun test packages/tokrec/test/tiktok-api.test.ts` 18 pass/0 fail; fixture `room-info-restricted.json` byte-exact; diff 4 files +362/-36 (tiktok.ts, config.ts, index.ts, test); duplicated 4003110→check_alive block at tiktok.ts:226,407,521,615 — flagged for t9 — [parallel-safe: no, needs: none]
+- [x] t2 unconditional `api-live` fallback + mapping (smith) — done — evidence: `bun test packages/tokrec/test/tiktok-api.test.ts` 20 pass/0 fail; `resolveRefusedRoom` defined tiktok.ts:474 and called 4x (227,387,499,574); `html.length < 5000` now only in the tryFetchPage WAF heuristic (146) — [parallel-safe: no, needs: t1]
+- [x] t3 recorder decision from reason + tick payload (smith) — done — evidence: `bun test packages/tokrec` 58 pass/0 fail; `decideTick` recorder/index.ts:26; tick payload reason config.ts:90; restricted tick logs status_code 4003110 + source, `isLive:true` — [parallel-safe: no, needs: t1]
+- [x] t4 CLI restricted/no-stream display (smith) — done — evidence: `bun run typecheck` 0 + `bun test packages/cli` 26 pass/0 fail; ui.ts `lock` tag:20, `userRestricted`:144, `userLiveNoStream`:152; bin.ts branches :186,:188; no git commands in transcript — [parallel-safe: yes, needs: t3]
+- [x] t5 capture script takes usernames + api-live JSON (smith) — done — evidence: `bun run scripts/capture-fixtures.ts --help` exit 0 with usage; `bun run typecheck` exit 0; diffstat 1 file +111/-68, fixtures untouched — [parallel-safe: yes, needs: none]
+- [x] t6 README + CHANGELOG note (smith) — done — evidence: README.md:224-228 "Age-protected / restricted LIVES" block, CHANGELOG.md:15 Unreleased bullet; `rg -n 'age-protected' README.md CHANGELOG.md` exit 0; diffstat 2 files +5 lines, no scope creep — [parallel-safe: yes, needs: none]
+- [x] t7 full green gate (smith→orchestrator) — done — evidence: lint=0 (after `lint:fix` on 3 files for formatter/organizeImports violations from t1–t4; 5 pre-existing `noNonNullAssertion` warnings), typecheck=0, test=0 (84 pass/0 fail/134 expects), build=0; deviation: orchestrator ran the gate inline (pure verification). Re-verified after t11: lint=0, typecheck=0, test=0 (85 pass/0 fail/137 expects), build=0 — [parallel-safe: no, needs: t1,t2,t3,t4,t5,t6]
+- [x] t8 spec-axis review (sage) — done — verdict: pass-with-minors, no criticals; gate reproduced (84 pass, lint 0, typecheck 0, build 0, capture --help 0); criteria 1–10 hold; minors: (a) `packages/cli/test/ui.test.ts` untracked → staged via t10, (b) `reason:"error"` wired only for page-fetch catch → t11, (c) live-tick log omits reason/source → t11, (d) post-recording tick reason undefined (inherited, not regression) → t11 — [parallel-safe: no, needs: t7]
+- [x] t8 delta re-verify after t11 (sage) — done — all three minors closed, no new findings: error flag set only on exception paths (404/500/empty return before catches; flag reset per tick at tiktok.ts:164; non-null result short-circuits), new test hits :415 branch; criterion 7 edits good; residual nit: recorder/index.ts:218 offline log lacks reason (not charged)
+- [x] t10 remove accidentally tracked recording + ignore mp4s — done — evidence: deleted `packages/cli/dominicteng2=20261012_205540.mp4` (2.4MB, tracked by 166f7af) and untracked `packages/cli/floradegreytta=20261013_084546.mp4` (47MB); `.gitignore:37 *.mp4`; `git ls-files | rg '\.mp4$'` empty; `git check-ignore -v` matches; staged: `M .gitignore`, `D …dominicteng2…mp4`, `A packages/cli/test/ui.test.ts` (nothing committed) — (user/orchestrator) [parallel-safe: yes, needs: none]
+- [x] t11 close spec-gap minors from t8 — done — evidence: `lastFetchHadError` now at tiktok.ts:269,331,415,450; live log names reason+source recorder/index.ts:161; post-recording tick `reason:"offline"` :219; `bun test packages/tokrec` 59 pass/0 fail (+1 error-reason test); `bun run lint` exit 0; no git commands — [parallel-safe: no, needs: t8]
+- [x] t9 standards-axis review (scout) — done — evidence: 7 fixtures byte-match HEAD (`cmp` exit 0), fixture diff = 100% renames + new restricted fixture; index 35 `packages/tokrec` paths, no `packages/lib` left; symlink resolves `../../../tokrec`; `package.json`/`publish.yml` order + `files`/`exports` intact; cli imports only `@zfadhli/tokrec`; no debug debris; tests assert behavior. Scope finding ("candidate probing") = false positive: `findStreamUrlRecursively` comment/arrays exist at HEAD (`git show HEAD:packages/lib/src/core/api/tiktok.ts:522,545`). High finding → t10 — [parallel-safe: yes, needs: t7]
+- [ ] t10 remove accidentally tracked recording + ignore mp4s — status: pending user approval — paths: `packages/cli/dominicteng2=20261012_205540.mp4` (tracked since 166f7af: Bin 0→2462937), `.gitignore` — verify: `git ls-files | rg '\.mp4$'` empty and `git check-ignore -v 'packages/cli/floradegreytta=*.mp4'` matches — (user/orchestrator) [parallel-safe: yes, needs: none]
 
 ## Briefs
 
-### t1 — scaffold workspace manifests
+Read each file before editing it. Tests use `bun:test`. Never format or edit `packages/*/test/fixtures/**` (Biome-excluded, raw bytes).
 
-Create the workspace skeleton; touch no source files.
+### t1 — room/info + page reason taxonomy
 
-Root `package.json` — replace with: `name: "tokrec-monorepo"`, `private: true`, `type: "module"`, `workspaces: ["packages/*"]`, scripts: `dev: "bun run --cwd packages/cli src/bin.ts"`, `build: "bun run --cwd packages/lib build && bun run --cwd packages/cli build"`, `typecheck: "bun run --cwd packages/lib typecheck && bun run --cwd packages/cli typecheck"`, `test: "bun test"`, `lint: "biome check packages/"`, `lint:fix: "biome check --write packages/"`, `format: "biome format --write packages/"`. devDependencies: `@biomejs/biome ^2.5.0`, `lefthook ^2.1.9`, `tsdown ^0.22.3`, `typescript ^6.0.3`, `@types/bun latest`. No runtime dependencies at root. Keep `engines: { bun: ">=1.2" }`.
+Interface delta: `packages/tokrec/src/lib/config.ts` gains `export type LiveReason = "live" | "offline" | "restricted" | "no-stream-url" | "no-room-id" | "error"`. `packages/tokrec/src/core/api/tiktok.ts` `LiveInfo` gains `reason: LiveReason` and `source: string`, and is exported. `TikTokApi` gains `getLiveInfo(user: string): Promise<LiveInfo>` (additive; keep `getRoomId`, `isRoomAlive`, `getLiveUrl`, `invalidateCache` exactly as they are). `packages/tokrec/src/index.ts` exports type `LiveReason`.
 
-`packages/lib/package.json` — take the identity currently at the root: `name: "@zfadhli/tokrec"`, `version: "0.13.0"`, same description, `type: "module"`, `main: "./dist/index.mjs"`, `types: "./dist/index.d.mts"`, `exports: { ".": { "bun": "./src/index.ts", "types": "./dist/index.d.mts", "default": "./dist/index.mjs" } }` (no `./cli` subpath), `files: ["dist", "src"]`, no `bin`, scripts `build: "tsdown"`, `typecheck: "tsc --noEmit"`, dependencies `peaknorm ^0.7.0`, `wreq-js ^2.3.1`, `execa ^9.6.1`. Copy `license`, `repository`, `bugs`, `homepage`, `publishConfig.access: public` from the root manifest.
+- Populate `reason`/`source` at every `LiveInfo` return in `tiktok.ts` (SIGI primary `source:"sigi"`, SIGI legacy `"sigi"`, `fetchLiveInfoFromApi` `"api-live"`, `fetchRoomInfoFromRoomApi` `"room-info"`, `fetchLiveInfoFromProfile` `"profile"`).
+- `fetchFromRoomApi` currently swallows `status_code === 4003110` (`tiktok.ts:316`). Change it to report the status instead of silently returning `null` — return a discriminated result (`{ ok: true; value: T } | { ok: false; statusCode: number; body: string }`) or an equivalent minimal change; callers map failures.
+- On `4003110` with a known roomId, call `fetchCheckAlive(roomId)` before concluding: `alive === true` → `reason: "restricted"`, `isLive: true`, `streamUrl: null`; `alive === false` → `reason: "offline"`, `isLive: false`.
+- `getLiveInfo(user)` returns the per-tick cached info; a total discovery failure returns `{ roomId: null, isLive: false, streamUrl: null, title: null, reason: "no-room-id" | "error", source: "none" }` (`"error"` when a caught exception/network failure was the cause).
+- Add fixture `packages/tokrec/test/fixtures/tiktok/room-info-restricted.json` with the exact verbatim body observed in the evidence file (one line, no reformatting).
+- Tests in `packages/tokrec/test/tiktok-api.test.ts` using `createMockHttp`/`loadFixture` (read the file first, follow its patterns): (a) `/live` SIGI HTML with `streamData` absent + `room/info` restricted fixture + `check_alive` `alive:true` → `getLiveInfo` gives reason `restricted`, roomId set, streamUrl null; (b) same but `check_alive` offline → reason `offline`; (c) healthy `anomaliaa27-live.html` + `anomaliaa27-room-info.json` → reason `live` and a `.flv`/`.m3u8` streamUrl.
 
-`packages/cli/package.json` — `name: "@zfadhli/tokrec-cli"`, `version: "0.13.0"`, description "TikTok live stream recorder CLI", `type: "module"`, `bin: { tokrec: "./dist/bin.mjs" }`, `files: ["dist"]`, no `exports`, no dts, scripts `build: "tsdown"`, `typecheck: "tsc --noEmit"`, dependencies `"@zfadhli/tokrec": "workspace:^"`, `@zfadhli/koko-cli ^0.2.1`, `execa ^9.6.1`, plus the same `license` / `repository` / `bugs` / `homepage` / `publishConfig`.
+### t2 — unconditional `api-live` fallback + mapping
 
-`tsconfig.base.json` — `git mv tsconfig.json tsconfig.base.json`, then remove `include`/`exclude` (compilerOptions only) and add `"customConditions": ["bun"]` to compilerOptions.
+Interface delta: none beyond t1.
 
-`packages/lib/tsconfig.json` and `packages/cli/tsconfig.json` — `{ "extends": "../tsconfig.base.json", "include": ["src", "test"], "exclude": ["dist", "node_modules"] }`.
+- `tiktok.ts:187` gates `/api-live/user/room/` behind `!html || html.length < 5000`. Restructure `fetchLiveInfo` so that endpoint is called whenever the page/SIGI/universal-data paths produced no roomId, regardless of page size. Suggested order after the SIGI block: universal-data-from-html (if roomId) → `/api-live/user/room/` → profile-page fallback.
+- In `fetchLiveInfoFromApi`: `status === 2` → try `fetchStreamUrlFromApi`; if that reports `4003110` and `check_alive` is true → reason `restricted` (source `api-live`); no URL and not restricted → `no-stream-url`; `status !== 2` → `offline`, `isLive:false`, keep the roomId.
+- Tests in `packages/tokrec/test/tiktok-api.test.ts`: (a) a >5000-byte `/live` page with no SIGI/roomId → assert the api-live URL was fetched and its roomId is returned (the mock returns 404 for unregistered URLs, so registering only the api-live URL proves the call); (b) api-live `status:4` with roomId → reason `offline`.
 
-Do not create `tsdown.config.ts` files yet (t4). Do not move source files yet (t2). `bun install` now regenerates `bun.lock` with workspace entries.
+### t3 — recorder decision from reason + tick payload
 
-### t2 — move files
+Interface delta: `packages/tokrec/src/lib/config.ts` `RecorderEventHandler["tick"]` payload becomes `{ user: string; isLive: boolean; roomId?: string; reason?: LiveReason }` (additive). `packages/tokrec/src/core/recorder/index.ts` exports `decideTick(info: LiveInfo): { isLive: boolean; reason: LiveReason }` where `isLive` is true for `live`, `restricted`, `no-stream-url`, false otherwise.
 
-From the repo root, with `git mv` so history follows:
+- `onTick` currently calls `getRoomId` then `getLiveUrl` and emits `isLive:false` for both "offline" and "live but no stream URL" (`recorder/index.ts:115-133`). Replace the verdict part with one `getLiveInfo(user)` call, branch: `restricted` → `logger.warn` including `reason` and raw status detail, `tick {isLive:true, reason:"restricted"}`, return; `no-stream-url` → warn `no stream URL found (reason)`, `tick {isLive:true, reason:"no-stream-url"}`, return; `offline`/`no-room-id`/`error` → `@user is offline` plus reason in the log, `tick {isLive:false, reason}`, return; `live` → existing recording path unchanged with `tick {isLive:true, reason:"live"}`.
+- Keep `getNextUrl`/`isRoomAlive` refresh logic unchanged.
+- New test `packages/tokrec/test/recorder-tick.test.ts` covering `decideTick` for all six reasons.
 
-1. `mkdir -p packages/lib/src packages/cli/src packages/cli/test`
-2. `git mv src packages/lib/src` — this puts all of `src` under lib first.
-3. Move CLI-only modules out of lib: `git mv packages/lib/src/bin.ts packages/cli/src/bin.ts`; `git mv packages/lib/src/lib/cli.ts packages/lib/src/lib/ui.ts packages/lib/src/lib/tmux.ts packages/lib/src/lib/browser-cookies.ts packages/cli/src/`. `packages/lib/src/lib/` must end up containing exactly `config.ts`, `logger.ts`, `utils.ts`. Leave `packages/lib/src/core/**` and `packages/lib/src/index.ts` where they are.
-4. `git mv test packages/lib/test`, then `mkdir -p packages/cli/test` (already made) and `git mv packages/lib/test/cli.test.ts packages/lib/test/browser-cookies.test.ts packages/cli/test/`. `packages/lib/test/` keeps `tiktok.test.ts`, `tiktok-api.test.ts`, `config.test.ts`, `logger.test.ts`, `utils.test.ts`, `fixtures/`, `utils/mock-http.ts`.
+### t4 — CLI restricted/no-stream display
 
-Nothing at the repo root `src/` or `test/` may remain. Do not edit file contents — imports break in this intermediate state on purpose; t3 fixes them.
+Interface delta: `packages/cli/src/ui.ts` `Display` gains `userRestricted(user: string): void` and `userLiveNoStream(user: string, roomId: string): void`.
 
-### t3 — rewrite imports, widen lib API
+- Add a `lock` tag next to the existing tags (`ui.ts:19` area) and render, matching existing style: `userRestricted` → `[LOCK] @user is live but age-protected/restricted — stream unavailable to this session`; `userLiveNoStream` → `[LIVE] @user (room: X) — no stream URL found`.
+- `packages/cli/src/bin.ts:184` tick handler: branch on `info.reason === "restricted"` → `display.userRestricted`, `"no-stream-url"` → `display.userLiveNoStream`, else existing `isLive` branch.
+- New test `packages/cli/test/ui.test.ts`: spy on `process.stdout.write`, call `createDisplay().userRestricted("x")`, assert output contains `age-protected`; same for `userLiveNoStream` containing `no stream URL`.
 
-Lib side, `packages/lib/src/index.ts`: keep the existing `createRecorder` export and type block, add value exports:
+### t5 — capture script takes usernames + api-live JSON
 
-- `export { TikTokError } from "./lib/config"` (the class — today it is only re-exported via the type block, and the CLI needs `instanceof`)
-- `export type { LogLevel } from "./lib/config"`
-- `export { bytesToHuman, formatDuration, relativeTime, sanitizeUser } from "./lib/utils"`
+- `scripts/capture-fixtures.ts` hardcodes `anomaliaa27`/`naylaarindinta`. Accept repeatable `--user <name>` and `--help` (print usage, exit 0). With no `--user`, keep the current default pair. For each user write `<user>-profile.html`, `<user>-live.html`, `<user>-api-live.json` (GET `https://www.tiktok.com/api-live/user/room/?aid=1988&uniqueId=<name>&sourceType=54`), and `<user>-room-info.json` when a roomId is found. Keep the existing SIGI/universal-data extraction and `FIXTURE_DIR` path.
+- Do not run it against a live account without cookies; verification is `--help` plus `bun run typecheck`.
 
-CLI side. In `packages/cli/src/bin.ts`: `createRecorder` and the three formatting helpers (`bytesToHuman`, `relativeTime`) and `TikTokError` / `RecorderConfig` come from `"@zfadhli/tokrec"`; internal modules become `"./browser-cookies"`, `"./cli"`, `"./tmux"`, `"./ui"`. In `packages/cli/src/cli.ts`: `LogLevel` / `RecorderConfig` / `TikTokError` from `"@zfadhli/tokrec"`, `sanitizeUser` from `"@zfadhli/tokrec"`, `pkg` import `"../../package.json"` → `"../package.json"`. In `packages/cli/src/ui.ts`: `formatDuration` from `"@zfadhli/tokrec"`. `tmux.ts` and `browser-cookies.ts` have no cross-package imports — leave them.
+### t6 — README + CHANGELOG note
 
-Tests: `packages/cli/test/cli.test.ts` imports `parseArgs` from `"../src/cli"` and `RecorderConfig` from `"@zfadhli/tokrec"`; `packages/cli/test/browser-cookies.test.ts` imports from `"../src/browser-cookies"`. Lib tests need no edits (`../src/...` still resolves).
+- `README.md`, under Authentication after the WAF caution: a short "Age-protected / restricted LIVES" block — these appear as `[LOCK]`, the server returns `status_code 4003110` while `check_alive` is true, playback in the TikTok app does not transfer to the web session, and recording requires a web session (browser login) that can play the LIVE. No bypass promises.
+- `CHANGELOG.md` Unreleased: bullet noting age-protected LIVES are now reported explicitly instead of offline/no-stream confusion.
 
-Resolution: bun reads lib's `"bun"` export condition → `./src/index.ts`, so no lib build is needed. tsc needs the same — that is what `customConditions: ["bun"]` in `tsconfig.base.json` is for. If `bun run --cwd packages/cli typecheck` still reports cannot-find-module for `@zfadhli/tokrec`, fall back to adding `paths: { "@zfadhli/tokrec": ["../lib/src/index.ts"] }` to `packages/cli/tsconfig.json` and report the deviation in your summary.
+### t7 — full green gate
 
-### t4 — tsdown configs
+Run from the repo root and report exit status plus counts: `bun run lint` (0 errors), `bun run typecheck` (both packages), `bun test` (existing 71 + new), `bun run build` (lib then cli). Fix only regressions introduced by t1–t6.
 
-`packages/lib/tsdown.config.ts` — same shape as the current root config, entry `["src/index.ts"]`: `format: "esm"`, `clean: true`, `dts: true`, `sourcemap: true`, `target: "node20"`, `unbundle: true`.
+### t8/t9 — review gate
 
-`packages/cli/tsdown.config.ts` — entry `["src/bin.ts"]`, same flags **except** `dts: false` (bin-only, no consumers; dts would need lib's built types). `git rm tsdown.config.ts`.
+- t8 (sage, spec axis): does the diff satisfy `.crew/spec.md` acceptance criteria 1–10? Any missed criterion, unsupported claim, or behavior that still lies about status?
+- t9 (scout, standards axis): repo conventions (`AGENTS.md`), tests actually exercise the new logic, no fixture tampering, no leaked debug debris, no scope creep beyond the spec's out-of-scope list.
 
-Expected: lib dist has `index.mjs`, `index.d.mts`, sourcemaps; cli `dist/bin.mjs` line 1 is `#!/usr/bin/env bun` (tsdown preserves the shebang — if it is missing, report it, do not hand-patch). Build order lib → cli is enforced by the root script; cli's build has no real dependency on lib's dist.
-
-### t5 — CI + publish workflows
-
-`.github/workflows/ci.yml`: replace `bunx biome ci src/` with `bunx biome ci packages/`, `bunx tsc --noEmit` with `bun run typecheck`, `bun test` stays, `bunx tsdown` with `bun run build`.
-
-`.github/workflows/publish.yml`: `bunx tsdown` → `bun run build`; replace the single `npm publish` step with two steps in this order — `npm publish --workspace packages/lib --provenance --access public` then `npm publish --workspace packages/cli --provenance --access public` (same `NODE_AUTH_TOKEN` env). Lib first is load-bearing: cli's `workspace:^` range must rewrite to a version that already exists on the registry. GitHub release `files:` → `packages/*/dist/**` and `LICENSE`.
-
-`lefthook.yml` needs no edits — its globs are file-extension based and root scripts delegate. Confirm that by reading it; if a `glob`/`run` references a path that no longer exists, fix it.
-
-### t6 — repoint dev script
-
-`scripts/capture-fixtures.ts` currently references paths that were already stale pre-split. Rewrite: `FIXTURE_DIR` → `packages/lib/test/fixtures/tiktok`; `src/browser-cookies.ts` → `packages/cli/src/browser-cookies.ts`; `src/api/client.ts` → `packages/lib/src/core/api/client.ts`; `src/api/tiktok.ts` → `packages/lib/src/core/api/tiktok.ts`. `ROOT` stays the repo root. No behavior change beyond paths.
-
-### t7 — README
-
-CLI install commands only: `npm install -g @zfadhli/tokrec` → `@zfadhli/tokrec-cli`; the npx one-off `npx @zfadhli/tokrec …` → `npx @zfadhli/tokrec-cli …`. Library examples and every `import … from "@zfadhli/tokrec"` stay as they are (that name is still the library). Leave the npm badges as they are; do not restructure the README.
-
-### t8 — CHANGELOG
-
-Add an `## Unreleased` section at the top (above the latest release) stating: package split into `@zfadhli/tokrec` (library, programmatic API only) and `@zfadhli/tokrec-cli` (CLI, `tokrec` bin); the `./cli` subpath export and deep imports are removed (breaking, pre-1.0); CLI install/one-off commands now use the new package. Match the file's existing heading and bullet style — read its first 30 lines first.
-
-### t9 — green gate
-
-No edits. Run in order and capture output: `bun run lint`, `bun run typecheck`, `bun test`, `bun run build`, `bun run packages/cli/dist/bin.mjs --version` (expect `0.13.0`), `npm pack --dry-run --workspace packages/lib`, `npm pack --dry-run --workspace packages/cli`. Any failure is a real defect: report the command, its output, and the offending file rather than papering over it. In particular verify from the pack output that lib ships `dist/` **and** `src/` (the `bun` condition must resolve inside the published tarball) and that neither tarball contains test files.
-
-### t10 — adversarial review
-
-Read `.crew/spec.md`, the ADR, and the full diff (`git diff` against the pre-ticket HEAD plus untracked files). For each acceptance criterion 1–10, state pass/fail with the command that proves it. Try to refute the plan's claims rather than confirm them — specifically: does anything still import lib internals from cli beyond the public entry; does lib still reference `bun:sqlite` or `koko-cli`; does `packages/cli` accidentally build dts; would a fresh clone `bun install && bun run build` produce a publishable tarball; is the `bun` condition harmless for Node consumers. Report findings by severity; change nothing.
+Both report findings with file:line and a severity each; the orchestrator appends criticals as new tickets.

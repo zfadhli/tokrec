@@ -221,6 +221,10 @@ You can also include the `tt-target-idc` cookie (optional, for regional routing)
 > [!CAUTION]
 > Without valid cookies, the tool will report every user as **offline** because the WAF challenge page won't contain live-stream JSON data.
 
+### Age-protected / restricted LIVES
+
+Some LIVES are age-protected. These show as `[LOCK]` — the user is live but the stream is unavailable to this session. The server returns `status_code 4003110` while `check_alive` is true. Playback in the TikTok app does not transfer to a web session: recording requires a web session (browser login) that TikTok lets play the LIVE.
+
 ---
 
 ## How it works

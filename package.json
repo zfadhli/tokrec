@@ -7,8 +7,8 @@
   ],
   "scripts": {
     "dev": "bun run --cwd packages/cli src/bin.ts",
-    "build": "bun run --cwd packages/lib build && bun run --cwd packages/cli build",
-    "typecheck": "bun run --cwd packages/lib typecheck && bun run --cwd packages/cli typecheck",
+    "build": "bun run --cwd packages/tokrec build && bun run --cwd packages/cli build",
+    "typecheck": "bun run --cwd packages/tokrec typecheck && bun run --cwd packages/cli typecheck",
     "test": "bun test",
     "lint": "biome check packages/",
     "lint:fix": "biome check --write packages/",

@@ -26,3 +26,7 @@ Split into two bun-workspace packages under a private root:
 - **Three-package split with a shared internals package** — 3.1k LOC; a third publish target and version surface with no payoff.
 - **Changesets / independent versioning** — lib and cli ship together; machinery exceeds the need.
 - **Bundling lib into cli's dist** — hides the boundary instead of defining it, and still needs build ordering.
+
+## Rename note (2026-10-14)
+
+The directory was later renamed `packages/lib` → `packages/tokrec` so the path matches the package it holds (`@zfadhli/tokrec`). Package names, exports, publish order, and behavior are unchanged; this record keeps the original path as written.

@@ -4,12 +4,12 @@
  */
 
 import { execa } from "execa"
-import type { RecorderConfig, RecorderController } from "../../lib/config"
+import type { LiveReason, RecorderConfig, RecorderController } from "../../lib/config"
 import { normalizeConfig, TikTokError } from "../../lib/config"
 import { createLogger } from "../../lib/logger"
 import { findFfmpegPath, sleep } from "../../lib/utils"
 import { createHttpClient } from "../api/client"
-import { createTikTokApi, type TikTokApi } from "../api/tiktok"
+import { createTikTokApi, type LiveInfo, type TikTokApi } from "../api/tiktok"
 import { createPollingMonitor, type PollingMonitor } from "../monitor"
 import { type Converter, createConverter } from "./convert"
 import { type AudioNormalizer, createAudioNormalizer } from "./normalize"
@@ -18,6 +18,23 @@ import { createEventEmitter } from "./recorder-events"
 import { createRecorderState } from "./recorder-state"
 import type { DownloadResult } from "./stream"
 import { createStreamDownloader, type StreamDownloader } from "./stream"
+
+/**
+ * Per-tick verdict from a `LiveInfo` reason. `live`, `restricted`, and
+ * `no-stream-url` all mean the room is live; the rest mean offline.
+ */
+export function decideTick(info: LiveInfo): { isLive: boolean; reason: LiveReason } {
+  switch (info.reason) {
+    case "live":
+    case "restricted":
+    case "no-stream-url":
+      return { isLive: true, reason: info.reason }
+    case "offline":
+    case "no-room-id":
+    case "error":
+      return { isLive: false, reason: info.reason }
+  }
+}
 
 export function createRecorder(config: RecorderConfig): RecorderController {
   const cfg = normalizeConfig(config)
@@ -113,22 +130,36 @@ export function createRecorder(config: RecorderConfig): RecorderController {
         emitter.emit("checking", { user })
         logger.info(`Checking @${user}...`)
 
-        const roomId = await tikTokApi.getRoomId(user)
-        if (!roomId) {
-          logger.info(`@${user} is offline`)
-          emitter.emit("tick", { user, isLive: false })
+        const info = await tikTokApi.getLiveInfo(user)
+        const roomId = info.roomId ?? undefined
+
+        if (info.reason === "restricted") {
+          logger.warn(
+            `@${user} is live but age-protected/restricted — stream unavailable (reason: restricted, status_code 4003110, source: ${info.source})`,
+          )
+          emitter.emit("tick", { user, isLive: true, roomId, reason: "restricted" })
           return
         }
 
-        const liveUrl = await tikTokApi.getLiveUrl(roomId)
-        if (!liveUrl) {
-          logger.warn(`@${user} is live but no stream URL found`)
-          emitter.emit("tick", { user, isLive: false, roomId })
+        if (info.reason === "no-stream-url") {
+          logger.warn(
+            `@${user} is live but no stream URL found (reason: no-stream-url, source: ${info.source})`,
+          )
+          emitter.emit("tick", { user, isLive: true, roomId, reason: "no-stream-url" })
           return
         }
 
-        logger.info(`@${user} is LIVE! (room: ${roomId})`)
-        emitter.emit("tick", { user, isLive: true, roomId })
+        if (!decideTick(info).isLive) {
+          logger.info(`@${user} is offline (reason: ${info.reason}, source: ${info.source})`)
+          emitter.emit("tick", { user, isLive: false, roomId, reason: info.reason })
+          return
+        }
+
+        // Live verdict implies roomId + streamUrl are set; narrow for the recording path.
+        const liveRoomId = info.roomId as string
+        const liveUrl = info.streamUrl as string
+        logger.info(`@${user} is LIVE! (room: ${liveRoomId}, reason: live, source: ${info.source})`)
+        emitter.emit("tick", { user, isLive: true, roomId: liveRoomId, reason: "live" })
 
         stateManager.setState({ state: "recording" })
         emitter.emit("recording:start", { user, file: "" })
@@ -136,14 +167,14 @@ export function createRecorder(config: RecorderConfig): RecorderController {
         const getNextUrl = async (): Promise<string | null> => {
           // Use the lightweight check_alive endpoint first — avoids a full
           // page re-scan + room/info call when the stream is still active.
-          const alive = await tikTokApi.isRoomAlive(roomId)
+          const alive = await tikTokApi.isRoomAlive(liveRoomId)
           if (!alive) {
             logger.info(`@${user} is no longer live — stopping`)
             return null
           }
           // Still alive — invalidate cache and get a fresh stream URL.
           tikTokApi.invalidateCache()
-          return tikTokApi.getLiveUrl(roomId)
+          return tikTokApi.getLiveUrl(liveRoomId)
         }
 
         const result = await streamDownloader.download(
@@ -185,7 +216,7 @@ export function createRecorder(config: RecorderConfig): RecorderController {
           const alive = await tikTokApi.isRoomAlive(roomId)
           if (!alive) {
             logger.info(`@${user} is offline`)
-            emitter.emit("tick", { user, isLive: false })
+            emitter.emit("tick", { user, isLive: false, reason: "offline" })
           }
         }
       },

@@ -235,6 +235,145 @@ describe("isRoomAlive with check_alive endpoint", () => {
   })
 })
 
+// ─── getLiveInfo reason taxonomy (t1: restricted / offline / live) ────────
+
+describe("getLiveInfo with reason taxonomy", () => {
+  const RESTRICTED_ROOM_ID = "7696184043282287367"
+
+  function buildLiveHtmlWithoutStreamData(): string {
+    const sigi = {
+      LiveRoom: {
+        liveRoomUserInfo: {
+          user: { roomId: RESTRICTED_ROOM_ID },
+          liveRoom: { status: 2, title: "restricted live" },
+        },
+      },
+    }
+    return `<html><head><script id="SIGI_STATE" type="application/json">${JSON.stringify(sigi)}</script></head><body>${"x".repeat(6000)}</body></html>`
+  }
+
+  test("restricted: SIGI live without streamData + room/info 4003110 + check_alive true", async () => {
+    const http = createMockHttp({
+      "https://www.tiktok.com/@restricteduser/live": buildLiveHtmlWithoutStreamData(),
+      "https://webcast.tiktok.com/webcast/room/info/": loadFixture(
+        FIXTURES,
+        "room-info-restricted.json",
+      ),
+      "https://webcast.tiktok.com/webcast/room/check_alive/": loadFixture(
+        FIXTURES,
+        "check-alive-live.json",
+      ),
+    })
+
+    const api = createTikTokApi(http)
+    const info = await api.getLiveInfo("restricteduser")
+    expect(info.roomId).toBe(RESTRICTED_ROOM_ID)
+    expect(info.isLive).toBe(true)
+    expect(info.streamUrl).toBeNull()
+    expect(info.reason).toBe("restricted")
+
+    await http.close()
+  })
+
+  test("offline: same refused room but check_alive false", async () => {
+    const http = createMockHttp({
+      "https://www.tiktok.com/@restricteduser/live": buildLiveHtmlWithoutStreamData(),
+      "https://webcast.tiktok.com/webcast/room/info/": loadFixture(
+        FIXTURES,
+        "room-info-restricted.json",
+      ),
+      "https://webcast.tiktok.com/webcast/room/check_alive/": loadFixture(
+        FIXTURES,
+        "check-alive-offline.json",
+      ),
+    })
+
+    const api = createTikTokApi(http)
+    const info = await api.getLiveInfo("restricteduser")
+    expect(info.roomId).toBe(RESTRICTED_ROOM_ID)
+    expect(info.isLive).toBe(false)
+    expect(info.reason).toBe("offline")
+
+    await http.close()
+  })
+
+  test("live: healthy SIGI + room-info fixture resolves reason live with a stream URL", async () => {
+    const http = createMockHttp({
+      "https://www.tiktok.com/@anomaliaa27/live": loadFixture(FIXTURES, "anomaliaa27-live.html"),
+      "https://webcast.tiktok.com/webcast/room/info/": loadFixture(
+        FIXTURES,
+        "anomaliaa27-room-info.json",
+      ),
+    })
+
+    const api = createTikTokApi(http)
+    const info = await api.getLiveInfo("anomaliaa27")
+    expect(info.reason).toBe("live")
+    expect(info.streamUrl).toMatch(/\.(flv|m3u8)/)
+
+    await http.close()
+  })
+})
+
+// ─── fetchLiveInfo api-live fallback (t2) ────────
+
+describe("fetchLiveInfo api-live fallback", () => {
+  function buildLargePageWithoutRoomId(): string {
+    return `<html><head><title>age wall</title></head><body>${"x".repeat(6000)}</body></html>`
+  }
+
+  test("calls api-live when a large /live page yields no roomId", async () => {
+    const roomId = "7696184043282287367"
+    const http = createMockHttp({
+      "https://www.tiktok.com/@bigpageuser/live": buildLargePageWithoutRoomId(),
+      "https://www.tiktok.com/api-live/user/room/": JSON.stringify({
+        data: { user: { roomId, status: 2 } },
+      }),
+    })
+
+    const api = createTikTokApi(http)
+    const info = await api.getLiveInfo("bigpageuser")
+    // Mock returns 404 for unregistered URLs, so a roomId here proves api-live was fetched
+    expect(info.roomId).toBe(roomId)
+    expect(info.source).toBe("api-live")
+
+    await http.close()
+  })
+
+  test("api-live status 4 with roomId maps to offline with roomId kept", async () => {
+    const roomId = "7696112012440324885"
+    const http = createMockHttp({
+      "https://www.tiktok.com/@offlineuser/live": buildLargePageWithoutRoomId(),
+      "https://www.tiktok.com/api-live/user/room/": JSON.stringify({
+        data: { user: { roomId, status: 4 } },
+      }),
+    })
+
+    const api = createTikTokApi(http)
+    const info = await api.getLiveInfo("offlineuser")
+    expect(info.roomId).toBe(roomId)
+    expect(info.isLive).toBe(false)
+    expect(info.reason).toBe("offline")
+    expect(info.source).toBe("api-live")
+
+    await http.close()
+  })
+
+  test("api-live non-JSON body surfaces reason error when no info obtained", async () => {
+    const http = createMockHttp({
+      "https://www.tiktok.com/api-live/user/room/": "<html>not json</html>",
+    })
+
+    const api = createTikTokApi(http)
+    const info = await api.getLiveInfo("brokenuser")
+    expect(info.roomId).toBeNull()
+    expect(info.isLive).toBe(false)
+    expect(info.reason).toBe("error")
+
+    await http.close()
+  })
+})
+
 // ─── findStreamUrlRecursively integration with real fixtures ────────
 
 describe("findStreamUrlRecursively with fixture data", () => {

@@ -13,6 +13,7 @@
 export { createRecorder } from "./core/recorder/index"
 export type {
   AppErrorKind,
+  LiveReason,
   LogLevel,
   RecorderConfig,
   RecorderController,

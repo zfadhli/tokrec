@@ -17,6 +17,7 @@ const tag = {
   live: color.bold(color.green("[LIVE] ")),
   info: color.bold(color.blue("[INFO] ")),
   off: color.bold(color.blue("[OFF] ")),
+  lock: color.bold(color.yellow("[LOCK] ")),
   warn: color.bold(color.yellow("[WARN] ")),
   err: color.bold(color.red("[ERR] ")),
 }
@@ -32,6 +33,10 @@ export interface Display {
   userOfflineRepeat(user: string, lastCheck: string): void
   /** User is live! Clears the checking spinner. */
   userLive(user: string, roomId: string): void
+  /** User is live but age-protected/restricted — stream unavailable. */
+  userRestricted(user: string): void
+  /** User is live but no stream URL was resolved. */
+  userLiveNoStream(user: string, roomId: string): void
 
   /** Recording starts: spinner without filename (known only post-download). */
   startRecording(): void
@@ -133,6 +138,22 @@ export function createDisplay(): Display {
       offlineLineShown = false
       process.stdout.write(
         `${tag.live}${color.bold(color.green(`@${user}`))} ${color.dim(`(room: ${color.bold(color.yellow(roomId))})`)}\n`,
+      )
+    },
+
+    userRestricted(user: string): void {
+      clearSpinner()
+      offlineLineShown = false
+      process.stdout.write(
+        `${tag.lock}${color.bold(color.yellow(`@${user}`))}${color.dim(" is live but age-protected/restricted \u2014 stream unavailable to this session")}\n`,
+      )
+    },
+
+    userLiveNoStream(user: string, roomId: string): void {
+      clearSpinner()
+      offlineLineShown = false
+      process.stdout.write(
+        `${tag.live}${color.bold(color.green(`@${user}`))} ${color.dim(`(room: ${color.bold(color.yellow(roomId))}) \u2014 no stream URL found`)}\n`,
       )
     },
 
