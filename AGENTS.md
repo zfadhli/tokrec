@@ -7,6 +7,7 @@ Bun workspace. Read this before changing layout, publishing, or delegating.
 - `packages/tokrec` — `@zfadhli/tokrec`, library only: `src/core/**`, `src/lib/{config,logger,utils}.ts`, public API re-exported from `src/index.ts`.
 - `packages/cli` — `@zfadhli/tokrec-cli`, `bin: tokrec`: `src/{bin,cli,ui,tmux,browser-cookies}.ts`. May import the lib **only** through `@zfadhli/tokrec` — never a lib internal path.
 - Root — private; owns tooling only (`biome.json`, `lefthook.yml`, `tsconfig.base.json`, scripts, workflows).
+- `packages/tokrec/src/core/api/resolvers/` — one file per resolution phase (`page` → `api-live` → `profile`) behind the internal `RoomSource` interface; `tiktok.ts` is orchestrator-only (cache, chain wiring, verdict mapping). Pure parsing lives in `parse.ts`, Webcast endpoints in `webcast.ts`, page fetching in `page-fetch.ts`. Internal only — not a public extension point; keep resolver files under 150 LOC.
 
 Run everything from the root: `bun run lint`, `bun run typecheck`, `bun test`, `bun run build`. The build chain is explicit: lib, then cli. `bun test` discovers tests in both packages.
 

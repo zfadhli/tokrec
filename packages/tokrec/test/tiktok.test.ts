@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { findStreamUrlRecursively } from "../src/core/api/tiktok"
+import { findStreamUrlRecursively } from "../src/core/api/parse"
 
 describe("findStreamUrlRecursively", () => {
   test("finds direct FLV URL in a simple object", () => {

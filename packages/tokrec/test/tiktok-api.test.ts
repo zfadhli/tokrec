@@ -9,11 +9,11 @@
 
 import { describe, expect, test } from "bun:test"
 import {
-  createTikTokApi,
   extractSigiState,
   extractUserFromUniversalData,
   findStreamUrlRecursively,
-} from "../src/core/api/tiktok"
+} from "../src/core/api/parse"
+import { createTikTokApi } from "../src/core/api/tiktok"
 import { createMockHttp, loadFixture } from "./utils/mock-http"
 
 // ─── Fixture paths ──────────────────────────────────────────────────

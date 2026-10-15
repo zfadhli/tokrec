@@ -1,79 +1,142 @@
-# Tickets — honest LIVE status reporting (age-protected / restricted rooms)
+# Tickets — resolver chain extraction in `core/api`
 
-Spec: `.crew/spec.md` · Evidence: `.crew/research/age-protected-live-evidence.md` · All tickets run in `/home/envs4/workspaces/tokrec`. Supersedes the workspace-split ledger, whose tickets are archived in git at `166f7af`.
+Spec: `.crew/spec.md`. All work in `/home/envs4/workspaces/tokrec`, base commit `cf398d7`. Supersedes the age-protected-LIVE ledger (archived in git at `cf398d7`; its duplicate open t10 was reconciled 2026-10-15 — no mp4s tracked, `.gitignore:37`).
+
+Working rules for every ticket: read each file before editing it; `bun:test`; never touch `packages/*/test/fixtures/**` (Biome-excluded raw bytes); **no state-changing git commands** (`checkout`/`reset`/`clean`/`add`/`commit`/`stash`); report evidence — command, exit status, verbatim output. Line anchors below are as of `cf398d7`; locate symbols by name once earlier tickets shift them.
 
 ## Ledger
 
-- [x] t1 room/info + page reason taxonomy (smith) — done — evidence: `bun test packages/tokrec/test/tiktok-api.test.ts` 18 pass/0 fail; fixture `room-info-restricted.json` byte-exact; diff 4 files +362/-36 (tiktok.ts, config.ts, index.ts, test); duplicated 4003110→check_alive block at tiktok.ts:226,407,521,615 — flagged for t9 — [parallel-safe: no, needs: none]
-- [x] t2 unconditional `api-live` fallback + mapping (smith) — done — evidence: `bun test packages/tokrec/test/tiktok-api.test.ts` 20 pass/0 fail; `resolveRefusedRoom` defined tiktok.ts:474 and called 4x (227,387,499,574); `html.length < 5000` now only in the tryFetchPage WAF heuristic (146) — [parallel-safe: no, needs: t1]
-- [x] t3 recorder decision from reason + tick payload (smith) — done — evidence: `bun test packages/tokrec` 58 pass/0 fail; `decideTick` recorder/index.ts:26; tick payload reason config.ts:90; restricted tick logs status_code 4003110 + source, `isLive:true` — [parallel-safe: no, needs: t1]
-- [x] t4 CLI restricted/no-stream display (smith) — done — evidence: `bun run typecheck` 0 + `bun test packages/cli` 26 pass/0 fail; ui.ts `lock` tag:20, `userRestricted`:144, `userLiveNoStream`:152; bin.ts branches :186,:188; no git commands in transcript — [parallel-safe: yes, needs: t3]
-- [x] t5 capture script takes usernames + api-live JSON (smith) — done — evidence: `bun run scripts/capture-fixtures.ts --help` exit 0 with usage; `bun run typecheck` exit 0; diffstat 1 file +111/-68, fixtures untouched — [parallel-safe: yes, needs: none]
-- [x] t6 README + CHANGELOG note (smith) — done — evidence: README.md:224-228 "Age-protected / restricted LIVES" block, CHANGELOG.md:15 Unreleased bullet; `rg -n 'age-protected' README.md CHANGELOG.md` exit 0; diffstat 2 files +5 lines, no scope creep — [parallel-safe: yes, needs: none]
-- [x] t7 full green gate (smith→orchestrator) — done — evidence: lint=0 (after `lint:fix` on 3 files for formatter/organizeImports violations from t1–t4; 5 pre-existing `noNonNullAssertion` warnings), typecheck=0, test=0 (84 pass/0 fail/134 expects), build=0; deviation: orchestrator ran the gate inline (pure verification). Re-verified after t11: lint=0, typecheck=0, test=0 (85 pass/0 fail/137 expects), build=0 — [parallel-safe: no, needs: t1,t2,t3,t4,t5,t6]
-- [x] t8 spec-axis review (sage) — done — verdict: pass-with-minors, no criticals; gate reproduced (84 pass, lint 0, typecheck 0, build 0, capture --help 0); criteria 1–10 hold; minors: (a) `packages/cli/test/ui.test.ts` untracked → staged via t10, (b) `reason:"error"` wired only for page-fetch catch → t11, (c) live-tick log omits reason/source → t11, (d) post-recording tick reason undefined (inherited, not regression) → t11 — [parallel-safe: no, needs: t7]
-- [x] t8 delta re-verify after t11 (sage) — done — all three minors closed, no new findings: error flag set only on exception paths (404/500/empty return before catches; flag reset per tick at tiktok.ts:164; non-null result short-circuits), new test hits :415 branch; criterion 7 edits good; residual nit: recorder/index.ts:218 offline log lacks reason (not charged)
-- [x] t10 remove accidentally tracked recording + ignore mp4s — done — evidence: deleted `packages/cli/dominicteng2=20261012_205540.mp4` (2.4MB, tracked by 166f7af) and untracked `packages/cli/floradegreytta=20261013_084546.mp4` (47MB); `.gitignore:37 *.mp4`; `git ls-files | rg '\.mp4$'` empty; `git check-ignore -v` matches; staged: `M .gitignore`, `D …dominicteng2…mp4`, `A packages/cli/test/ui.test.ts` (nothing committed) — (user/orchestrator) [parallel-safe: yes, needs: none]
-- [x] t11 close spec-gap minors from t8 — done — evidence: `lastFetchHadError` now at tiktok.ts:269,331,415,450; live log names reason+source recorder/index.ts:161; post-recording tick `reason:"offline"` :219; `bun test packages/tokrec` 59 pass/0 fail (+1 error-reason test); `bun run lint` exit 0; no git commands — [parallel-safe: no, needs: t8]
-- [x] t9 standards-axis review (scout) — done — evidence: 7 fixtures byte-match HEAD (`cmp` exit 0), fixture diff = 100% renames + new restricted fixture; index 35 `packages/tokrec` paths, no `packages/lib` left; symlink resolves `../../../tokrec`; `package.json`/`publish.yml` order + `files`/`exports` intact; cli imports only `@zfadhli/tokrec`; no debug debris; tests assert behavior. Scope finding ("candidate probing") = false positive: `findStreamUrlRecursively` comment/arrays exist at HEAD (`git show HEAD:packages/lib/src/core/api/tiktok.ts:522,545`). High finding → t10 — [parallel-safe: yes, needs: t7]
-- [ ] t10 remove accidentally tracked recording + ignore mp4s — status: pending user approval — paths: `packages/cli/dominicteng2=20261012_205540.mp4` (tracked since 166f7af: Bin 0→2462937), `.gitignore` — verify: `git ls-files | rg '\.mp4$'` empty and `git check-ignore -v 'packages/cli/floradegreytta=*.mp4'` matches — (user/orchestrator) [parallel-safe: yes, needs: none]
+- [x] t1 extract pure parsing to `parse.ts` (smith) — done — evidence: `bun test packages/tokrec` 59 pass/0 fail (108 expects), `bun run typecheck` exit 0, `bun run lint` exit 0 (5 pre-existing warnings); `parse.ts` 171 LOC with the 5 symbols, `tiktok.ts` 815→650, verbatim check OK, fixtures diff empty — [parallel-safe: no, needs: none]
+- [x] t2 extract Webcast primitives to `webcast.ts` (smith) — done — evidence: `bun test packages/tokrec` 59 pass/0 fail, typecheck exit 0, lint exit 0; `webcast.ts` 178 LOC with factory+5 fns, `tiktok.ts` 650→503, single `flagError()` call, 10 call sites retargeted, fixtures untouched — [parallel-safe: no, needs: t1]
+- [x] t3 extract page fetcher to `page-fetch.ts` (smith) — done — evidence: `bun test packages/tokrec` 59 pass/0 fail, typecheck exit 0, lint exit 0; `page-fetch.ts` 41 LOC, `tiktok.ts` 503→472, both call sites delegate, fixtures untouched — [parallel-safe: no, needs: t2]
+- [x] t4 `resolvers/types.ts` + `resolvers/page.ts` (smith) — done — evidence: `bun test packages/tokrec` 59 pass/0 fail, typecheck exit 0, lint exit 0; `types.ts` 26 LOC, `page.ts` 210 LOC (over criterion-5 budget → spun out as t4b), `tiktok.ts` 472→285, `LiveInfo` re-exported from `tiktok.ts`, throws propagate — [parallel-safe: no, needs: t3]
+- [x] t4b split page resolver under 150 LOC (smith) — done — evidence: `page.ts` 210→137 (<150), `sigi-legacy.ts` 76 LOC with `fetchSigiLegacy(sigi, ctx)`, tests 59 pass/0 fail, typecheck+lint exit 0 — [parallel-safe: no, needs: t4]
+- [x] t5 `resolvers/api-live.ts` (smith) — done — evidence: `api-live.ts` 84 LOC moved verbatim, internal catch → `flagError()+null`, `tiktok.ts` 285→203, tests 59 pass/0 fail, typecheck+lint exit 0 — [parallel-safe: no, needs: t4b]
+- [x] t6 `resolvers/profile.ts` (smith) — done — evidence: `profile.ts` 34 LOC, `tiktok.ts` 203→170, tail is resolver calls only, tests 59 pass/0 fail, typecheck+lint exit 0 — [parallel-safe: no, needs: t5]
+- [x] t7 chain wiring + `tiktok.ts` < 350 LOC (smith) — done — evidence: `tiktok.ts` 170→160 LOC, chain loop verified by read (reset → try resolve → non-null wins → catch flags+aborts), tests 59 pass/0 fail, typecheck+lint exit 0 — [parallel-safe: no, needs: t6]
+- [x] t8 per-source unit tests (smith) — done — evidence: `resolvers.test.ts` +7 tests/29 expects, all 6 required cases; `bun test packages/tokrec` 66 pass/0 fail; deviation: 404 does not flag (matches base — `!res.ok` short-circuits), true transport failure simulated via throwing `get`, counter==1 — [parallel-safe: yes, needs: t7]
+- [x] t9 full green gate (smith→orchestrator) — done — evidence (orchestrator inline): `bun run lint` exit 0 (0 errors, 5 pre-existing warnings), `bun run typecheck` exit 0 both pkgs, `bun test` 92 pass/0 fail/166 expects/10 files, `bun run build` exit 0 lib+cli; LOC: tiktok.ts 160, page 137, api-live 84, sigi-legacy 76, webcast 178, parse 171, page-fetch 41, profile 34, types 26 — [parallel-safe: no, needs: t1..t8]
+- [x] t10 spec-axis review (sage) — done — verdict: criteria 1–11 satisfied, behavior-preserving, no critical/major. Parity map: 5 old flag sites + reset all accounted for (old:164→tiktok.ts:135, old:269→chain catch :150-156, old:331→profile.ts:29, old:415→api-live.ts:79, old:450→webcast.ts:59); sources/refuse-sites/URLs/params byte-identical; `index.ts` diff empty; fixtures diff empty. Minors: (a) `ResolveContext.http` in brief+body but not spec sketch — matches old behavior, accepted; (b) page resolve no-catch routing verified same terminal behavior; (c) cosmetic comment drift → t12 — [parallel-safe: yes, needs: t9]
+- [x] t11 standards-axis review (scout) — done — verdict: no critical/major; tests exercise real logic; fixtures byte-untouched; no runtime cycle from type-only `LiveInfo` import; scope clean. Minors: (a) emitted `source` asserted only for api-live/sigi → t12; (b) stale header comment `tiktok.ts:4-8` → t12 — [parallel-safe: yes, needs: t9]
+- [x] t12 close review minors: comment drift + emitted-source assertions (smith) — done — evidence: `bun test packages/tokrec` 68 pass/0 fail (was 66) with 2 new delegated-`room-info` source-pinning tests; typecheck+lint exit 0; `tiktok.ts` header rewritten, 159 LOC; fixtures untouched — [parallel-safe: yes, needs: t10,t11]
 
 ## Briefs
 
-Read each file before editing it. Tests use `bun:test`. Never format or edit `packages/*/test/fixtures/**` (Biome-excluded, raw bytes).
+### t1 — extract pure parsing to `parse.ts`
 
-### t1 — room/info + page reason taxonomy
+Create `packages/tokrec/src/core/api/parse.ts`. Move verbatim, signatures unchanged and exported: `SigiState` (tiktok.ts:645-679), `extractSigiState` (681-702), `extractUserFromUniversalData` (704-731), `extractStreamUrlFast` (733-764), `findStreamUrlRecursively` (766-810). No behavior edits, no reformatting beyond what `bun run lint` demands.
 
-Interface delta: `packages/tokrec/src/lib/config.ts` gains `export type LiveReason = "live" | "offline" | "restricted" | "no-stream-url" | "no-room-id" | "error"`. `packages/tokrec/src/core/api/tiktok.ts` `LiveInfo` gains `reason: LiveReason` and `source: string`, and is exported. `TikTokApi` gains `getLiveInfo(user: string): Promise<LiveInfo>` (additive; keep `getRoomId`, `isRoomAlive`, `getLiveUrl`, `invalidateCache` exactly as they are). `packages/tokrec/src/index.ts` exports type `LiveReason`.
+`tiktok.ts` imports them from `./parse` and keeps no local copies. Update test imports only: `packages/tokrec/test/tiktok-api.test.ts:12-15` (keep `createTikTokApi` from `../src/core/api/tiktok`; move `extractSigiState`, `extractUserFromUniversalData`, `findStreamUrlRecursively` to `../src/core/api/parse`) and `packages/tokrec/test/tiktok.test.ts:2` (`findStreamUrlRecursively` from `../src/core/api/parse`). Test assertions byte-unchanged.
 
-- Populate `reason`/`source` at every `LiveInfo` return in `tiktok.ts` (SIGI primary `source:"sigi"`, SIGI legacy `"sigi"`, `fetchLiveInfoFromApi` `"api-live"`, `fetchRoomInfoFromRoomApi` `"room-info"`, `fetchLiveInfoFromProfile` `"profile"`).
-- `fetchFromRoomApi` currently swallows `status_code === 4003110` (`tiktok.ts:316`). Change it to report the status instead of silently returning `null` — return a discriminated result (`{ ok: true; value: T } | { ok: false; statusCode: number; body: string }`) or an equivalent minimal change; callers map failures.
-- On `4003110` with a known roomId, call `fetchCheckAlive(roomId)` before concluding: `alive === true` → `reason: "restricted"`, `isLive: true`, `streamUrl: null`; `alive === false` → `reason: "offline"`, `isLive: false`.
-- `getLiveInfo(user)` returns the per-tick cached info; a total discovery failure returns `{ roomId: null, isLive: false, streamUrl: null, title: null, reason: "no-room-id" | "error", source: "none" }` (`"error"` when a caught exception/network failure was the cause).
-- Add fixture `packages/tokrec/test/fixtures/tiktok/room-info-restricted.json` with the exact verbatim body observed in the evidence file (one line, no reformatting).
-- Tests in `packages/tokrec/test/tiktok-api.test.ts` using `createMockHttp`/`loadFixture` (read the file first, follow its patterns): (a) `/live` SIGI HTML with `streamData` absent + `room/info` restricted fixture + `check_alive` `alive:true` → `getLiveInfo` gives reason `restricted`, roomId set, streamUrl null; (b) same but `check_alive` offline → reason `offline`; (c) healthy `anomaliaa27-live.html` + `anomaliaa27-room-info.json` → reason `live` and a `.flv`/`.m3u8` streamUrl.
+Interface delta: `parse.ts` becomes the home of the four pure helpers; `tiktok.ts` no longer exports them.
 
-### t2 — unconditional `api-live` fallback + mapping
+### t2 — extract Webcast primitives to `webcast.ts`
 
-Interface delta: none beyond t1.
+Create `packages/tokrec/src/core/api/webcast.ts` exporting:
 
-- `tiktok.ts:187` gates `/api-live/user/room/` behind `!html || html.length < 5000`. Restructure `fetchLiveInfo` so that endpoint is called whenever the page/SIGI/universal-data paths produced no roomId, regardless of page size. Suggested order after the SIGI block: universal-data-from-html (if roomId) → `/api-live/user/room/` → profile-page fallback.
-- In `fetchLiveInfoFromApi`: `status === 2` → try `fetchStreamUrlFromApi`; if that reports `4003110` and `check_alive` is true → reason `restricted` (source `api-live`); no URL and not restricted → `no-stream-url`; `status !== 2` → `offline`, `isLive:false`, keep the roomId.
-- Tests in `packages/tokrec/test/tiktok-api.test.ts`: (a) a >5000-byte `/live` page with no SIGI/roomId → assert the api-live URL was fetched and its roomId is returned (the mock returns 404 for unregistered URLs, so registering only the api-live URL proves the call); (b) api-live `status:4` with roomId → reason `offline`.
+```ts
+export type RoomApiResult<T> = { ok: true; value: T | null } | { ok: false; statusCode: number; body: string }
+export function createWebcastApi(http: HttpClient, debug: (msg: string) => void, flagError: () => void): {
+  fetchFromRoomApi: ...; fetchCheckAlive: ...; fetchStreamUrlFromApi: ...; fetchRoomInfoFromRoomApi: ...; resolveRefusedRoom: ...
+}
+```
 
-### t3 — recorder decision from reason + tick payload
+Move verbatim: `RoomApiResult` (tiktok.ts:41-45), `fetchFromRoomApi` (427-463), `fetchCheckAlive` (465-491), `resolveRefusedRoom` (493-509), `fetchRoomInfoFromRoomApi` (511-557), `fetchStreamUrlFromApi` (629-634). Replace every `lastFetchHadError = true` inside moved code with `flagError()`. `WEBCAST_BASE` moves here. `fetchRoomInfoFromRoomApi` imports `findStreamUrlRecursively` from `./parse`; `fetchStreamUrlFromApi` too.
 
-Interface delta: `packages/tokrec/src/lib/config.ts` `RecorderEventHandler["tick"]` payload becomes `{ user: string; isLive: boolean; roomId?: string; reason?: LiveReason }` (additive). `packages/tokrec/src/core/recorder/index.ts` exports `decideTick(info: LiveInfo): { isLive: boolean; reason: LiveReason }` where `isLive` is true for `live`, `restricted`, `no-stream-url`, false otherwise.
+In `createTikTokApi`, construct once: `const webcast = createWebcastApi(http, debug, () => { lastFetchHadError = true })`, and change internal call sites (`fetchLiveInfo` primary/fallback paths, `fetchLiveInfoFromApi`, `fetchLiveInfoFromProfile`) to `webcast.*`.
 
-- `onTick` currently calls `getRoomId` then `getLiveUrl` and emits `isLive:false` for both "offline" and "live but no stream URL" (`recorder/index.ts:115-133`). Replace the verdict part with one `getLiveInfo(user)` call, branch: `restricted` → `logger.warn` including `reason` and raw status detail, `tick {isLive:true, reason:"restricted"}`, return; `no-stream-url` → warn `no stream URL found (reason)`, `tick {isLive:true, reason:"no-stream-url"}`, return; `offline`/`no-room-id`/`error` → `@user is offline` plus reason in the log, `tick {isLive:false, reason}`, return; `live` → existing recording path unchanged with `tick {isLive:true, reason:"live"}`.
-- Keep `getNextUrl`/`isRoomAlive` refresh logic unchanged.
-- New test `packages/tokrec/test/recorder-tick.test.ts` covering `decideTick` for all six reasons.
+Interface delta: internal factory added; `lastFetchHadError` now reachable from the module only via callback.
 
-### t4 — CLI restricted/no-stream display
+### t3 — extract page fetcher to `page-fetch.ts`
 
-Interface delta: `packages/cli/src/ui.ts` `Display` gains `userRestricted(user: string): void` and `userLiveNoStream(user: string, roomId: string): void`.
+Create `packages/tokrec/src/core/api/page-fetch.ts`. Move `TIKTOK_BASES` (tiktok.ts:37) and `tryFetchPage` (136-159) into `createPageFetcher(http: HttpClient, debug: (msg: string) => void)` returning the `tryFetchPage` function with the same signature `(user, path) => Promise<{ html, baseUrl } | null>`. WAF heuristic (`html.length < 5000 || html.includes("SlardarWAF")`) unchanged. `tiktok.ts` constructs it in `createTikTokApi` and delegates.
 
-- Add a `lock` tag next to the existing tags (`ui.ts:19` area) and render, matching existing style: `userRestricted` → `[LOCK] @user is live but age-protected/restricted — stream unavailable to this session`; `userLiveNoStream` → `[LIVE] @user (room: X) — no stream URL found`.
-- `packages/cli/src/bin.ts:184` tick handler: branch on `info.reason === "restricted"` → `display.userRestricted`, `"no-stream-url"` → `display.userLiveNoStream`, else existing `isLive` branch.
-- New test `packages/cli/test/ui.test.ts`: spy on `process.stdout.write`, call `createDisplay().userRestricted("x")`, assert output contains `age-protected`; same for `userLiveNoStream` containing `no stream URL`.
+Interface delta: internal factory; `TIKTOK_BASES` out of `tiktok.ts`.
 
-### t5 — capture script takes usernames + api-live JSON
+### t4 — `resolvers/types.ts` + `resolvers/page.ts`
 
-- `scripts/capture-fixtures.ts` hardcodes `anomaliaa27`/`naylaarindinta`. Accept repeatable `--user <name>` and `--help` (print usage, exit 0). With no `--user`, keep the current default pair. For each user write `<user>-profile.html`, `<user>-live.html`, `<user>-api-live.json` (GET `https://www.tiktok.com/api-live/user/room/?aid=1988&uniqueId=<name>&sourceType=54`), and `<user>-room-info.json` when a roomId is found. Keep the existing SIGI/universal-data extraction and `FIXTURE_DIR` path.
-- Do not run it against a live account without cookies; verification is `--help` plus `bun run typecheck`.
+Create `packages/tokrec/src/core/api/resolvers/types.ts`:
 
-### t6 — README + CHANGELOG note
+```ts
+import type { HttpClient } from "../client"
+export interface LiveInfo { roomId: string | null; isLive: boolean; streamUrl: string | null; title: string | null; reason: LiveReason; source: string }
+export interface ResolveContext {
+  user: string
+  debug: (msg: string) => void
+  fetchPage: (user: string, path: string) => Promise<{ html: string; baseUrl: string } | null>
+  webcast: ReturnType<typeof createWebcastApi>
+  flagError: () => void
+}
+export interface RoomSource { readonly name: string; resolve(ctx: ResolveContext): Promise<LiveInfo | null> }
+```
 
-- `README.md`, under Authentication after the WAF caution: a short "Age-protected / restricted LIVES" block — these appear as `[LOCK]`, the server returns `status_code 4003110` while `check_alive` is true, playback in the TikTok app does not transfer to the web session, and recording requires a web session (browser login) that can play the LIVE. No bypass promises.
-- `CHANGELOG.md` Unreleased: bullet noting age-protected LIVES are now reported explicitly instead of offline/no-stream confusion.
+Move the `LiveInfo` declaration (tiktok.ts:636-643) into `types.ts`. `tiktok.ts` re-exports it (`export type { LiveInfo } from "./resolvers/types"`) so `recorder/index.ts` and both test files keep importing from `./tiktok`/`../src/core/api/tiktok` unchanged.
 
-### t7 — full green gate
+Create `packages/tokrec/src/core/api/resolvers/page.ts` exporting `createPageSource(): RoomSource` (zero-arg; all collaborators arrive via `ctx`) with `name: "page"`. Move the page/SIGI phase of `fetchLiveInfo` (tiktok.ts:161-307, i.e. everything up to and including the universal-data block) plus `fetchLiveInfoFallback` (558-627) verbatim, with `http`→`ctx.fetchPage` only where the page fetch happens (`tryFetchPage(user, "/live")`); `ctx.flagError()` replaces `lastFetchHadError = true`. Do **not** add a top-level try/catch — throws must propagate (the orchestrator's existing outer catch reproduces today's abort).
 
-Run from the repo root and report exit status plus counts: `bun run lint` (0 errors), `bun run typecheck` (both packages), `bun test` (existing 71 + new), `bun run build` (lib then cli). Fix only regressions introduced by t1–t6.
+In `tiktok.ts`, `fetchLiveInfo` temporarily becomes: reset flag → `try { const info = await pageSource.resolve(ctx); if (info) return info } catch { flagError; return null }` → then the existing inline api-live + profile tail unchanged.
 
-### t8/t9 — review gate
+Interface delta: `LiveInfo` file move + re-export; `RoomSource`/`ResolveContext` added.
 
-- t8 (sage, spec axis): does the diff satisfy `.crew/spec.md` acceptance criteria 1–10? Any missed criterion, unsupported claim, or behavior that still lies about status?
-- t9 (scout, standards axis): repo conventions (`AGENTS.md`), tests actually exercise the new logic, no fixture tampering, no leaked debug debris, no scope creep beyond the spec's out-of-scope list.
+### t4b — split page resolver under 150 LOC
 
-Both report findings with file:line and a severity each; the orchestrator appends criticals as new tickets.
+Spec criterion 5 caps each resolver at 150 LOC; `resolvers/page.ts` is 210. Create `packages/tokrec/src/core/api/resolvers/sigi-legacy.ts` exporting `fetchSigiLegacy(sigi: SigiState, ctx: ResolveContext): Promise<LiveInfo | null>`; move the local `fetchLiveInfoFallback` from `page.ts` verbatim into it (signature adapted to `ctx`, calls `ctx.webcast.fetchStreamUrlFromApi`/`resolveRefusedRoom`, `findStreamUrlRecursively` from `../parse`). `page.ts` imports and calls it. No behavior change.
+
+### t5 — `resolvers/api-live.ts`
+
+Create `packages/tokrec/src/core/api/resolvers/api-live.ts` exporting `createApiLiveSource(): RoomSource`, `name: "api-live"`. Move `fetchLiveInfoFromApi` (tiktok.ts:344-425) verbatim; it takes `user` from `ctx`, calls `ctx.webcast.fetchStreamUrlFromApi` / `ctx.webcast.resolveRefusedRoom`, keeps its internal try/catch → `ctx.flagError(); return null`. `source: "api-live"` strings unchanged.
+
+`tiktok.ts` deletes the local function and calls the source from `fetchLiveInfo`.
+
+### t6 — `resolvers/profile.ts`
+
+Create `packages/tokrec/src/core/api/resolvers/profile.ts` exporting `createProfileSource(): RoomSource`, `name: "profile"`. Move `fetchLiveInfoFromProfile` (tiktok.ts:309-342) verbatim; `ctx.fetchPage(user, "")`, `ctx.webcast.fetchRoomInfoFromRoomApi`, internal catch → `ctx.flagError(); return null`.
+
+`tiktok.ts` deletes the local function and calls the source from `fetchLiveInfo`.
+
+### t7 — chain wiring
+
+In `createTikTokApi` construct the sources once: `pageSource`, `apiLiveSource`, `profileSource`, and `const sources: RoomSource[] = [pageSource, apiLiveSource, profileSource]`. `fetchLiveInfo` becomes:
+
+```ts
+async function fetchLiveInfo(user: string): Promise<LiveInfo | null> {
+  lastFetchHadError = false
+  const ctx: ResolveContext = { user, debug, fetchPage, webcast, flagError: () => { lastFetchHadError = true } }
+  for (const source of sources) {
+    try {
+      const info = await source.resolve(ctx)
+      if (info) return info
+    } catch (_err) {
+      debug(`fetchLiveInfo: ${source.name} threw — ...`)
+      lastFetchHadError = true
+      return null
+    }
+  }
+  return null
+}
+```
+
+Delete the now-empty inline phase code. `tiktok.ts` must end below 350 LOC and contain only: imports, `TikTokApi` interface, `LiveInfo` re-export, `createTikTokApi` (cache + wiring + five public methods), resets. Behavior to preserve exactly: throw in page phase aborts chain; api-live/profile internal catch continues to next source; non-null short-circuits; flag resets per tick.
+
+### t8 — per-source unit tests
+
+New `packages/tokrec/test/resolvers.test.ts` using `createMockHttp`/`loadFixture` from `test/utils/mock-http.ts` (read it first). Construct each source directly with a minimal `ResolveContext` (stub `flagError` counter). Minimum cases: (a) `createPageSource` with restricted fixture path → `source: "sigi"` or delegated `"room-info"`, `reason: "restricted"`/`"offline"` per existing fixture semantics; (b) `createApiLiveSource` with api-live JSON `status: 4` → `reason: "offline"`, `source: "api-live"`, `isLive: false`; (c) `createProfileSource` with a page whose universal data has `userId` but no `roomId` → returns `null`, no throw; (d) each source's `name` is unique and matches its emitted `source` strings. Assertions may reuse existing fixtures; do not add fixtures.
+
+### t9 — full green gate
+
+From repo root, report exit status + counts for: `bun run lint` (0 errors), `bun run typecheck`, `bun test` (all pass; report total), `bun run build` (lib then cli). Fix only regressions introduced by t1–t8. Also report `wc -l packages/tokrec/src/core/api/tiktok.ts` and per-resolver LOC.
+
+### t10/t11 — review gate
+
+- t10 (sage, spec axis): does the result satisfy `.crew/spec.md` acceptance criteria 1–11? Enumerate every path that sets `lastFetchHadError`, every `source` string, and the `4003110` handling in all three phases against `cf398d7`. Unsupported claim or missed criterion → report with file:line.
+- t11 (scout, standards axis): repo conventions (`AGENTS.md`), tests exercise real logic, fixtures untouched (`git diff` on fixtures empty), no leaked debug debris, no public-export change (`packages/tokrec/src/index.ts` identical), no scope creep.
+
+Both report findings with file:line and a severity each; orchestrator appends criticals as new tickets.
+
+### t12 — close review minors: comment drift + emitted-source assertions
+
+1. `packages/tokrec/src/core/api/tiktok.ts`: rewrite the stale file header (lines 4–8, currently describes SIGI `/live` + profile fallback as if inline) to describe the real shape — `createTikTokApi` orchestrates a thin cache plus an ordered source chain (page → api-live → profile) declared in `resolvers/`; parsing lives in `parse.ts`, Webcast endpoints in `webcast.ts`. Remove/replace the stale inline section comment before `fetchLiveInfo` that says "Internal: fetch and parse SIGI_STATE / Universal Data" (parsing no longer lives here). Comments only — zero code changes.
+
+2. `packages/tokrec/test/resolvers.test.ts`: add emitted-`source` assertions for the delegated paths so every source string is pinned by a direct test. Read the existing file and fixtures first, reuse their harness. Minimum: a `createProfileSource()` case where the profile page carries a roomId → resolves through `ctx.webcast.fetchRoomInfoFromRoomApi` and emits `source: "room-info"` (use the healthy `anomaliaa27-*` fixture pairing or the equivalent already used in `tiktok-api.test.ts`); if the page resolver's universal-data path is not already asserted to emit `"room-info"`, add that too. No fixture edits (read-only).
+
+Evidence required (command + exit status + verbatim relevant output): `bun test packages/tokrec`, `bun run typecheck`, `bun run lint`. Report under 250 words.

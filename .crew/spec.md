@@ -1,38 +1,31 @@
-# Spec — honest LIVE status reporting (age-protected / restricted rooms)
+# Spec — resolver chain extraction in `core/api`
 
-Supersedes the workspace-split spec, which shipped in commit `166f7af`. Evidence for every claim: `.crew/research/age-protected-live-evidence.md`. Vocabulary: `.crew/GLOSSARY.md`.
+Supersedes the age-protected-LIVE ledger (archived in git at `cf398d7`). Design approved in session 2026-10-15; scope refined during planning: `room-info` is a shared helper, not a chain source — the chain is the three actual sequential phases (page/SIGI → api-live → profile).
 
 ## Problem
 
-When TikTok refuses stream data for a live room, tokrec reports a false verdict. `4003110` from `/webcast/room/info/` is collapsed into `null` (`packages/tokrec/src/core/api/tiktok.ts:316`); the recorder then logs `live but no stream URL found` and emits `tick {isLive: false}` (`packages/tokrec/src/core/recorder/index.ts:123-128`). For an **age-protected** LIVE — `check_alive=true`, `streamData` absent, `4003110` on every room/info variant — the user sees either a bogus offline state or a message that sends them hunting for better cookies. Separately, `/api-live/user/room/`, the only username→roomId API, is gated behind `!html || html.length < 5000` (`tiktok.ts:187`), so a long age-wall page skips it entirely.
+`packages/tokrec/src/core/api/tiktok.ts` is 815 LOC and holds four kinds of code at once: pure parsing, Webcast endpoint primitives, the Webcast room-info→LiveInfo mapping, and three resolution strategies interleaved in one 148-line `fetchLiveInfo`. Adding the api-live fallback in `cf398d7` edited the same refusal block at four sites. There is no way to test a strategy without standing up the whole orchestrator.
 
-No client-side fix can fetch a gated stream: Michele0303 v7.7.1 and tiktok-live-connector 2.5.0 receive the identical refusal with the same cookies. The fix is to report the truth, and to stop skipping the endpoint that still answers.
+Reference reconnaissance: `Yoganataa/tiktok-live-recorder-ts` (`/tmp/tlr-ts`, @yoganataa/tstok 2.1.0) solves this with a `RoomResolver` interface + `RoomResolverChain`, but has zero tests, no DI, and sends the session cookie to third-party resolvers. We borrow the seam, not the code.
+
+## Goal
+
+Split `tiktok.ts` into pure parsing / shared page+webcast primitives / one file per resolution phase behind a single internal `RoomSource` interface and ordered chain. Zero behavior change. No public API change.
 
 ## Acceptance criteria
 
-1. Room live + stream data refused (`4003110`, or `check_alive=true` with no `streamData` from any path) → user-visible line distinctly says the LIVE is **age-protected/restricted** (new `[LOCK]`-style line), never `[OFF]`; the tick carries `isLive: true` and `reason: "restricted"`; the log includes the raw `status_code`.
-2. Room live and stream URL resolved → unchanged behavior and output.
-3. Offline room (e.g. `/api-live/user/room/` returns `status=4` with a roomId) → `[OFF]`; no "live but no stream URL" false positive. Tick `isLive: false, reason: "offline"`.
-4. Live + alive + no URL and no `4003110` → distinguishable in logs/tick via `reason: "no-stream-url"`; UI shows a non-offline line.
-5. No discovery path produced a roomId → tick `reason: "no-room-id"`; network/parse failure across paths → `reason: "error"`. Both render as offline in the UI but are distinct in logs/`--debug` output.
-6. `/api-live/user/room/` is attempted whenever page paths yielded no roomId, regardless of page size; a >5000-byte page without SIGI_STATE still reaches it.
-7. `--debug` output names the reason and the discovery source per tick.
-8. Fixture `room-info-restricted.json` captures the verbatim `4003110` body; unit tests cover criteria 1, 3, 6 with `createMockHttp`.
-9. `bun run lint && bun run typecheck && bun test && bun run build` all exit 0; existing tests pass with additions only, no assertion edits.
-10. README explains that app playback does not transfer to the web session and age-protected LIVES need an age-cleared web session; CHANGELOG Unreleased notes the new reporting.
-
-## Interface deltas
-
-- `packages/tokrec/src/lib/config.ts`: new exported `type LiveReason = "live" | "offline" | "restricted" | "no-stream-url" | "no-room-id" | "error"`. `RecorderEventHandler["tick"]` payload becomes `{ user: string; isLive: boolean; roomId?: string; reason?: LiveReason }` (additive).
-- `packages/tokrec/src/core/api/tiktok.ts`: `LiveInfo` gains `reason: LiveReason` and `source: string` and is **exported**; `TikTokApi` gains `getLiveInfo(user: string): Promise<LiveInfo>` (additive). `getRoomId`, `isRoomAlive`, `getLiveUrl`, `invalidateCache` signatures unchanged.
-- `packages/tokrec/src/index.ts`: export type `LiveReason` (additive).
-- `packages/cli/src/ui.ts`: `Display` gains `userRestricted(user: string): void` and `userLiveNoStream(user: string, roomId: string): void` (additive).
-- `packages/cli/src/bin.ts`: tick handler branches on `reason` before `isLive`.
-- `scripts/capture-fixtures.ts`: accepts repeatable `--user <name>` and `--help`; writes `<user>-api-live.json` in addition to the existing files; default users unchanged.
+1. `packages/tokrec/src/core/api/parse.ts` exports, with identical signatures: `SigiState`, `extractSigiState`, `extractUserFromUniversalData`, `extractStreamUrlFast`, `findStreamUrlRecursively`.
+2. `packages/tokrec/src/core/api/webcast.ts` exports a factory that owns: `RoomApiResult<T>`, `fetchFromRoomApi`, `fetchCheckAlive`, `fetchStreamUrlFromApi`, `resolveRefusedRoom`, `fetchRoomInfoFromRoomApi`. Transport-error flagging is injected via a `flagError` callback, not module-global state.
+3. `packages/tokrec/src/core/api/page-fetch.ts` owns `tryFetchPage` + `TIKTOK_BASES` (the WAF heuristic), injectable `http`/`debug`.
+4. `packages/tokrec/src/core/api/resolvers/types.ts` defines internal `RoomSource { name: string; resolve(ctx): Promise<LiveInfo | null> }` and `ResolveContext`. `LiveInfo` moves here (or stays re-exported) but is still importable from `./tiktok` by `recorder/index.ts` and tests without edits to those call sites.
+5. Resolvers exist one per phase: `resolvers/page.ts` (SIGI primary + userInfo/legacy fallback + universal-data → room-info), `resolvers/api-live.ts`, `resolvers/profile.ts`. Each file < 150 LOC.
+6. `fetchLiveInfo` in `tiktok.ts` is a chain loop over `[page, api-live, profile]`: first non-null `LiveInfo` wins; a resolver that throws aborts the chain and sets `lastFetchHadError` (matches today's page-phase outer catch); a resolver that internally catches calls `flagError()` and returns `null`, letting the chain continue (matches today's api-live → profile behavior). `lastFetchHadError` still resets at the start of each tick.
+7. Every `LiveInfo.source` string is unchanged: `"sigi"`, `"api-live"`, `"room-info"`, `"profile"`, `"none"`. Every `LiveReason` outcome is unchanged for every path, including `4003110` + `check_alive` true/false.
+8. `tiktok.ts` drops below 350 LOC and contains only: the `TikTokApi` interface, `createTikTokApi` orchestration (cache, chain wiring, public methods), and type re-exports. No resolution logic.
+9. No change to `packages/tokrec/src/index.ts` exports; `createTikTokApi` stays non-public. No signature change to `getRoomId`/`isRoomAlive`/`getLiveUrl`/`getLiveInfo`/`invalidateCache`.
+10. Existing test assertions are byte-unchanged; only import paths for moved symbols may be edited. `packages/*/test/fixtures/**` untouched.
+11. Gate: `bun run lint` 0 errors, `bun run typecheck` 0, `bun test` all green (85 existing + new), `bun run build` exit 0.
 
 ## Out of scope
 
-- Any bypass of TikTok's age/entitlement gate: no signed requests (X-Bogus, Euler Stream), no mobile/app APIs, no port of Michele's raw-HTML page regex (proven dead on the same page), no external signing services.
-- Stream-candidate list + probing (FLV/HLS fallbacks): no evidence of a `live-no-stream` room where a URL exists but the first pick fails.
-- Cookie-jar seeding changes (`client.ts:48` `sessionid_ss` gate, domain list).
-- `tokrec --version` exit-1 quirk (known, unrelated).
+Public resolver injection/extension point; proxy, parallel recordings, Telegram uploader, followers tracker; error-class hierarchy; candidate-URL (FLV/HLS) probing; any cookie-handling change; behavior changes of any kind.
