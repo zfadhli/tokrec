@@ -103,9 +103,16 @@ export type RecordEvent =
   | { phase: "normalize"; status: "error"; input: string; error: string }
   | ({ phase: "end" } & RecordedFile)
 
+/** One download progress sample. The finished-download shape is `RecordedFile`. */
+export interface DownloadProgress {
+  bytes: number
+  elapsed: number
+  speed: number
+}
+
 /** Download and normalize progress share one spinner in the CLI. */
 export type ProgressEvent =
-  | { kind: "download"; bytes: number; elapsed: number; speed: number }
+  | ({ kind: "download" } & DownloadProgress)
   | { kind: "normalize"; file: string; percent: number; phase: "analyzing" | "normalizing" }
 
 export interface RecorderEventHandler {

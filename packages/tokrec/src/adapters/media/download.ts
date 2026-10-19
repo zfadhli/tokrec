@@ -12,27 +12,27 @@
 
 import { createWriteStream, statSync } from "node:fs"
 import { join } from "node:path"
-import type { DownloadResult, ProgressInfo } from "../../domain/media"
-import { TikTokError } from "../../lib/config"
+import { type DownloadProgress, type RecordedFile, TikTokError } from "../../lib/config"
 import type { Logger } from "../../lib/logger"
-import { bytesToHuman, findFfmpegPath, formatDuration, formatFilename } from "../../lib/utils"
-import { pipeFfmpegSegment } from "./ffmpeg-utils"
+import { bytesToHuman, ensureDir, formatDuration, formatFilename } from "../../lib/utils"
+import { findFfmpegPath, pipeFfmpegSegment } from "./ffmpeg-utils"
 
 export async function downloadStream(
   liveUrl: string,
   user: string,
   outputDir: string,
   maxDuration: number,
-  onProgress: ((info: ProgressInfo) => void) | undefined,
+  onProgress: ((info: DownloadProgress) => void) | undefined,
   getNextUrl: (() => Promise<string | null>) | undefined,
   signal: AbortSignal,
   logger?: Logger,
-  label?: string,
   cookies?: Record<string, string>,
-): Promise<DownloadResult> {
+): Promise<RecordedFile> {
+  ensureDir(outputDir)
   const filename = formatFilename(user, "ts")
   const filepath = join(outputDir, filename)
-  const prefix = label ? ` (${label})` : ""
+  // FLV is the default container — an .m3u8 URL means the CDN served HLS.
+  const prefix = liveUrl.includes(".m3u8") ? " (HLS)" : ""
   logger?.info(`Recording${prefix}: ${filename}`)
 
   const startTime = Date.now()

@@ -8,7 +8,6 @@ import { statSync, unlinkSync, utimesSync } from "node:fs"
 import { join, parse } from "node:path"
 import type { Converter } from "../adapters/media/convert"
 import type { AudioNormalizer } from "../adapters/media/normalize"
-import type { DownloadResult } from "../domain/media"
 import type {
   ProgressEvent,
   RecordEvent,
@@ -25,10 +24,9 @@ export interface RecordingJob {
 }
 
 export interface RecordingJobDeps {
-  result: DownloadResult
+  result: RecordedFile
   cfg: Pick<RecorderConfig, "segmentMinutes">
   logger: Logger
-  runFfmpeg: (args: string[], signal?: AbortSignal) => Promise<string>
   converter: Converter
   audioNormalizer: AudioNormalizer | null
   signal: AbortSignal
@@ -93,28 +91,7 @@ async function segment(deps: RecordingJobDeps): Promise<RecordedFile[]> {
 
   let listing: string
   try {
-    listing = await deps.runFfmpeg(
-      [
-        "-i",
-        result.file,
-        "-c",
-        "copy",
-        "-f",
-        "segment",
-        "-segment_time",
-        String(segmentTime),
-        "-reset_timestamps",
-        "1",
-        "-segment_start_number",
-        "1",
-        "-segment_list",
-        "pipe:1",
-        "-segment_list_type",
-        "csv",
-        outputPattern,
-      ],
-      signal,
-    )
+    listing = await deps.converter.segment(result.file, segmentTime, outputPattern)
   } catch (err) {
     if (signal.aborted) return []
     const msg = err instanceof Error ? err.message : String(err)

@@ -5,15 +5,14 @@
  * Policy lives in `policy/tick.ts`; this file only maps a TickPlan to effects.
  */
 
-import { execa } from "execa"
 import { createHttpClient } from "../adapters/http/wreq"
 import { type Converter, createConverter } from "../adapters/media/convert"
+import { downloadStream } from "../adapters/media/download"
 import { type AudioNormalizer, createAudioNormalizer } from "../adapters/media/normalize"
 import { verdictOf } from "../domain/verdict"
 import type { RecorderConfig, RecorderController } from "../lib/config"
-import { normalizeConfig, TikTokError } from "../lib/config"
+import { normalizeConfig } from "../lib/config"
 import { createLogger } from "../lib/logger"
-import { findFfmpegPath } from "../lib/utils"
 import { planTick, type TickFacts } from "../policy/tick"
 import { type AbortScope, abortScope } from "./abort"
 import { createRecordingJob, type RecordingJob } from "./job"
@@ -21,7 +20,6 @@ import { createPollingMonitor, type PollingMonitor } from "./loop"
 import { createTikTokApi, type TikTokApi } from "./probe"
 import { createEventEmitter } from "./recorder-events"
 import { createRecorderState } from "./recorder-state"
-import { createStreamDownloader, type StreamDownloader } from "./stream"
 
 /** Max wait for a stop-time remux before aborting it (matches the pre-#32 cap). */
 const POST_REMUX_GRACE_MS = 10 * 60 * 1000
@@ -41,7 +39,6 @@ export function createRecorder(config: RecorderConfig): RecorderController {
   let httpClient: Awaited<ReturnType<typeof createHttpClient>> | null = null
   let api: TikTokApi | null = null
   let monitor: PollingMonitor | null = null
-  let downloader: StreamDownloader | null = null
   let converter: Converter | null = null
   let audioNormalizer: AudioNormalizer | null = null
   let scope: AbortScope | null = null
@@ -49,29 +46,6 @@ export function createRecorder(config: RecorderConfig): RecorderController {
   let currentJob: RecordingJob | null = null
   let recordedSec = 0
   let consecutiveErrors = 0
-
-  async function runFfmpeg(args: string[], signal?: AbortSignal): Promise<string> {
-    const ffmpegPath = findFfmpegPath()
-    if (!ffmpegPath) {
-      throw new TikTokError(
-        "ffmpeg-not-found",
-        "FFmpeg not found. Install it:\n  Linux: apt install ffmpeg\n  macOS: brew install ffmpeg",
-      )
-    }
-    try {
-      const result = await execa(ffmpegPath, args, {
-        cancelSignal: signal,
-        stdio: ["ignore", "pipe", "pipe"],
-      })
-      return result.stdout ?? ""
-    } catch (err: unknown) {
-      if (signal?.aborted) {
-        throw new TikTokError("aborted", "Aborted by user")
-      }
-      const message = err instanceof Error ? err.message : String(err)
-      throw new TikTokError("ffmpeg-error", `FFmpeg failed: ${message}`)
-    }
-  }
 
   async function start(): Promise<void> {
     if (stateManager.getStatus().state !== "idle") {
@@ -91,7 +65,6 @@ export function createRecorder(config: RecorderConfig): RecorderController {
     logger.info(`Starting recorder for @${cfg.user}`)
     httpClient = await createHttpClient(cfg)
     api = createTikTokApi(httpClient, logger, cfg.debug, activeScope.signal)
-    downloader = createStreamDownloader(logger)
     converter = createConverter(logger, post.signal)
     audioNormalizer = cfg.normalizeAudio
       ? createAudioNormalizer(
@@ -120,7 +93,6 @@ export function createRecorder(config: RecorderConfig): RecorderController {
 
         // All dependencies are initialized by start() before onTick runs
         const tikTokApi = api as TikTokApi
-        const streamDownloader = downloader as StreamDownloader
         const pollingMonitor = monitor as PollingMonitor
         const user = cfg.user
 
@@ -188,15 +160,16 @@ export function createRecorder(config: RecorderConfig): RecorderController {
               return tikTokApi.getLiveUrl(room.id)
             }
 
-            const result = await streamDownloader.download(
+            const result = await downloadStream(
               stream.url,
               user,
               cfg.outputDir,
               cfg.duration,
               (info) => emitter.emit("progress", { kind: "download", ...info }),
               getNextUrl,
-              cfg.cookies,
               activeScope.signal,
+              logger,
+              cfg.cookies,
             )
 
             emitter.emit("record", { phase: "download", ...result })
@@ -206,7 +179,6 @@ export function createRecorder(config: RecorderConfig): RecorderController {
               result,
               cfg: { segmentMinutes: cfg.segmentMinutes },
               logger,
-              runFfmpeg,
               converter: converter as Converter,
               audioNormalizer,
               signal: post.signal,

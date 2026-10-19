@@ -1,17 +1,19 @@
 /**
- * Converter — spawns FFmpeg to convert TS → MP4 (stream copy by default).
- * Deletes the original file on success.
+ * Converter — the media-processing capability `RecordingJob` depends on.
+ *
+ * Remux (TS → MP4) and segment both delegate to `ffmpeg-utils.runFfmpeg`, so
+ * the job never builds an FFmpeg command line.
  */
 
 import { unlinkSync } from "node:fs"
-import { execa } from "execa"
-import { TikTokError } from "../../lib/config"
 import type { Logger } from "../../lib/logger"
-import { findFfmpegPath } from "../../lib/utils"
+import { runFfmpeg } from "./ffmpeg-utils"
 
 export interface Converter {
-  /** Convert a TS file to MP4. Returns the output filepath. */
+  /** Convert a TS file to MP4 (stream copy). Deletes the original on success. */
   convert: (input: string) => Promise<string>
+  /** Split a file into `<name>_partN.mp4`; returns FFmpeg's CSV segment listing. */
+  segment: (input: string, segmentSeconds: number, outputPattern: string) => Promise<string>
 }
 
 export function createConverter(logger?: Logger, signal?: AbortSignal): Converter {
@@ -20,18 +22,7 @@ export function createConverter(logger?: Logger, signal?: AbortSignal): Converte
 
     logger?.info(`Converting: ${input} → ${output}`)
 
-    const ffmpegPath = findFfmpegPath()
-    if (!ffmpegPath) {
-      throw new TikTokError(
-        "ffmpeg-not-found",
-        "FFmpeg not found. Install it:\n" +
-          "  Linux:  apt install ffmpeg / brew install ffmpeg / pacman -S ffmpeg\n" +
-          "  macOS:  brew install ffmpeg\n" +
-          "  Windows: choco install ffmpeg",
-      )
-    }
-
-    await runFfmpeg(ffmpegPath, input, output, signal)
+    await runFfmpeg(["-i", input, "-c", "copy", "-y", output], signal)
 
     // Delete original TS
     try {
@@ -45,27 +36,34 @@ export function createConverter(logger?: Logger, signal?: AbortSignal): Converte
     return output
   }
 
-  return { convert }
-}
-
-async function runFfmpeg(
-  ffmpegPath: string,
-  input: string,
-  output: string,
-  signal?: AbortSignal,
-): Promise<void> {
-  const args = ["-i", input, "-c", "copy", "-y", output]
-
-  try {
-    await execa(ffmpegPath, args, { cancelSignal: signal, stdio: ["ignore", "pipe", "pipe"] })
-  } catch (err: unknown) {
-    if (signal?.aborted) {
-      throw new TikTokError("aborted", "Aborted by user")
-    }
-    const stderr = (err as { stderr?: string }).stderr ?? ""
-    throw new TikTokError(
-      "ffmpeg-error",
-      `FFmpeg exited with code ${(err as { exitCode?: number }).exitCode}\n${stderr.slice(-500)}`,
+  async function segment(
+    input: string,
+    segmentSeconds: number,
+    outputPattern: string,
+  ): Promise<string> {
+    return runFfmpeg(
+      [
+        "-i",
+        input,
+        "-c",
+        "copy",
+        "-f",
+        "segment",
+        "-segment_time",
+        String(segmentSeconds),
+        "-reset_timestamps",
+        "1",
+        "-segment_start_number",
+        "1",
+        "-segment_list",
+        "pipe:1",
+        "-segment_list_type",
+        "csv",
+        outputPattern,
+      ],
+      signal,
     )
   }
+
+  return { convert, segment }
 }

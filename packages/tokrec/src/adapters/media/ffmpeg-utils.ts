@@ -1,13 +1,69 @@
 /**
- * Shared FFmpeg utilities — stream-download pipe primitive and constants.
+ * FFmpeg — the single home for process invocation.
+ *
+ * Two modes: `pipeFfmpegSegment` streams stdout into a `WriteStream` (live
+ * capture), `runFfmpeg` runs to completion and returns stdout (remux,
+ * segment). Locating the binary lives here too, so no caller reimplements a
+ * PATH lookup.
  */
 
 import { type ChildProcess, spawn } from "node:child_process"
 import type { WriteStream } from "node:fs"
+import { statSync } from "node:fs"
+import { execa } from "execa"
 import { TikTokError } from "../../lib/config"
 
 /** Kill FFmpeg if no output is received within this window after spawn. */
 export const FFMPEG_STARTUP_TIMEOUT = 30_000
+
+/** Find the FFmpeg binary via `Bun.which()` or a PATH search. */
+export function findFfmpegPath(): string | null {
+  const bunWhich = (globalThis as { Bun?: { which?: (cmd: string) => string | null } }).Bun?.which
+  if (typeof bunWhich === "function") {
+    return (bunWhich("ffmpeg") as string) ?? null
+  }
+  const paths = process.env.PATH?.split(":") ?? []
+  for (const dir of paths) {
+    try {
+      const full = `${dir}/ffmpeg`
+      statSync(full)
+      return full
+    } catch {
+      // not found in this directory
+    }
+  }
+  return null
+}
+
+/**
+ * Run FFmpeg to completion and return stdout — for output that is a file
+ * rather than a pipe (the segment muxer's `-segment_list pipe:1`).
+ */
+export async function runFfmpeg(args: string[], signal?: AbortSignal): Promise<string> {
+  const ffmpegPath = findFfmpegPath()
+  if (!ffmpegPath) {
+    throw new TikTokError(
+      "ffmpeg-not-found",
+      "FFmpeg not found. Install it:\n" +
+        "  Linux:  apt install ffmpeg / brew install ffmpeg / pacman -S ffmpeg\n" +
+        "  macOS:  brew install ffmpeg\n" +
+        "  Windows: choco install ffmpeg",
+    )
+  }
+  try {
+    const result = await execa(ffmpegPath, args, {
+      cancelSignal: signal,
+      stdio: ["ignore", "pipe", "pipe"],
+    })
+    return result.stdout ?? ""
+  } catch (err: unknown) {
+    if (signal?.aborted) {
+      throw new TikTokError("aborted", "Aborted by user")
+    }
+    const message = err instanceof Error ? err.message : String(err)
+    throw new TikTokError("ffmpeg-error", `FFmpeg failed: ${message}`)
+  }
+}
 
 /**
  * Build FFmpeg HTTP option arguments for cookies and headers.

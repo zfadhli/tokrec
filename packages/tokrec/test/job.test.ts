@@ -29,8 +29,10 @@ describe("RecordingJob", () => {
       result: { file: input, duration: 12, size: 10 },
       cfg: { segmentMinutes: 0 },
       logger,
-      runFfmpeg: async () => "",
-      converter: { convert: async (file) => file.replace(/\.ts$/, ".mp4") },
+      converter: {
+        convert: async (file) => file.replace(/\.ts$/, ".mp4"),
+        segment: async () => "",
+      },
       audioNormalizer: null,
       signal: new AbortController().signal,
       emitRecord: (event) => events.push(event),
@@ -56,16 +58,17 @@ describe("RecordingJob", () => {
       result: { file: input, duration: 3, size: 10 },
       cfg: { segmentMinutes: 1 },
       logger,
-      runFfmpeg: async (args) => {
-        const pattern = args.at(-1)
-        if (!pattern) throw new Error("missing output pattern")
-        const first = pattern.replace("%d", "1")
-        const second = pattern.replace("%d", "2")
-        writeFileSync(first, "1")
-        writeFileSync(second, "2")
-        return `${first},0,2\n${second},2,3\n`
+      converter: {
+        convert: async (file) => file,
+        segment: async (_input, segmentSeconds, outputPattern) => {
+          expect(segmentSeconds).toBe(60)
+          const first = outputPattern.replace("%d", "1")
+          const second = outputPattern.replace("%d", "2")
+          writeFileSync(first, "1")
+          writeFileSync(second, "2")
+          return `${first},0,2\n${second},2,3\n`
+        },
       },
-      converter: { convert: async (file) => file },
       audioNormalizer: null,
       signal: new AbortController().signal,
       emitRecord: (event) => events.push(event),
