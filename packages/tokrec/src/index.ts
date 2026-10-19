@@ -11,14 +11,27 @@
  */
 
 export type {
-  AppErrorKind,
+  Evidence,
+  EvidenceOutcome,
+  RoomRef,
+  SourceId,
+  StreamRef,
+  Verdict,
+} from "./domain/verdict"
+export { isLiveReason } from "./domain/verdict"
+export type {
   LiveReason,
   LogLevel,
+  Phase,
+  ProgressEvent,
+  RecordEvent,
+  RecordedFile,
   RecorderConfig,
   RecorderController,
   RecorderEvent,
   RecorderEventHandler,
   RecorderStatus,
+  TikTokErrorCode,
 } from "./lib/config"
 export { TikTokError } from "./lib/config"
 export { bytesToHuman, formatDuration, relativeTime, sanitizeUser } from "./lib/utils"

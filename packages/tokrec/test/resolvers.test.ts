@@ -1,16 +1,22 @@
 /**
- * Per-source unit tests for the resolver chain (`core/api/resolvers/*`).
+ * Per-source unit tests for the discovery chain (`adapters/tiktok/discovery/*`).
  *
  * Each source is exercised directly with a hand-built `ResolveContext`
- * (real `createPageFetcher` + real `createWebcastApi` over `createMockHttp`,
- * `flagError` stubbed with a counter). Fixtures are read-only.
+ * (real `createPageFetcher` + real `createWebcastApi` over `createMockHttp`).
+ * Sources now return `Candidate`s — the verdict mapping is `verdictOf`'s job
+ * and is table-tested in `verdict.test.ts`. Fixtures are read-only.
  */
 
 import { describe, expect, test } from "bun:test"
 import { createApiLiveSource } from "../src/adapters/tiktok/discovery/api-live"
+import { discover } from "../src/adapters/tiktok/discovery/chain"
 import { createPageSource } from "../src/adapters/tiktok/discovery/page"
 import { createProfileSource } from "../src/adapters/tiktok/discovery/profile"
-import type { ResolveContext } from "../src/adapters/tiktok/discovery/types"
+import type {
+  Candidate,
+  DiscoverySource,
+  ResolveContext,
+} from "../src/adapters/tiktok/discovery/types"
 import { createPageFetcher } from "../src/adapters/tiktok/page"
 import { createWebcastApi } from "../src/adapters/tiktok/webcast"
 import type { HttpClient } from "../src/ports/http"
@@ -40,21 +46,29 @@ function buildUniversalHtml(userId: string, roomId: string | null): string {
   return `<html><head><script id="__UNIVERSAL_DATA_FOR_REHYDRATION__" type="application/json">${JSON.stringify(data)}</script></head><body>${"x".repeat(6000)}</body></html>`
 }
 
-function buildCtx(user: string, http: HttpClient, flagError: () => void): ResolveContext {
+function buildCtx(user: string, http: HttpClient): ResolveContext {
   const debug = (_msg: string) => {}
   return {
     user,
     http,
     debug,
     fetchPage: createPageFetcher(http, debug),
-    webcast: createWebcastApi(http, debug, flagError),
-    flagError,
+    webcast: createWebcastApi(http, debug),
   }
+}
+
+function roomOf(candidate: Candidate) {
+  if (candidate.kind !== "room") throw new Error(`expected room, got ${candidate.kind}`)
+  return candidate
+}
+
+function deniedOf(candidate: Candidate) {
+  if (candidate.kind !== "denied") throw new Error(`expected denied, got ${candidate.kind}`)
+  return candidate
 }
 
 describe("createPageSource", () => {
   test("restricted: SIGI live without streamData + room/info 4003110 + check_alive true", async () => {
-    let flags = 0
     const http = createMockHttp({
       "https://www.tiktok.com/@restricteduser/live": buildLiveHtmlWithoutStreamData(),
       "https://webcast.tiktok.com/webcast/room/info/": loadFixture(
@@ -66,23 +80,16 @@ describe("createPageSource", () => {
         "check-alive-live.json",
       ),
     })
-    const info = await createPageSource().resolve(
-      buildCtx("restricteduser", http, () => {
-        flags++
-      }),
-    )
-    expect(info).not.toBeNull()
-    expect(info?.roomId).toBe(RESTRICTED_ROOM_ID)
-    expect(info?.isLive).toBe(true)
-    expect(info?.streamUrl).toBeNull()
-    expect(info?.reason).toBe("restricted")
-    expect(info?.source).toBe("sigi")
-    expect(flags).toBe(0)
+    const candidate = deniedOf(await createPageSource().find(buildCtx("restricteduser", http)))
+    expect(candidate.room.id).toBe(RESTRICTED_ROOM_ID)
+    expect(candidate.room.live).toBe(true)
+    expect(candidate.room.title).toBe("restricted live")
+    expect(candidate.source).toBe("sigi")
+    expect(candidate.code).toBe(4003110)
     await http.close()
   })
 
   test("offline: same refused room but check_alive false", async () => {
-    let flags = 0
     const http = createMockHttp({
       "https://www.tiktok.com/@restricteduser/live": buildLiveHtmlWithoutStreamData(),
       "https://webcast.tiktok.com/webcast/room/info/": loadFixture(
@@ -94,24 +101,15 @@ describe("createPageSource", () => {
         "check-alive-offline.json",
       ),
     })
-    const info = await createPageSource().resolve(
-      buildCtx("restricteduser", http, () => {
-        flags++
-      }),
-    )
-    expect(info).not.toBeNull()
-    expect(info?.roomId).toBe(RESTRICTED_ROOM_ID)
-    expect(info?.isLive).toBe(false)
-    expect(info?.streamUrl).toBeNull()
-    expect(info?.reason).toBe("offline")
-    expect(info?.source).toBe("sigi")
-    expect(flags).toBe(0)
+    const candidate = deniedOf(await createPageSource().find(buildCtx("restricteduser", http)))
+    expect(candidate.room.id).toBe(RESTRICTED_ROOM_ID)
+    expect(candidate.room.live).toBe(false)
+    expect(candidate.source).toBe("sigi")
     await http.close()
   })
 
   test("universal data roomId resolves via room/info and emits room-info", async () => {
     const roomId = "7649515096078600981"
-    let flags = 0
     const http = createMockHttp({
       "https://www.tiktok.com/@anomaliaa27/live": buildUniversalHtml("7536224525122798648", roomId),
       "https://webcast.tiktok.com/webcast/room/info/": loadFixture(
@@ -119,51 +117,34 @@ describe("createPageSource", () => {
         "anomaliaa27-room-info.json",
       ),
     })
-    const info = await createPageSource().resolve(
-      buildCtx("anomaliaa27", http, () => {
-        flags++
-      }),
-    )
-    expect(info).not.toBeNull()
-    expect(info?.roomId).toBe(roomId)
-    expect(info?.isLive).toBe(true)
-    expect(info?.reason).toBe("live")
-    expect(info?.streamUrl).toMatch(/\.(flv|m3u8)/)
-    expect(info?.source).toBe("room-info")
-    expect(flags).toBe(0)
+    const candidate = roomOf(await createPageSource().find(buildCtx("anomaliaa27", http)))
+    expect(candidate.room.id).toBe(roomId)
+    expect(candidate.room.live).toBe(true)
+    expect(candidate.stream?.url).toMatch(/\.(flv|m3u8)/)
+    expect(candidate.source).toBe("room-info")
     await http.close()
   })
 })
 
 describe("createApiLiveSource", () => {
-  test("status 4 with roomId maps to offline with roomId kept", async () => {
+  test("status 4 with roomId maps to an offline room candidate", async () => {
     const roomId = "7696112012440324885"
-    let flags = 0
     const http = createMockHttp({
       "https://www.tiktok.com/api-live/user/room/": JSON.stringify({
         data: { user: { roomId, status: 4 } },
       }),
     })
-    const info = await createApiLiveSource().resolve(
-      buildCtx("offlineuser", http, () => {
-        flags++
-      }),
-    )
-    expect(info).not.toBeNull()
-    expect(info?.roomId).toBe(roomId)
-    expect(info?.isLive).toBe(false)
-    expect(info?.streamUrl).toBeNull()
-    expect(info?.reason).toBe("offline")
-    expect(info?.source).toBe("api-live")
-    expect(flags).toBe(0)
+    const candidate = roomOf(await createApiLiveSource().find(buildCtx("offlineuser", http)))
+    expect(candidate.room.id).toBe(roomId)
+    expect(candidate.room.live).toBe(false)
+    expect(candidate.stream).toBeNull()
+    expect(candidate.source).toBe("api-live")
     await http.close()
   })
 
-  test("transport failure returns null and flags exactly once", async () => {
-    // A 404 alone returns null *without* flagging (by design: `!res.ok`
-    // short-circuits before JSON.parse), so a true transport failure is a
-    // throwing client — that is what exercises the internal catch.
-    let flags = 0
+  test("transport failure returns a failed candidate carrying the error", async () => {
+    // A 404 alone is a miss (by design: `!res.ok` short-circuits before
+    // JSON.parse), so a true transport failure is a throwing client.
     const base = createMockHttp({})
     const http: HttpClient = {
       ...base,
@@ -171,39 +152,28 @@ describe("createApiLiveSource", () => {
         throw new Error("transport boom")
       },
     }
-    const info = await createApiLiveSource().resolve(
-      buildCtx("anyuser", http, () => {
-        flags++
-      }),
-    )
-    expect(info).toBeNull()
-    expect(flags).toBe(1)
+    const candidate = await createApiLiveSource().find(buildCtx("anyuser", http))
+    expect(candidate.kind).toBe("failed")
+    if (candidate.kind === "failed") expect(candidate.error.message).toBe("transport boom")
     await http.close()
   })
 })
 
 describe("createProfileSource", () => {
-  test("universal data with userId but no roomId returns null without flagging", async () => {
-    let flags = 0
+  test("universal data with userId but no roomId is a miss", async () => {
     const http = createMockHttp({
       "https://www.tiktok.com/@naylaarindinta": loadFixture(
         FIXTURES,
         "naylaarindinta-profile.html",
       ),
     })
-    const info = await createProfileSource().resolve(
-      buildCtx("naylaarindinta", http, () => {
-        flags++
-      }),
-    )
-    expect(info).toBeNull()
-    expect(flags).toBe(0)
+    const candidate = await createProfileSource().find(buildCtx("naylaarindinta", http))
+    expect(candidate.kind).toBe("miss")
     await http.close()
   })
 
   test("profile page carrying roomId resolves via room/info and emits room-info", async () => {
     const roomId = "7649515096078600981"
-    let flags = 0
     const http = createMockHttp({
       "https://www.tiktok.com/@anomaliaa27": buildUniversalHtml("7536224525122798648", roomId),
       "https://webcast.tiktok.com/webcast/room/info/": loadFixture(
@@ -211,45 +181,73 @@ describe("createProfileSource", () => {
         "anomaliaa27-room-info.json",
       ),
     })
-    const info = await createProfileSource().resolve(
-      buildCtx("anomaliaa27", http, () => {
-        flags++
-      }),
-    )
-    expect(info).not.toBeNull()
-    expect(info?.roomId).toBe(roomId)
-    expect(info?.isLive).toBe(true)
-    expect(info?.reason).toBe("live")
-    expect(info?.streamUrl).toMatch(/\.(flv|m3u8)/)
-    expect(info?.source).toBe("room-info")
-    expect(flags).toBe(0)
+    const candidate = roomOf(await createProfileSource().find(buildCtx("anomaliaa27", http)))
+    expect(candidate.room.id).toBe(roomId)
+    expect(candidate.room.live).toBe(true)
+    expect(candidate.stream?.url).toMatch(/\.(flv|m3u8)/)
+    expect(candidate.source).toBe("room-info")
     await http.close()
   })
 })
 
-describe("source names", () => {
-  test("each factory name is unique", () => {
-    const names = [createPageSource().name, createApiLiveSource().name, createProfileSource().name]
-    expect(names).toEqual(["page", "api-live", "profile"])
-    expect(new Set(names).size).toBe(names.length)
+describe("discover", () => {
+  const ctx = { debug: () => {} } as unknown as ResolveContext
+
+  test("a failed source outranks a later miss", async () => {
+    const sources: DiscoverySource[] = [
+      { id: "page", find: async () => ({ kind: "failed", error: new Error("boom") }) },
+      { id: "profile", find: async () => ({ kind: "miss", note: "nope" }) },
+    ]
+    const { candidate, evidence } = await discover(sources, ctx)
+    expect(candidate.kind).toBe("failed")
+    expect(evidence).toEqual([
+      { source: "page", outcome: "error" },
+      { source: "profile", outcome: "miss" },
+    ])
   })
 
-  test("api-live emits its own name as source", async () => {
+  test("a synchronously throwing source fails instead of rejecting discover", async () => {
+    const sources: DiscoverySource[] = [
+      {
+        id: "page",
+        find: (() => {
+          throw new Error("sync boom")
+        }) as DiscoverySource["find"],
+      },
+    ]
+    const { candidate } = await discover(sources, ctx)
+    expect(candidate.kind).toBe("failed")
+    if (candidate.kind === "failed") expect(candidate.error.message).toBe("sync boom")
+  })
+
+  test("the first failure is kept as the root cause", async () => {
+    const sources: DiscoverySource[] = [
+      { id: "page", find: async () => ({ kind: "failed", error: new Error("first") }) },
+      { id: "api-live", find: async () => ({ kind: "failed", error: new Error("second") }) },
+    ]
+    const { candidate } = await discover(sources, ctx)
+    expect(candidate.kind).toBe("failed")
+    if (candidate.kind === "failed") expect(candidate.error.message).toBe("first")
+  })
+})
+
+describe("source ids", () => {
+  test("each factory id is unique", () => {
+    const ids = [createPageSource().id, createApiLiveSource().id, createProfileSource().id]
+    expect(ids).toEqual(["page", "api-live", "profile"])
+    expect(new Set(ids).size).toBe(ids.length)
+  })
+
+  test("api-live emits its own id as candidate source", async () => {
     const roomId = "7696112012440324885"
-    let flags = 0
     const http = createMockHttp({
       "https://www.tiktok.com/api-live/user/room/": JSON.stringify({
         data: { user: { roomId, status: 4 } },
       }),
     })
     const source = createApiLiveSource()
-    const info = await source.resolve(
-      buildCtx("offlineuser", http, () => {
-        flags++
-      }),
-    )
-    expect(info?.source).toBe(source.name)
-    expect(flags).toBe(0)
+    const candidate = roomOf(await source.find(buildCtx("offlineuser", http)))
+    expect(candidate.source).toBe(source.id)
     await http.close()
   })
 })

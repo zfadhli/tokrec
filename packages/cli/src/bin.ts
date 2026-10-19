@@ -7,7 +7,13 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import type { RecorderConfig } from "@zfadhli/tokrec"
-import { bytesToHuman, createRecorder, relativeTime, TikTokError } from "@zfadhli/tokrec"
+import {
+  bytesToHuman,
+  createRecorder,
+  isLiveReason,
+  relativeTime,
+  TikTokError,
+} from "@zfadhli/tokrec"
 import * as color from "yoctocolors"
 import { extractTikTokCookiesFromFirefox } from "./browser-cookies"
 import { type CLIResult, parseArgs } from "./cli"
@@ -37,7 +43,7 @@ async function main(): Promise<void> {
   try {
     result = parseArgs()
   } catch (err) {
-    if (err instanceof TikTokError && err.kind === "config-error") {
+    if (err instanceof TikTokError && err.code === "config-error") {
       console.error(`${color.red("Error:")} ${err.message}`)
       process.exit(1)
     }
@@ -176,80 +182,58 @@ async function main(): Promise<void> {
   let lastWasLive: boolean | null = null
   let firstOfflineTime = 0
 
-  // Subscribe to events for beautiful console output
-  recorder.on("checking", (info) => {
-    display.checkingUser(info.user)
-  })
-
-  recorder.on("tick", (info) => {
-    if (info.reason === "restricted") {
-      display.userRestricted(info.user)
-    } else if (info.reason === "no-stream-url") {
-      display.userLiveNoStream(info.user, info.roomId ?? "?")
-    } else if (info.isLive) {
-      display.userLive(info.user, info.roomId ?? "?")
+  // Subscribe to the four-channel event contract
+  recorder.on("verdict", (verdict) => {
+    if (verdict.reason === "restricted") {
+      display.userRestricted(config.user)
+    } else if (verdict.reason === "no-stream-url") {
+      display.userLiveNoStream(config.user, verdict.room?.id ?? "?")
+    } else if (isLiveReason(verdict.reason)) {
+      display.userLive(config.user, verdict.room?.id ?? "?")
     } else if (lastWasLive === null || lastWasLive === true) {
-      display.userOffline(info.user)
+      display.userOffline(config.user)
       firstOfflineTime = Date.now()
     } else {
       const elapsed = Date.now() - firstOfflineTime
-      display.userOfflineRepeat(info.user, relativeTime(elapsed))
+      display.userOfflineRepeat(config.user, relativeTime(elapsed))
     }
-    lastWasLive = info.isLive
+    lastWasLive = isLiveReason(verdict.reason)
   })
 
-  recorder.on("recording:start", () => {
-    display.startRecording()
+  recorder.on("record", (event) => {
+    switch (event.phase) {
+      case "start":
+        display.startRecording()
+        break
+      case "download": {
+        const parsed = event.file.split("/").pop() ?? event.file
+        display.finishRecording(parsed, event.duration, bytesToHuman(event.size))
+        break
+      }
+      case "segment":
+        if (event.status === "start") display.startSegmenting()
+        else display.segmentsCreated(event.segments)
+        break
+      case "convert":
+        if (event.status === "start") display.startConverting()
+        else display.conversionDone(event.output.split("/").pop() ?? event.output)
+        break
+      case "normalize":
+        if (event.status === "start") display.normalizeStart()
+        else if (event.status === "done") display.normalizeComplete()
+        else display.normalizeError(event.error)
+        break
+      case "end":
+        break
+    }
   })
 
-  recorder.on("download:end", (info) => {
-    const parsed = info.file.split("/").pop() ?? info.file
-    const sizeStr = bytesToHuman(info.size)
-    display.finishRecording(parsed, info.duration, sizeStr)
+  recorder.on("progress", (event) => {
+    if (event.kind === "normalize") display.normalizeProgress(event.percent, event.phase)
   })
 
-  recorder.on("segmenting:start", () => {
-    display.startSegmenting()
-  })
-
-  recorder.on("segmenting:end", (info) => {
-    display.segmentsCreated(info.segments)
-  })
-
-  recorder.on("converting:start", () => {
-    display.startConverting()
-  })
-
-  recorder.on("converted", (info) => {
-    const parsed = info.output.split("/").pop() ?? info.output
-    display.conversionDone(parsed)
-  })
-
-  recorder.on("recording:end", () => {
-    // For simple conversion (no segmenting), recording:end fires once.
-    // For segmenting path, segmenting:end already acknowledges the result.
-    // This is a no-op since we handle the terminal output through download:end
-    // and segmenting:end / converted events.
-  })
-
-  recorder.on("error", (err) => {
-    display.showError(`[${err.kind}] ${err.message}`)
-  })
-
-  recorder.on("normalize:start", () => {
-    display.normalizeStart()
-  })
-
-  recorder.on("normalize:progress", (info) => {
-    display.normalizeProgress(info.percent, info.phase)
-  })
-
-  recorder.on("normalize:end", () => {
-    display.normalizeComplete()
-  })
-
-  recorder.on("normalize:error", (info) => {
-    display.normalizeError(info.error)
+  recorder.on("failure", (err) => {
+    display.showError(`[${err.code}] ${err.message}`)
   })
 
   // Signal handling
@@ -277,7 +261,7 @@ async function main(): Promise<void> {
     await recorder.start()
   } catch (err) {
     if (err instanceof TikTokError) {
-      display.showError(`[${err.kind}] ${err.message}`)
+      display.showError(`[${err.code}] ${err.message}`)
     } else {
       display.showError(`Unexpected error: ${err instanceof Error ? err.message : String(err)}`)
     }

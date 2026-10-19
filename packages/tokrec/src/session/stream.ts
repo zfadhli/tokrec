@@ -3,7 +3,8 @@
  *
  * Both FLV and HLS streams are downloaded via FFmpeg subprocess with
  * transparent reconnection for transient network drops. Routes to the
- * appropriate downloader based on URL format.
+ * appropriate downloader based on URL format. Cancellation comes from the
+ * session's AbortScope — this module owns no controller.
  */
 
 import { downloadStream } from "../adapters/media/download"
@@ -17,24 +18,17 @@ export interface StreamDownloader {
     liveUrl: string,
     user: string,
     outputDir: string,
-    maxDuration?: number,
-    onProgress?: (info: ProgressInfo) => void,
+    maxDuration: number | undefined,
+    onProgress: ((info: ProgressInfo) => void) | undefined,
     /** Called when a stream segment ends and we attempt to fetch a fresh URL. */
-    getNextUrl?: () => Promise<string | null>,
+    getNextUrl: (() => Promise<string | null>) | undefined,
     /** Cookies to pass to FFmpeg for CDN auth. */
-    cookies?: Record<string, string>,
+    cookies: Record<string, string> | undefined,
+    signal: AbortSignal,
   ) => Promise<DownloadResult>
-  /** Abort an active download */
-  abort: () => void
 }
 
 export function createStreamDownloader(logger?: Logger): StreamDownloader {
-  let abortController = new AbortController()
-
-  function abort(): void {
-    abortController.abort()
-  }
-
   function isHlsUrl(url: string): boolean {
     return url.includes(".m3u8")
   }
@@ -47,8 +41,8 @@ export function createStreamDownloader(logger?: Logger): StreamDownloader {
     onProgress?: (info: ProgressInfo) => void,
     getNextUrl?: () => Promise<string | null>,
     cookies?: Record<string, string>,
+    signal?: AbortSignal,
   ): Promise<DownloadResult> {
-    abortController = new AbortController()
     ensureDir(outputDir)
 
     return downloadStream(
@@ -58,12 +52,12 @@ export function createStreamDownloader(logger?: Logger): StreamDownloader {
       maxDuration,
       onProgress,
       getNextUrl,
-      abortController.signal,
+      signal ?? new AbortController().signal,
       logger,
       isHlsUrl(liveUrl) ? "HLS" : undefined,
       cookies,
     )
   }
 
-  return { download, abort }
+  return { download }
 }

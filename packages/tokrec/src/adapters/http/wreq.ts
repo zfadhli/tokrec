@@ -13,8 +13,13 @@ import { createRateLimiter } from "./rate-limit"
 type _BodyInit = import("bun").BodyInit
 
 export interface HttpClient {
-  get: (url: string) => Promise<Response>
-  post: (url: string, body?: _BodyInit, headers?: Record<string, string>) => Promise<Response>
+  get: (url: string, signal?: AbortSignal) => Promise<Response>
+  post: (
+    url: string,
+    body?: _BodyInit,
+    headers?: Record<string, string>,
+    signal?: AbortSignal,
+  ) => Promise<Response>
   close: () => Promise<void>
 }
 
@@ -59,8 +64,12 @@ export async function createHttpClient(config: RecorderConfig): Promise<HttpClie
   async function rateLimitedFetch(
     url: string,
     options?: { method?: string; body?: unknown; headers?: Record<string, string> },
+    external?: AbortSignal,
   ): Promise<Response> {
     const controller = new AbortController()
+    const onAbort = () => controller.abort(external?.reason)
+    if (external?.aborted) controller.abort(external.reason)
+    else external?.addEventListener("abort", onAbort, { once: true })
     const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
     try {
       await rateLimiter.acquire(controller.signal)
@@ -73,23 +82,35 @@ export async function createHttpClient(config: RecorderConfig): Promise<HttpClie
         },
         signal: controller.signal,
       })
+      // SAFETY: wreq-js returns its own Response-compatible object; the port only
+      // needs the standard `status`, `ok`, and `text()` surface.
       return res as unknown as Response
     } finally {
       clearTimeout(timeout)
+      external?.removeEventListener("abort", onAbort)
     }
   }
 
   return {
-    get: async (url: string) => rateLimitedFetch(url),
-    post: async (url: string, body?: _BodyInit, headers?: Record<string, string>) =>
-      rateLimitedFetch(url, {
-        method: "POST",
-        body: body as never,
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-          ...headers,
+    get: async (url: string, signal?: AbortSignal) => rateLimitedFetch(url, undefined, signal),
+    post: async (
+      url: string,
+      body?: _BodyInit,
+      headers?: Record<string, string>,
+      signal?: AbortSignal,
+    ) =>
+      rateLimitedFetch(
+        url,
+        {
+          method: "POST",
+          body: body as never,
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+            ...headers,
+          },
         },
-      }),
+        signal,
+      ),
     close: async () => {
       await session.close()
     },

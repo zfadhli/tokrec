@@ -5,6 +5,7 @@ const TIKTOK_BASES = ["https://www.tiktok.com", "https://m.tiktok.com"]
 export function createPageFetcher(
   http: HttpClient,
   debug: (msg: string) => void,
+  signal?: AbortSignal,
 ): (user: string, path: string) => Promise<{ html: string; baseUrl: string } | null> {
   /**
    * Try to fetch a TikTok user page from multiple domains.
@@ -18,7 +19,7 @@ export function createPageFetcher(
   ): Promise<{ html: string; baseUrl: string } | null> {
     for (const base of TIKTOK_BASES) {
       const url = `${base}/@${user}${path}`
-      const res = await http.get(url)
+      const res = await http.get(url, signal)
       debug(`tryFetchPage: ${url} status=${res.status}, ok=${res.ok}`)
       if (!res.ok) continue
 

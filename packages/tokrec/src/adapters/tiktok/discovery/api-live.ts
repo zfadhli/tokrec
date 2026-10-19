@@ -1,19 +1,20 @@
-import type { LiveInfo } from "../../../domain/verdict"
-import type { ResolveContext, RoomSource } from "./types"
+import type { RoomRef } from "../../../domain/verdict"
+import { failed, miss, withStream } from "./candidates"
+import type { Candidate, DiscoverySource, ResolveContext } from "./types"
 
-export function createApiLiveSource(): RoomSource {
+export function createApiLiveSource(): DiscoverySource {
   return {
-    name: "api-live",
-    async resolve(ctx: ResolveContext): Promise<LiveInfo | null> {
+    id: "api-live",
+    async find(ctx: ResolveContext): Promise<Candidate> {
       try {
         const url = `https://www.tiktok.com/api-live/user/room/?aid=1988&uniqueId=${encodeURIComponent(ctx.user)}&sourceType=54`
         const res = await ctx.http.get(url)
         ctx.debug(`fetchLiveInfoFromApi: ${url} status=${res.status}`)
-        if (!res.ok) return null
+        if (!res.ok) return miss(`api-live HTTP ${res.status}`)
 
         const text = await res.text()
         ctx.debug(`fetchLiveInfoFromApi: returned ${text.length} bytes`)
-        if (text.length === 0) return null
+        if (text.length === 0) return miss("api-live: empty body")
 
         const data = JSON.parse(text) as Record<string, unknown>
         const userData = (data?.data as Record<string, unknown> | undefined)?.user as
@@ -22,63 +23,23 @@ export function createApiLiveSource(): RoomSource {
 
         if (!userData?.roomId) {
           ctx.debug("fetchLiveInfoFromApi: no roomId in API response")
-          return null
+          return miss("api-live: no roomId")
         }
 
-        const roomId = String(userData.roomId)
         // status: 2 = live, 4 = offline, 1 = ...
-        const isLive = userData.status === 2
+        const room: RoomRef = {
+          id: String(userData.roomId),
+          title: null,
+          live: userData.status === 2,
+        }
         ctx.debug(
-          `fetchLiveInfoFromApi: roomId=${roomId}, status=${userData.status}, isLive=${isLive}`,
+          `fetchLiveInfoFromApi: roomId=${room.id}, status=${userData.status}, live=${room.live}`,
         )
 
-        if (!isLive) {
-          return {
-            roomId,
-            isLive: false,
-            streamUrl: null,
-            title: null,
-            reason: "offline",
-            source: "api-live",
-          }
-        }
-
-        // Query Webcast API for stream URL
-        const streamRes = await ctx.webcast.fetchStreamUrlFromApi(roomId)
-        if (streamRes.ok) {
-          if (streamRes.value) {
-            return {
-              roomId,
-              isLive: true,
-              streamUrl: streamRes.value,
-              title: null,
-              reason: "live",
-              source: "api-live",
-            }
-          }
-          return {
-            roomId,
-            isLive: true,
-            streamUrl: null,
-            title: null,
-            reason: "no-stream-url",
-            source: "api-live",
-          }
-        }
-        if (streamRes.statusCode === 4003110) {
-          return ctx.webcast.resolveRefusedRoom(roomId, "api-live", null)
-        }
-        return {
-          roomId,
-          isLive: true,
-          streamUrl: null,
-          title: null,
-          reason: "no-stream-url",
-          source: "api-live",
-        }
-      } catch {
-        ctx.flagError()
-        return null
+        if (!room.live) return { kind: "room", room, stream: null, source: "api-live" }
+        return withStream(ctx, room, "api-live", null)
+      } catch (error) {
+        return failed(error)
       }
     },
   }

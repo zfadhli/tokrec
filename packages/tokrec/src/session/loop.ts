@@ -2,8 +2,8 @@
  * Polling monitor — calls a tick function on a configurable interval.
  * Fires the first tick immediately, then every N minutes.
  *
- * Uses an AbortController so stop() can interrupt the sleep between
- * ticks immediately, avoiding a busy 1-second polling loop.
+ * One external `AbortSignal` (the session's AbortScope) interrupts both the
+ * sleep and any in-flight tick; there is no private controller.
  */
 
 import type { Logger } from "../lib/logger"
@@ -18,18 +18,18 @@ export interface PollingMonitor {
 
 export function createPollingMonitor(opts: {
   intervalMinutes: number
+  signal: AbortSignal
   onTick: () => Promise<void>
   logger?: Logger
 }): PollingMonitor {
   const intervalMs = opts.intervalMinutes * 60 * 1000
-  const stopSignal = new AbortController()
   let currentTick: Promise<void> | null = null
   let stopAfterTick = false
 
   async function start(): Promise<void> {
     opts.logger?.info(`Polling started (interval: ${opts.intervalMinutes} min)`)
 
-    while (!stopSignal.signal.aborted) {
+    while (!opts.signal.aborted) {
       currentTick = opts.onTick()
       try {
         await currentTick
@@ -40,22 +40,17 @@ export function createPollingMonitor(opts: {
         currentTick = null
       }
 
-      if (stopAfterTick) {
-        stopSignal.abort()
-      }
-      if (stopSignal.signal.aborted) break
+      if (stopAfterTick || opts.signal.aborted) break
 
-      // Sleep for the full interval — stop() aborts the signal to wake us up early
-      await sleep(intervalMs, stopSignal.signal)
+      // Sleep for the full interval — close() aborts the signal to wake us up early
+      await sleep(intervalMs, opts.signal)
     }
 
     opts.logger?.info("Polling stopped")
   }
 
   async function stop(): Promise<void> {
-    // Signal start() to exit the loop immediately
-    stopSignal.abort()
-    // Wait for in-flight tick to finish (e.g. recording → converting → MP4)
+    // Wait for in-flight tick to finish; close() only aborts its I/O.
     if (currentTick) {
       await currentTick
     }

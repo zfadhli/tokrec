@@ -1,4 +1,4 @@
-import type { LiveInfo } from "../../../domain/verdict"
+import type { RoomRef } from "../../../domain/verdict"
 import type { SigiState } from "../parse"
 import {
   extractSigiState,
@@ -6,15 +6,29 @@ import {
   extractUserFromUniversalData,
   findStreamUrlRecursively,
 } from "../parse"
+import { fromRoomInfo, miss, withStream } from "./candidates"
 import { fetchSigiLegacy } from "./sigi-legacy"
-import type { ResolveContext, RoomSource } from "./types"
+import type { Candidate, DiscoverySource, ResolveContext } from "./types"
 
-export function createPageSource(): RoomSource {
+/**
+ * Page source: server-rendered SIGI_STATE first, then the async-loaded legacy
+ * module, then `__UNIVERSAL_DATA_FOR_REHYDRATION__`. Throws propagate to the
+ * chain, which records them and moves on — never a dead end.
+ */
+export function createPageSource(): DiscoverySource {
   return {
-    name: "page",
-    async resolve(ctx: ResolveContext): Promise<LiveInfo | null> {
+    id: "page",
+    async find(ctx: ResolveContext): Promise<Candidate> {
       let sigi: SigiState | null = null
       let html = ""
+      // A `failed` sub-step is not terminal: legacy + universal-data fallbacks
+      // still get their chance. It is returned only if nothing else hit.
+      let failure: Extract<Candidate, { kind: "failed" }> | null = null
+      const take = (candidate: Candidate): Candidate | null => {
+        if (candidate.kind === "room" || candidate.kind === "denied") return candidate
+        if (candidate.kind === "failed") failure ??= candidate
+        return null
+      }
 
       const page = await ctx.fetchPage(ctx.user, "/live")
       if (!page) {
@@ -40,61 +54,19 @@ export function createPageSource(): RoomSource {
 
           // ── Primary path: liveRoom is populated (server-rendered) ──
           if (liveRoom && userInfo?.roomId) {
-            const roomId = String(userInfo.roomId)
-            const isLive = liveRoom.status === 2 // 2 = live, 4 = offline
-            ctx.debug(
-              `fetchLiveInfo: primary path — roomId=${roomId}, status=${liveRoom.status}, isLive=${isLive}`,
-            )
-            const title = liveRoom.title ?? null
-            if (!isLive) {
-              return {
-                roomId,
-                isLive: false,
-                streamUrl: null,
-                title,
-                reason: "offline",
-                source: "sigi",
-              }
+            const room: RoomRef = {
+              id: String(userInfo.roomId),
+              title: liveRoom.title ?? null,
+              live: liveRoom.status === 2, // 2 = live, 4 = offline
             }
+            ctx.debug(
+              `fetchLiveInfo: primary path — roomId=${room.id}, status=${liveRoom.status}, live=${room.live}`,
+            )
+            if (!room.live) return { kind: "room", room, stream: null, source: "sigi" }
 
             // Extract stream URL: try SIGI_STATE first, then Webcast API fallback
-            let streamUrl = extractStreamUrlFast(liveRoom)
-            if (!streamUrl) streamUrl = findStreamUrlRecursively(sigi)
-            if (streamUrl) {
-              return { roomId, isLive: true, streamUrl, title, reason: "live", source: "sigi" }
-            }
-            const streamRes = await ctx.webcast.fetchStreamUrlFromApi(roomId)
-            if (streamRes.ok) {
-              if (streamRes.value) {
-                return {
-                  roomId,
-                  isLive: true,
-                  streamUrl: streamRes.value,
-                  title,
-                  reason: "live",
-                  source: "sigi",
-                }
-              }
-              return {
-                roomId,
-                isLive: true,
-                streamUrl: null,
-                title,
-                reason: "no-stream-url",
-                source: "sigi",
-              }
-            }
-            if (streamRes.statusCode === 4003110) {
-              return ctx.webcast.resolveRefusedRoom(roomId, "sigi", title)
-            }
-            return {
-              roomId,
-              isLive: true,
-              streamUrl: null,
-              title,
-              reason: "no-stream-url",
-              source: "sigi",
-            }
+            const knownUrl = extractStreamUrlFast(liveRoom) ?? findStreamUrlRecursively(sigi)
+            return withStream(ctx, room, "sigi", knownUrl)
           }
 
           // ── Fallback: userInfo has roomId, but liveRoom is async-loaded ──
@@ -103,16 +75,16 @@ export function createPageSource(): RoomSource {
           if (userInfo?.roomId) {
             const roomId = String(userInfo.roomId)
             ctx.debug(`fetchLiveInfo: userInfo fallback — roomId=${roomId}, querying Webcast API`)
-            const roomInfo = await ctx.webcast.fetchRoomInfoFromRoomApi(roomId)
+            const found = take(await fromRoomInfo(ctx, roomId, "room-info"))
             ctx.debug(
-              `fetchLiveInfo: Webcast API ${roomInfo ? "returned room info" : "returned null"}`,
+              `fetchLiveInfo: Webcast API ${found ? "returned room info" : "returned null"}`,
             )
-            if (roomInfo) return roomInfo
+            if (found) return found
           }
 
           // ── Legacy fallback: async-loaded SIGI_STATE ──
           ctx.debug("fetchLiveInfo: trying legacy fallback (UserModule)")
-          const legacy = await fetchSigiLegacy(sigi, ctx)
+          const legacy = take(await fetchSigiLegacy(sigi, ctx))
           ctx.debug(`fetchLiveInfo: legacy fallback ${legacy ? "succeeded" : "returned null"}`)
           if (legacy) return legacy
         } // end if (sigi)
@@ -125,14 +97,13 @@ export function createPageSource(): RoomSource {
       const { roomId } = extractUserFromUniversalData(html)
       ctx.debug(`fetchLiveInfo: universal data roomId=${roomId ?? "null"}`)
       if (roomId) {
-        // If the /live page has the roomId, use room/info (reliable)
-        const result = await ctx.webcast.fetchRoomInfoFromRoomApi(roomId)
+        const found = take(await fromRoomInfo(ctx, roomId, "room-info"))
         ctx.debug(
-          `fetchLiveInfo: universal data Webcast API ${result ? "succeeded" : "returned null"}`,
+          `fetchLiveInfo: universal data Webcast API ${found ? "succeeded" : "returned null"}`,
         )
-        if (result) return result
+        if (found) return found
       }
-      return null
+      return failure ?? miss("page: no room id")
     },
   }
 }

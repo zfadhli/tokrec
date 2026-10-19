@@ -3,7 +3,7 @@
  * The single source of truth for every user-facing option.
  */
 
-import type { LiveReason } from "../domain/verdict"
+import type { Verdict } from "../domain/verdict"
 
 /**
  * TikTok cookie key-value pairs extracted from Firefox or cookies.json.
@@ -71,8 +71,10 @@ export interface RecorderController {
   off<E extends keyof RecorderEventHandler>(event: E, handler: RecorderEventHandler[E]): void
 }
 
+export type Phase = "idle" | "polling" | "recording" | "segmenting" | "converting" | "stopped"
+
 export interface RecorderStatus {
-  state: "idle" | "polling" | "recording" | "converting" | "stopped"
+  state: Phase
   user: string
   currentFile?: string
   sessionDuration?: number
@@ -82,44 +84,47 @@ export interface RecorderStatus {
 
 export type RecorderEvent = keyof RecorderEventHandler
 
-export interface RecorderEventHandler {
-  checking: (info: { user: string }) => void
-  tick: (info: { user: string; isLive: boolean; roomId?: string; reason?: LiveReason }) => void
-  "recording:start": (info: { user: string; file: string }) => void
-  "download:progress": (info: { bytes: number; elapsed: number; speed: number }) => void
-  "download:end": (info: { file: string; duration: number; size: number }) => void
-  "recording:end": (info: { file: string; duration: number; size: number }) => void
-  "segmenting:start": (info: { input: string; outputPattern: string }) => void
-  "segmenting:end": (info: { segments: number }) => void
-  "converting:start": (info: { input: string }) => void
-  converted: (info: { input: string; output: string }) => void
-  "normalize:start": (info: { file: string }) => void
-  "normalize:progress": (info: {
-    file: string
-    percent: number
-    phase: "analyzing" | "normalizing"
-  }) => void
-  "normalize:end": (info: { input: string; output: string }) => void
-  "normalize:error": (info: { input: string; error: string }) => void
-  error: (err: TikTokError) => void
+export interface RecordedFile {
+  file: string
+  duration: number
+  size: number
 }
 
-export type AppErrorKind =
-  | "user-not-live"
-  | "room-not-found"
-  | "stream-url-not-found"
-  | "waf-blocked"
-  | "country-blocked"
-  | "network-error"
+/** One recording lifecycle channel: start → download → processing → end. */
+export type RecordEvent =
+  | { phase: "start"; user: string; file: string }
+  | ({ phase: "download" } & RecordedFile)
+  | { phase: "segment"; status: "start"; input: string; outputPattern: string }
+  | { phase: "segment"; status: "end"; segments: number }
+  | { phase: "convert"; status: "start"; input: string }
+  | { phase: "convert"; status: "done"; input: string; output: string }
+  | { phase: "normalize"; status: "start"; file: string }
+  | { phase: "normalize"; status: "done"; input: string; output: string }
+  | { phase: "normalize"; status: "error"; input: string; error: string }
+  | ({ phase: "end" } & RecordedFile)
+
+/** Download and normalize progress share one spinner in the CLI. */
+export type ProgressEvent =
+  | { kind: "download"; bytes: number; elapsed: number; speed: number }
+  | { kind: "normalize"; file: string; percent: number; phase: "analyzing" | "normalizing" }
+
+export interface RecorderEventHandler {
+  verdict: (verdict: Verdict) => void
+  record: (event: RecordEvent) => void
+  progress: (event: ProgressEvent) => void
+  failure: (err: TikTokError) => void
+}
+
+export type TikTokErrorCode =
+  | "config-error"
   | "ffmpeg-not-found"
   | "ffmpeg-error"
   | "aborted"
-  | "config-error"
   | "unknown"
 
 export class TikTokError extends Error {
   constructor(
-    public readonly kind: AppErrorKind,
+    public readonly code: TikTokErrorCode,
     message: string,
     public override readonly cause?: unknown,
   ) {

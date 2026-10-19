@@ -5,7 +5,47 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## Unreleased
+## [0.14.0] — 2026-10-19
+
+Version: `0.14.0`. The project is still pre-1.0, so the event, error, and
+recorder-status changes below are semver-legal in a minor release.
+
+### BREAKING
+
+- **16 recorder events → 4** — `checking`, `tick`, `recording:*`, `download:*`,
+  `segmenting:*`, `converting:*`, `converted`, `normalize:*`, and `error` are
+  replaced by `verdict`, `record`, `progress`, and `failure`. `record` is a
+  discriminated union on `phase`, `progress` on `kind`.
+- **`Verdict` replaces `LiveInfo`** — the public event now carries
+  `{ reason, room, stream, evidence, failure }`. `LiveInfo`, `toLiveInfo`, and
+  `getLiveInfo` are deleted; use `getVerdict` or the `verdict` event.
+- **`TikTokError.kind` → `.code`** — 11 values collapse to the 5 actually
+  constructed: `config-error`, `ffmpeg-not-found`, `ffmpeg-error`, `aborted`,
+  `unknown`. `AppErrorKind` is removed.
+- **`RecorderStatus.state`** is now `Phase` and adds `"segmenting"`; the
+transition table allows recording → polling directly after a job finishes.
+
+### Added
+
+- **`AbortScope`** — one signal per run, passed through HTTP, Webcast, page
+  fetches, FFmpeg, and the poll sleep. `stop()` now aborts in-flight work
+  instead of waiting out the 15 s request timeout or a pending download.
+- **`RecordingJob`** — owns its own post-processing promises and exposes an
+  idempotent `finish()`. The shared `pendingRemuxes` array and the eight-field
+  `ProcessingDeps` surface are gone.
+- **`policy/tick.ts`** — pure `planTick(verdict, facts)`; the session maps
+  `poll | hold | record | stop` to effects.
+
+### Changed
+
+- **Segmenting reads FFmpeg's own CSV segment list**
+  (`-segment_list pipe:1 -segment_list_type csv`) instead of scanning the
+  output directory with `readdirSync` and a filename regex. File names and
+  `utimes` timestamps are unchanged.
+- **Post-recording processing moved from `session/post-processing.ts` into
+  `session/job.ts`**.
+
+## Previous unreleased work (included in 0.14.0)
 
 ### Changed
 

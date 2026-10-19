@@ -7,9 +7,10 @@ import type { Logger } from "../lib/logger"
 
 // Valid state transitions: [from] → [to, to, ...]
 const TRANSITIONS: Record<string, string[]> = {
-  idle: ["polling"],
+  idle: ["polling", "stopped"],
   polling: ["recording", "stopped"],
-  recording: ["converting", "stopped"],
+  recording: ["segmenting", "converting", "polling", "stopped"],
+  segmenting: ["converting", "polling", "stopped"],
   converting: ["polling", "stopped"],
   stopped: [],
 }

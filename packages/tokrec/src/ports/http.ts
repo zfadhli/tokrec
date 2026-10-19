@@ -9,7 +9,12 @@
 export type HttpBody = import("bun").BodyInit
 
 export interface HttpClient {
-  get: (url: string) => Promise<Response>
-  post: (url: string, body?: HttpBody, headers?: Record<string, string>) => Promise<Response>
+  get: (url: string, signal?: AbortSignal) => Promise<Response>
+  post: (
+    url: string,
+    body?: HttpBody,
+    headers?: Record<string, string>,
+    signal?: AbortSignal,
+  ) => Promise<Response>
   close: () => Promise<void>
 }

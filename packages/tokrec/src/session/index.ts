@@ -1,40 +1,27 @@
 /**
  * Recorder orchestrator — wires together the API, monitor, stream downloader,
- * and converter into a single RecorderController.
+ * and RecordingJob into a single RecorderController.
+ *
+ * Policy lives in `policy/tick.ts`; this file only maps a TickPlan to effects.
  */
 
 import { execa } from "execa"
 import { createHttpClient } from "../adapters/http/wreq"
 import { type Converter, createConverter } from "../adapters/media/convert"
 import { type AudioNormalizer, createAudioNormalizer } from "../adapters/media/normalize"
-import type { DownloadResult } from "../domain/media"
-import type { LiveReason, RecorderConfig, RecorderController } from "../lib/config"
+import { verdictOf } from "../domain/verdict"
+import type { RecorderConfig, RecorderController } from "../lib/config"
 import { normalizeConfig, TikTokError } from "../lib/config"
 import { createLogger } from "../lib/logger"
-import { findFfmpegPath, sleep } from "../lib/utils"
+import { findFfmpegPath } from "../lib/utils"
+import { planTick, type TickFacts } from "../policy/tick"
+import { type AbortScope, abortScope } from "./abort"
+import { createRecordingJob, type RecordingJob } from "./job"
 import { createPollingMonitor, type PollingMonitor } from "./loop"
-import { processRecording } from "./post-processing"
-import { createTikTokApi, type LiveInfo, type TikTokApi } from "./probe"
+import { createTikTokApi, type TikTokApi } from "./probe"
 import { createEventEmitter } from "./recorder-events"
 import { createRecorderState } from "./recorder-state"
 import { createStreamDownloader, type StreamDownloader } from "./stream"
-
-/**
- * Per-tick verdict from a `LiveInfo` reason. `live`, `restricted`, and
- * `no-stream-url` all mean the room is live; the rest mean offline.
- */
-export function decideTick(info: LiveInfo): { isLive: boolean; reason: LiveReason } {
-  switch (info.reason) {
-    case "live":
-    case "restricted":
-    case "no-stream-url":
-      return { isLive: true, reason: info.reason }
-    case "offline":
-    case "no-room-id":
-    case "error":
-      return { isLive: false, reason: info.reason }
-  }
-}
 
 export function createRecorder(config: RecorderConfig): RecorderController {
   const cfg = normalizeConfig(config)
@@ -54,11 +41,12 @@ export function createRecorder(config: RecorderConfig): RecorderController {
   let downloader: StreamDownloader | null = null
   let converter: Converter | null = null
   let audioNormalizer: AudioNormalizer | null = null
-  let stopRequested = false
-  let stopAbortController = new AbortController()
-  let pendingRemuxes: Promise<unknown>[] = []
+  let scope: AbortScope | null = null
+  let currentJob: RecordingJob | null = null
+  let recordedSec = 0
+  let consecutiveErrors = 0
 
-  async function runFfmpeg(args: string[], signal?: AbortSignal): Promise<void> {
+  async function runFfmpeg(args: string[], signal?: AbortSignal): Promise<string> {
     const ffmpegPath = findFfmpegPath()
     if (!ffmpegPath) {
       throw new TikTokError(
@@ -67,13 +55,17 @@ export function createRecorder(config: RecorderConfig): RecorderController {
       )
     }
     try {
-      await execa(ffmpegPath, args, { cancelSignal: signal, stdio: ["ignore", "pipe", "pipe"] })
+      const result = await execa(ffmpegPath, args, {
+        cancelSignal: signal,
+        stdio: ["ignore", "pipe", "pipe"],
+      })
+      return result.stdout ?? ""
     } catch (err: unknown) {
       if (signal?.aborted) {
-        throw new TikTokError("unknown", "Aborted by user")
+        throw new TikTokError("aborted", "Aborted by user")
       }
       const message = err instanceof Error ? err.message : String(err)
-      throw new TikTokError("unknown", `FFmpeg failed: ${message}`)
+      throw new TikTokError("ffmpeg-error", `FFmpeg failed: ${message}`)
     }
   }
 
@@ -82,32 +74,30 @@ export function createRecorder(config: RecorderConfig): RecorderController {
       logger.warn(`start() ignored: already in state ${stateManager.getStatus().state}`)
       return
     }
-    stopRequested = false
-    pendingRemuxes = []
-    stopAbortController = new AbortController()
+    const activeScope = abortScope()
+    scope = activeScope
+    currentJob = null
+    recordedSec = 0
+    consecutiveErrors = 0
 
     logger.info(`Starting recorder for @${cfg.user}`)
     httpClient = await createHttpClient(cfg)
-    api = createTikTokApi(httpClient, logger, cfg.debug)
+    api = createTikTokApi(httpClient, logger, cfg.debug, activeScope.signal)
     downloader = createStreamDownloader(logger)
-    converter = createConverter(logger, stopAbortController.signal)
+    converter = createConverter(logger, activeScope.signal)
     audioNormalizer = cfg.normalizeAudio
       ? createAudioNormalizer(
           {
             loudness: cfg.normalizeLoudness,
             audioCodec: cfg.normalizeCodec,
             audioBitrate: cfg.normalizeBitrate,
-            onStart: (file) => emitter.emit("normalize:start", { file }),
             onProgress: (file, percent, phase) =>
-              emitter.emit("normalize:progress", {
+              emitter.emit("progress", {
+                kind: "normalize",
                 file,
                 percent,
                 phase: phase as "analyzing" | "normalizing",
               }),
-            onComplete: (result) =>
-              emitter.emit("normalize:end", { input: result.input, output: result.output }),
-            onError: (file, err) =>
-              emitter.emit("normalize:error", { input: file, error: err.message }),
           },
           logger,
         )
@@ -115,108 +105,134 @@ export function createRecorder(config: RecorderConfig): RecorderController {
 
     monitor = createPollingMonitor({
       intervalMinutes: cfg.interval,
+      signal: activeScope.signal,
       logger,
       onTick: async () => {
-        if (stopRequested) return
+        if (activeScope.signal.aborted) return
 
         // All dependencies are initialized by start() before onTick runs
         const tikTokApi = api as TikTokApi
         const streamDownloader = downloader as StreamDownloader
         const pollingMonitor = monitor as PollingMonitor
-
         const user = cfg.user
-        tikTokApi.invalidateCache()
 
-        emitter.emit("checking", { user })
+        tikTokApi.invalidateCache()
         logger.info(`Checking @${user}...`)
 
-        const info = await tikTokApi.getLiveInfo(user)
-        const roomId = info.roomId ?? undefined
-
-        if (info.reason === "restricted") {
-          logger.warn(
-            `@${user} is live but age-protected/restricted — stream unavailable (reason: restricted, status_code 4003110, source: ${info.source})`,
-          )
-          emitter.emit("tick", { user, isLive: true, roomId, reason: "restricted" })
-          return
+        const verdict = await tikTokApi.getVerdict(user)
+        const facts: TickFacts = {
+          recording: currentJob !== null,
+          recordedSec,
+          oneShot: cfg.duration > 0,
+          consecutiveErrors,
+          stopRequested: activeScope.signal.aborted,
         }
+        consecutiveErrors =
+          verdict.reason === "error" || verdict.reason === "no-room-id" ? consecutiveErrors + 1 : 0
 
-        if (info.reason === "no-stream-url") {
-          logger.warn(
-            `@${user} is live but no stream URL found (reason: no-stream-url, source: ${info.source})`,
-          )
-          emitter.emit("tick", { user, isLive: true, roomId, reason: "no-stream-url" })
-          return
-        }
+        emitter.emit("verdict", verdict)
+        const plan = planTick(verdict, facts)
 
-        if (!decideTick(info).isLive) {
-          logger.info(`@${user} is offline (reason: ${info.reason}, source: ${info.source})`)
-          emitter.emit("tick", { user, isLive: false, roomId, reason: info.reason })
-          return
-        }
-
-        // Live verdict implies roomId + streamUrl are set; narrow for the recording path.
-        const liveRoomId = info.roomId as string
-        const liveUrl = info.streamUrl as string
-        logger.info(`@${user} is LIVE! (room: ${liveRoomId}, reason: live, source: ${info.source})`)
-        emitter.emit("tick", { user, isLive: true, roomId: liveRoomId, reason: "live" })
-
-        stateManager.setState({ state: "recording" })
-        emitter.emit("recording:start", { user, file: "" })
-
-        const getNextUrl = async (): Promise<string | null> => {
-          // Use the lightweight check_alive endpoint first — avoids a full
-          // page re-scan + room/info call when the stream is still active.
-          const alive = await tikTokApi.isRoomAlive(liveRoomId)
-          if (!alive) {
-            logger.info(`@${user} is no longer live — stopping`)
-            return null
+        switch (plan.kind) {
+          case "poll": {
+            logger.info(
+              `@${user} ${plan.note} (reason: ${verdict.reason}, source: ${lastSource(verdict)})`,
+            )
+            return
           }
-          // Still alive — invalidate cache and get a fresh stream URL.
-          tikTokApi.invalidateCache()
-          return tikTokApi.getLiveUrl(liveRoomId)
-        }
+          case "hold": {
+            if (plan.reason === "restricted") {
+              logger.warn(
+                `@${user} is live but age-protected/restricted — stream unavailable (reason: restricted, status_code 4003110, room: ${plan.room.id})`,
+              )
+            } else {
+              logger.warn(
+                `@${user} is live but no stream URL found (reason: no-stream-url, room: ${plan.room.id})`,
+              )
+            }
+            return
+          }
+          case "stop": {
+            if (plan.why === "one-shot") {
+              logger.info("Duration limit reached — exiting")
+              pollingMonitor.stopAfterCurrentTick()
+            } else if (plan.why === "gave-up") {
+              logger.error(`@${user} gave up after ${consecutiveErrors} consecutive errors`)
+              pollingMonitor.stopAfterCurrentTick()
+            }
+            return
+          }
+          case "record": {
+            const { room, stream } = plan
+            logger.info(`@${user} is LIVE! (room: ${room.id}, reason: live)`)
+            stateManager.setState({ state: "recording" })
+            emitter.emit("record", { phase: "start", user, file: "" })
 
-        const result = await streamDownloader.download(
-          liveUrl,
-          user,
-          cfg.outputDir,
-          cfg.duration,
-          (info) => emitter.emit("download:progress", info),
-          getNextUrl,
-          cfg.cookies,
-        )
+            const getNextUrl = async (): Promise<string | null> => {
+              if (activeScope.signal.aborted) return null
+              // Use the lightweight check_alive endpoint first — avoids a full
+              // page re-scan + room/info call when the stream is still active.
+              const alive = await tikTokApi.isRoomAlive(room.id)
+              if (!alive) {
+                logger.info(`@${user} is no longer live — stopping`)
+                return null
+              }
+              tikTokApi.invalidateCache()
+              return tikTokApi.getLiveUrl(room.id)
+            }
 
-        emitter.emit("download:end", {
-          file: result.file,
-          duration: result.duration,
-          size: result.size,
-        })
+            const result = await streamDownloader.download(
+              stream.url,
+              user,
+              cfg.outputDir,
+              cfg.duration,
+              (info) => emitter.emit("progress", { kind: "download", ...info }),
+              getNextUrl,
+              cfg.cookies,
+              activeScope.signal,
+            )
 
-        await processRecording(result as DownloadResult, cfg, {
-          runFfmpeg,
-          converter: converter as Converter,
-          audioNormalizer,
-          stopAbortController,
-          pendingRemuxes,
-          emit: (emitter.emit as (event: string, ...args: unknown[]) => void).bind(emitter),
-          setState: stateManager.setState,
-          stopRequested: () => stopRequested,
-          logger,
-        })
+            emitter.emit("record", { phase: "download", ...result })
+            recordedSec += result.duration
+            if (activeScope.signal.aborted) return
 
-        // One-shot mode: if a duration was set, stop after this recording
-        if (cfg.duration > 0) {
-          logger.info("Duration limit reached — exiting")
-          pollingMonitor.stopAfterCurrentTick()
-        } else if (!stopRequested && roomId) {
-          // Recording ended because the stream went offline (not user-initiated stop).
-          // Immediately re-check via lightweight check_alive endpoint instead of
-          // waiting for the next poll interval.
-          const alive = await tikTokApi.isRoomAlive(roomId)
-          if (!alive) {
-            logger.info(`@${user} is offline`)
-            emitter.emit("tick", { user, isLive: false, reason: "offline" })
+            const job = createRecordingJob({
+              result,
+              cfg: { segmentMinutes: cfg.segmentMinutes },
+              logger,
+              runFfmpeg,
+              converter: converter as Converter,
+              audioNormalizer,
+              signal: activeScope.signal,
+              emitRecord: (event) => emitter.emit("record", event),
+              emitProgress: (event) => emitter.emit("progress", event),
+              emitFailure: (err) => emitter.emit("failure", err),
+              setState: stateManager.setState,
+            })
+            currentJob = job
+            try {
+              await job.finish()
+            } finally {
+              currentJob = null
+            }
+
+            // One-shot mode: if a duration was set, stop after this recording
+            if (cfg.duration > 0) {
+              logger.info("Duration limit reached — exiting")
+              pollingMonitor.stopAfterCurrentTick()
+            } else if (!activeScope.signal.aborted) {
+              // Recording ended because the stream went offline (not user-initiated
+              // stop). Immediately re-check via the lightweight endpoint.
+              const alive = await tikTokApi.isRoomAlive(room.id)
+              if (!alive) {
+                logger.info(`@${user} is offline`)
+                emitter.emit(
+                  "verdict",
+                  verdictOf({ room: { ...room, live: false }, evidence: verdict.evidence }),
+                )
+              }
+            }
+            return
           }
         }
       },
@@ -231,22 +247,16 @@ export function createRecorder(config: RecorderConfig): RecorderController {
       logger.warn(`stop() ignored: already stopped`)
       return
     }
-    stopRequested = true
     logger.info("Stopping recorder...")
+    scope?.close("user")
 
-    if (pendingRemuxes.length > 0) {
-      logger.info(`Waiting for ${pendingRemuxes.length} pending conversion(s) (max 10 min)...`)
-      const abortTimeout = new AbortController()
-      await Promise.race([
-        Promise.allSettled(pendingRemuxes).finally(() => abortTimeout.abort()),
-        sleep(600_000, abortTimeout.signal),
-      ])
-      pendingRemuxes = []
+    const job = currentJob
+    if (job) {
+      logger.info("Waiting for active recording to finish...")
+      await job.finish()
     }
 
-    if (downloader) downloader.abort()
     if (monitor) await monitor.stop()
-    stopAbortController.abort()
     if (httpClient) await httpClient.close()
     emitter.clear()
     stateManager.setState({ state: "stopped" })
@@ -260,4 +270,11 @@ export function createRecorder(config: RecorderConfig): RecorderController {
     on: emitter.on,
     off: emitter.off,
   }
+}
+
+function lastSource(verdict: ReturnType<typeof verdictOf>): string {
+  return (
+    [...verdict.evidence].reverse().find((e) => e.outcome === "hit" || e.outcome === "denied")
+      ?.source ?? "none"
+  )
 }

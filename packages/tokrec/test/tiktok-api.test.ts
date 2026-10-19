@@ -13,12 +13,21 @@ import {
   extractUserFromUniversalData,
   findStreamUrlRecursively,
 } from "../src/adapters/tiktok/parse"
+import { isLiveReason, type Verdict } from "../src/domain/verdict"
+import type { HttpClient } from "../src/ports/http"
 import { createTikTokApi } from "../src/session/probe"
 import { createMockHttp, loadFixture } from "./utils/mock-http"
 
 // ─── Fixture paths ──────────────────────────────────────────────────
 
 const FIXTURES = "tiktok"
+
+function sourceOf(verdict: Verdict): string {
+  return (
+    [...verdict.evidence].reverse().find((e) => e.outcome === "hit" || e.outcome === "denied")
+      ?.source ?? "none"
+  )
+}
 
 // ─── Unit tests for extract functions ───────────────────────────────
 
@@ -235,9 +244,9 @@ describe("isRoomAlive with check_alive endpoint", () => {
   })
 })
 
-// ─── getLiveInfo reason taxonomy (t1: restricted / offline / live) ────────
+// ─── getVerdict reason taxonomy (t1: restricted / offline / live) ────────
 
-describe("getLiveInfo with reason taxonomy", () => {
+describe("getVerdict with reason taxonomy", () => {
   const RESTRICTED_ROOM_ID = "7696184043282287367"
 
   function buildLiveHtmlWithoutStreamData(): string {
@@ -266,11 +275,11 @@ describe("getLiveInfo with reason taxonomy", () => {
     })
 
     const api = createTikTokApi(http)
-    const info = await api.getLiveInfo("restricteduser")
-    expect(info.roomId).toBe(RESTRICTED_ROOM_ID)
-    expect(info.isLive).toBe(true)
-    expect(info.streamUrl).toBeNull()
-    expect(info.reason).toBe("restricted")
+    const verdict = await api.getVerdict("restricteduser")
+    expect(verdict.room?.id).toBe(RESTRICTED_ROOM_ID)
+    expect(isLiveReason(verdict.reason)).toBe(true)
+    expect(verdict.stream).toBeNull()
+    expect(verdict.reason).toBe("restricted")
 
     await http.close()
   })
@@ -289,10 +298,10 @@ describe("getLiveInfo with reason taxonomy", () => {
     })
 
     const api = createTikTokApi(http)
-    const info = await api.getLiveInfo("restricteduser")
-    expect(info.roomId).toBe(RESTRICTED_ROOM_ID)
-    expect(info.isLive).toBe(false)
-    expect(info.reason).toBe("offline")
+    const verdict = await api.getVerdict("restricteduser")
+    expect(verdict.room?.id).toBe(RESTRICTED_ROOM_ID)
+    expect(isLiveReason(verdict.reason)).toBe(false)
+    expect(verdict.reason).toBe("offline")
 
     await http.close()
   })
@@ -307,17 +316,17 @@ describe("getLiveInfo with reason taxonomy", () => {
     })
 
     const api = createTikTokApi(http)
-    const info = await api.getLiveInfo("anomaliaa27")
-    expect(info.reason).toBe("live")
-    expect(info.streamUrl).toMatch(/\.(flv|m3u8)/)
+    const verdict = await api.getVerdict("anomaliaa27")
+    expect(verdict.reason).toBe("live")
+    expect(verdict.stream?.url).toMatch(/\.(flv|m3u8)/)
 
     await http.close()
   })
 })
 
-// ─── fetchLiveInfo api-live fallback (t2) ────────
+// ─── api-live fallback (t2) ────────
 
-describe("fetchLiveInfo api-live fallback", () => {
+describe("api-live fallback", () => {
   function buildLargePageWithoutRoomId(): string {
     return `<html><head><title>age wall</title></head><body>${"x".repeat(6000)}</body></html>`
   }
@@ -332,10 +341,10 @@ describe("fetchLiveInfo api-live fallback", () => {
     })
 
     const api = createTikTokApi(http)
-    const info = await api.getLiveInfo("bigpageuser")
+    const verdict = await api.getVerdict("bigpageuser")
     // Mock returns 404 for unregistered URLs, so a roomId here proves api-live was fetched
-    expect(info.roomId).toBe(roomId)
-    expect(info.source).toBe("api-live")
+    expect(verdict.room?.id).toBe(roomId)
+    expect(sourceOf(verdict)).toBe("api-live")
 
     await http.close()
   })
@@ -350,11 +359,11 @@ describe("fetchLiveInfo api-live fallback", () => {
     })
 
     const api = createTikTokApi(http)
-    const info = await api.getLiveInfo("offlineuser")
-    expect(info.roomId).toBe(roomId)
-    expect(info.isLive).toBe(false)
-    expect(info.reason).toBe("offline")
-    expect(info.source).toBe("api-live")
+    const verdict = await api.getVerdict("offlineuser")
+    expect(verdict.room?.id).toBe(roomId)
+    expect(isLiveReason(verdict.reason)).toBe(false)
+    expect(verdict.reason).toBe("offline")
+    expect(sourceOf(verdict)).toBe("api-live")
 
     await http.close()
   })
@@ -365,11 +374,73 @@ describe("fetchLiveInfo api-live fallback", () => {
     })
 
     const api = createTikTokApi(http)
-    const info = await api.getLiveInfo("brokenuser")
-    expect(info.roomId).toBeNull()
-    expect(info.isLive).toBe(false)
-    expect(info.reason).toBe("error")
+    const verdict = await api.getVerdict("brokenuser")
+    expect(verdict.room).toBeNull()
+    expect(isLiveReason(verdict.reason)).toBe(false)
+    expect(verdict.reason).toBe("error")
 
+    await http.close()
+  })
+})
+
+// ─── discovery chain: a source throw must not dead-end the chain ────
+
+describe("discovery chain resilience", () => {
+  test("page source throw falls through to api-live instead of ending the chain", async () => {
+    const roomId = "7696112012440324885"
+    const base = createMockHttp({
+      "https://www.tiktok.com/api-live/user/room/": JSON.stringify({
+        data: { user: { roomId, status: 4 } },
+      }),
+    })
+    // Only the /live page transport fails; every other request is served.
+    const http: HttpClient = {
+      ...base,
+      get: async (url: string): Promise<Response> => {
+        if (url.startsWith("https://www.tiktok.com/@throwuser/live")) {
+          throw new Error("page transport boom")
+        }
+        return base.get(url)
+      },
+    }
+
+    const api = createTikTokApi(http)
+    const verdict = await api.getVerdict("throwuser")
+    expect(verdict.room?.id).toBe(roomId)
+    expect(sourceOf(verdict)).toBe("api-live")
+    expect(verdict.evidence).toEqual([
+      { source: "page", outcome: "error" },
+      { source: "api-live", outcome: "hit" },
+    ])
+    await http.close()
+  })
+
+  test("a webcast failure inside page fallback does not skip the legacy fallback", async () => {
+    // SIGI: userInfo.roomId but liveRoom async-loaded; UserModule carries the
+    // roomId with liveRoomStatus = 2. Every webcast request throws.
+    const roomId = "7696112012440324885"
+    const sigi = {
+      LiveRoom: { liveRoomStatus: 2, liveRoomUserInfo: { user: { roomId } } },
+      UserModule: { users: { legacyuser: { roomId } } },
+    }
+    const html = `<html><head><script id="SIGI_STATE" type="application/json">${JSON.stringify(sigi)}</script></head><body>${"x".repeat(6000)}</body></html>`
+    const base = createMockHttp({ "https://www.tiktok.com/@legacyuser/live": html })
+    const http: HttpClient = {
+      ...base,
+      get: async (url: string): Promise<Response> => {
+        if (url.startsWith("https://webcast.tiktok.com")) {
+          throw new Error("webcast transport boom")
+        }
+        return base.get(url)
+      },
+    }
+
+    const api = createTikTokApi(http)
+    const verdict = await api.getVerdict("legacyuser")
+    expect(verdict.room?.id).toBe(roomId)
+    expect(isLiveReason(verdict.reason)).toBe(true)
+    expect(verdict.reason).toBe("no-stream-url")
+    expect(sourceOf(verdict)).toBe("sigi")
     await http.close()
   })
 })
