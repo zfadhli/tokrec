@@ -1,7 +1,11 @@
 /**
- * Typed event emitter for recorder lifecycle events.
+ * Typed emitter over `node:events` — the four-channel recorder contract
+ * (`verdict`, `record`, `progress`, `failure`) with no listener bookkeeping of
+ * our own. `emit` swallows handler throws: a bad subscriber must not kill a
+ * recording.
  */
 
+import { EventEmitter } from "node:events"
 import type { RecorderEvent, RecorderEventHandler } from "../lib/config"
 
 export interface RecorderEventEmitter {
@@ -12,39 +16,30 @@ export interface RecorderEventEmitter {
 }
 
 export function createEventEmitter(): RecorderEventEmitter {
-  const handlers = new Map<string, Array<(...args: unknown[]) => void>>()
+  const emitter = new EventEmitter()
+  const asListener = (handler: unknown) => handler as (...args: unknown[]) => void
 
   function on<E extends RecorderEvent>(event: E, handler: RecorderEventHandler[E]): void {
-    const list = handlers.get(event) ?? []
-    list.push(handler as (...args: unknown[]) => void)
-    handlers.set(event, list)
+    emitter.on(event, asListener(handler))
   }
 
   function off<E extends RecorderEvent>(event: E, handler: RecorderEventHandler[E]): void {
-    const list = handlers.get(event)
-    if (!list) return
-    const idx = list.indexOf(handler as (...args: unknown[]) => void)
-    if (idx !== -1) list.splice(idx, 1)
+    emitter.off(event, asListener(handler))
   }
 
   function emit<E extends RecorderEvent>(
     event: E,
     ...args: Parameters<RecorderEventHandler[E]>
   ): void {
-    const list = handlers.get(event)
-    if (list) {
-      for (const h of list) {
-        try {
-          h(...args)
-        } catch {
-          // Never let an event handler crash the recorder
-        }
-      }
+    try {
+      emitter.emit(event, ...args)
+    } catch {
+      // Never let an event handler crash the recorder.
     }
   }
 
   function clear(): void {
-    handlers.clear()
+    emitter.removeAllListeners()
   }
 
   return { on, off, emit, clear }

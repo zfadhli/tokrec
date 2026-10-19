@@ -1,28 +1,47 @@
 /**
- * Recorder orchestrator — wires together the API, monitor, stream downloader,
- * and RecordingJob into a single RecorderController.
+ * Recorder orchestrator — wires the TikTok client, stream download, and
+ * RecordingJob into a single RecorderController.
  *
- * Policy lives in `policy/tick.ts`; this file only maps a TickPlan to effects.
+ * Policy lives in `policy/tick.ts`; this file maps a TickPlan to effects and
+ * owns the session state those effects mutate. Everything a tick needs is
+ * constructed as a `const` in `start()` and passed in, so no call site has to
+ * assert a non-null module-level `let` back into existence.
  */
 
-import { createHttpClient } from "../adapters/http/wreq"
+import { createHttpClient, type HttpClient } from "../adapters/http/wreq"
 import { type Converter, createConverter } from "../adapters/media/convert"
 import { downloadStream } from "../adapters/media/download"
 import { type AudioNormalizer, createAudioNormalizer } from "../adapters/media/normalize"
 import { verdictOf } from "../domain/verdict"
-import type { RecorderConfig, RecorderController } from "../lib/config"
+import type { RecorderConfig, RecorderController, RecorderStatus } from "../lib/config"
 import { normalizeConfig } from "../lib/config"
 import { createLogger } from "../lib/logger"
 import { planTick, type TickFacts } from "../policy/tick"
 import { type AbortScope, abortScope } from "./abort"
+import { createEventEmitter } from "./events"
 import { createRecordingJob, type RecordingJob } from "./job"
 import { createPollingMonitor, type PollingMonitor } from "./loop"
 import { createTikTokApi, type TikTokApi } from "./probe"
-import { createEventEmitter } from "./recorder-events"
-import { createRecorderState } from "./recorder-state"
 
 /** Max wait for a stop-time remux before aborting it (matches the pre-#32 cap). */
 const POST_REMUX_GRACE_MS = 10 * 60 * 1000
+
+/** Everything one poll tick needs, built by `start()` before the tick can run. */
+interface TickDeps {
+  client: TikTokApi
+  monitor: PollingMonitor
+  scope: AbortScope
+  post: AbortScope
+  converter: Converter
+  audioNormalizer: AudioNormalizer | null
+}
+
+/** What `stop()` has to join and release. */
+interface Running {
+  monitor: PollingMonitor
+  http: HttpClient
+  scope: AbortScope
+}
 
 export function createRecorder(config: RecorderConfig): RecorderController {
   const cfg = normalizeConfig(config)
@@ -33,27 +52,154 @@ export function createRecorder(config: RecorderConfig): RecorderController {
   })
 
   const emitter = createEventEmitter()
-  const stateManager = createRecorderState({ state: "idle" as const, user: cfg.user }, logger)
 
-  // State variables
-  let httpClient: Awaited<ReturnType<typeof createHttpClient>> | null = null
-  let api: TikTokApi | null = null
-  let monitor: PollingMonitor | null = null
-  let converter: Converter | null = null
-  let audioNormalizer: AudioNormalizer | null = null
-  let scope: AbortScope | null = null
+  // Session state — written by ticks and by the job lifecycle, read by getStatus().
+  const status: RecorderStatus = { state: "idle", user: cfg.user }
+  let running: Running | null = null
   let postScope: AbortScope | null = null
   let currentJob: RecordingJob | null = null
   let recordedSec = 0
   let consecutiveErrors = 0
 
+  function setState(partial: Partial<RecorderStatus>): void {
+    const prev = status.state
+    Object.assign(status, partial)
+    if (partial.state !== undefined && partial.state !== prev) {
+      logger.info(`State: ${prev} → ${partial.state}`)
+      if (partial.state === "polling") status.lastPollTime = new Date().toISOString()
+    }
+  }
+
+  async function tick(d: TickDeps): Promise<void> {
+    const { client, monitor, scope, post } = d
+    if (scope.signal.aborted) return
+    const user = cfg.user
+
+    client.invalidateCache()
+    logger.info(`Checking @${user}...`)
+
+    const verdict = await client.getVerdict(user)
+    const facts: TickFacts = {
+      recording: currentJob !== null,
+      recordedSec,
+      oneShot: cfg.duration > 0,
+      consecutiveErrors,
+    }
+    consecutiveErrors =
+      verdict.reason === "error" || verdict.reason === "no-room-id" ? consecutiveErrors + 1 : 0
+
+    emitter.emit("verdict", verdict)
+    const plan = planTick(verdict, facts)
+
+    switch (plan.kind) {
+      case "poll": {
+        logger.info(
+          `@${user} ${plan.note} (reason: ${verdict.reason}, source: ${lastSource(verdict)})`,
+        )
+        return
+      }
+      case "hold": {
+        if (plan.reason === "restricted") {
+          logger.warn(
+            `@${user} is live but age-protected/restricted — stream unavailable (reason: restricted, status_code 4003110, room: ${plan.room.id})`,
+          )
+        } else {
+          logger.warn(
+            `@${user} is live but no stream URL found (reason: no-stream-url, room: ${plan.room.id})`,
+          )
+        }
+        return
+      }
+      case "stop": {
+        if (plan.why === "one-shot") {
+          logger.info("Duration limit reached — exiting")
+          monitor.stopAfterCurrentTick()
+        } else if (plan.why === "gave-up") {
+          logger.error(`@${user} gave up after ${consecutiveErrors} consecutive errors`)
+          monitor.stopAfterCurrentTick()
+        }
+        return
+      }
+      case "record": {
+        const { room, stream } = plan
+        logger.info(`@${user} is LIVE! (room: ${room.id}, reason: live)`)
+        setState({ state: "recording" })
+        emitter.emit("record", { phase: "start", user, file: "" })
+
+        const getNextUrl = async (): Promise<string | null> => {
+          if (scope.signal.aborted) return null
+          // Use the lightweight check_alive endpoint first — avoids a full
+          // page re-scan + room/info call when the stream is still active.
+          const alive = await client.isRoomAlive(room.id)
+          if (!alive) {
+            logger.info(`@${user} is no longer live — stopping`)
+            return null
+          }
+          client.invalidateCache()
+          return client.getLiveUrl(room.id)
+        }
+
+        const result = await downloadStream(
+          stream.url,
+          user,
+          cfg.outputDir,
+          cfg.duration,
+          (info) => emitter.emit("progress", { kind: "download", ...info }),
+          getNextUrl,
+          scope.signal,
+          logger,
+          cfg.cookies,
+        )
+
+        emitter.emit("record", { phase: "download", ...result })
+        recordedSec += result.duration
+
+        const job = createRecordingJob({
+          result,
+          cfg: { segmentMinutes: cfg.segmentMinutes },
+          logger,
+          converter: d.converter,
+          audioNormalizer: d.audioNormalizer,
+          signal: post.signal,
+          emitRecord: (event) => emitter.emit("record", event),
+          emitProgress: (event) => emitter.emit("progress", event),
+          emitFailure: (err) => emitter.emit("failure", err),
+          setState,
+        })
+        currentJob = job
+        try {
+          await job.finish()
+        } finally {
+          currentJob = null
+        }
+
+        // One-shot mode: if a duration was set, stop after this recording
+        if (cfg.duration > 0) {
+          logger.info("Duration limit reached — exiting")
+          monitor.stopAfterCurrentTick()
+        } else if (!scope.signal.aborted) {
+          // Recording ended because the stream went offline (not user-initiated
+          // stop). Immediately re-check via the lightweight endpoint.
+          const alive = await client.isRoomAlive(room.id)
+          if (!alive) {
+            logger.info(`@${user} is offline`)
+            emitter.emit(
+              "verdict",
+              verdictOf({ room: { ...room, live: false }, evidence: verdict.evidence }),
+            )
+          }
+        }
+        return
+      }
+    }
+  }
+
   async function start(): Promise<void> {
-    if (stateManager.getStatus().state !== "idle") {
-      logger.warn(`start() ignored: already in state ${stateManager.getStatus().state}`)
+    if (status.state !== "idle") {
+      logger.warn(`start() ignored: already in state ${status.state}`)
       return
     }
-    const activeScope = abortScope()
-    scope = activeScope
+    const scope = abortScope()
     // Post-processing outlives a user stop: Ctrl+C aborts the download, but the
     // partial .ts is still remuxed to .mp4 before the process exits.
     const post = abortScope()
@@ -63,10 +209,10 @@ export function createRecorder(config: RecorderConfig): RecorderController {
     consecutiveErrors = 0
 
     logger.info(`Starting recorder for @${cfg.user}`)
-    httpClient = await createHttpClient(cfg)
-    api = createTikTokApi(httpClient, logger, cfg.debug, activeScope.signal)
-    converter = createConverter(logger, post.signal)
-    audioNormalizer = cfg.normalizeAudio
+    const http = await createHttpClient(cfg)
+    const client = createTikTokApi(http, logger, cfg.debug, scope.signal)
+    const converter = createConverter(logger, post.signal)
+    const audioNormalizer = cfg.normalizeAudio
       ? createAudioNormalizer(
           {
             loudness: cfg.normalizeLoudness,
@@ -84,149 +230,28 @@ export function createRecorder(config: RecorderConfig): RecorderController {
         )
       : null
 
+    // Self-reference inside `onTick` is safe: the monitor calls it from
+    // `start()`, never during construction.
+    let monitor: PollingMonitor
     monitor = createPollingMonitor({
       intervalMinutes: cfg.interval,
-      signal: activeScope.signal,
+      signal: scope.signal,
       logger,
-      onTick: async () => {
-        if (activeScope.signal.aborted) return
-
-        // All dependencies are initialized by start() before onTick runs
-        const tikTokApi = api as TikTokApi
-        const pollingMonitor = monitor as PollingMonitor
-        const user = cfg.user
-
-        tikTokApi.invalidateCache()
-        logger.info(`Checking @${user}...`)
-
-        const verdict = await tikTokApi.getVerdict(user)
-        const facts: TickFacts = {
-          recording: currentJob !== null,
-          recordedSec,
-          oneShot: cfg.duration > 0,
-          consecutiveErrors,
-        }
-        consecutiveErrors =
-          verdict.reason === "error" || verdict.reason === "no-room-id" ? consecutiveErrors + 1 : 0
-
-        emitter.emit("verdict", verdict)
-        const plan = planTick(verdict, facts)
-
-        switch (plan.kind) {
-          case "poll": {
-            logger.info(
-              `@${user} ${plan.note} (reason: ${verdict.reason}, source: ${lastSource(verdict)})`,
-            )
-            return
-          }
-          case "hold": {
-            if (plan.reason === "restricted") {
-              logger.warn(
-                `@${user} is live but age-protected/restricted — stream unavailable (reason: restricted, status_code 4003110, room: ${plan.room.id})`,
-              )
-            } else {
-              logger.warn(
-                `@${user} is live but no stream URL found (reason: no-stream-url, room: ${plan.room.id})`,
-              )
-            }
-            return
-          }
-          case "stop": {
-            if (plan.why === "one-shot") {
-              logger.info("Duration limit reached — exiting")
-              pollingMonitor.stopAfterCurrentTick()
-            } else if (plan.why === "gave-up") {
-              logger.error(`@${user} gave up after ${consecutiveErrors} consecutive errors`)
-              pollingMonitor.stopAfterCurrentTick()
-            }
-            return
-          }
-          case "record": {
-            const { room, stream } = plan
-            logger.info(`@${user} is LIVE! (room: ${room.id}, reason: live)`)
-            stateManager.setState({ state: "recording" })
-            emitter.emit("record", { phase: "start", user, file: "" })
-
-            const getNextUrl = async (): Promise<string | null> => {
-              if (activeScope.signal.aborted) return null
-              // Use the lightweight check_alive endpoint first — avoids a full
-              // page re-scan + room/info call when the stream is still active.
-              const alive = await tikTokApi.isRoomAlive(room.id)
-              if (!alive) {
-                logger.info(`@${user} is no longer live — stopping`)
-                return null
-              }
-              tikTokApi.invalidateCache()
-              return tikTokApi.getLiveUrl(room.id)
-            }
-
-            const result = await downloadStream(
-              stream.url,
-              user,
-              cfg.outputDir,
-              cfg.duration,
-              (info) => emitter.emit("progress", { kind: "download", ...info }),
-              getNextUrl,
-              activeScope.signal,
-              logger,
-              cfg.cookies,
-            )
-
-            emitter.emit("record", { phase: "download", ...result })
-            recordedSec += result.duration
-
-            const job = createRecordingJob({
-              result,
-              cfg: { segmentMinutes: cfg.segmentMinutes },
-              logger,
-              converter: converter as Converter,
-              audioNormalizer,
-              signal: post.signal,
-              emitRecord: (event) => emitter.emit("record", event),
-              emitProgress: (event) => emitter.emit("progress", event),
-              emitFailure: (err) => emitter.emit("failure", err),
-              setState: stateManager.setState,
-            })
-            currentJob = job
-            try {
-              await job.finish()
-            } finally {
-              currentJob = null
-            }
-
-            // One-shot mode: if a duration was set, stop after this recording
-            if (cfg.duration > 0) {
-              logger.info("Duration limit reached — exiting")
-              pollingMonitor.stopAfterCurrentTick()
-            } else if (!activeScope.signal.aborted) {
-              // Recording ended because the stream went offline (not user-initiated
-              // stop). Immediately re-check via the lightweight endpoint.
-              const alive = await tikTokApi.isRoomAlive(room.id)
-              if (!alive) {
-                logger.info(`@${user} is offline`)
-                emitter.emit(
-                  "verdict",
-                  verdictOf({ room: { ...room, live: false }, evidence: verdict.evidence }),
-                )
-              }
-            }
-            return
-          }
-        }
-      },
+      onTick: () => tick({ client, monitor, scope, post, converter, audioNormalizer }),
     })
+    running = { monitor, http, scope }
 
-    stateManager.setState({ state: "polling" })
+    setState({ state: "polling" })
     await monitor.start()
   }
 
   async function stop(): Promise<void> {
-    if (stateManager.getStatus().state === "stopped") {
+    if (status.state === "stopped") {
       logger.warn(`stop() ignored: already stopped`)
       return
     }
     logger.info("Stopping recorder...")
-    scope?.close("user")
+    running?.scope.close("user")
 
     const grace = setTimeout(() => postScope?.close("stop-timeout"), POST_REMUX_GRACE_MS)
     try {
@@ -236,20 +261,20 @@ export function createRecorder(config: RecorderConfig): RecorderController {
         await job.finish()
       }
 
-      if (monitor) await monitor.stop()
+      if (running) await running.monitor.stop()
     } finally {
       clearTimeout(grace)
     }
-    if (httpClient) await httpClient.close()
+    if (running) await running.http.close()
     emitter.clear()
-    stateManager.setState({ state: "stopped" })
+    setState({ state: "stopped" })
     logger.info("Recorder stopped")
   }
 
   return {
     start,
     stop,
-    getStatus: stateManager.getStatus,
+    getStatus: () => ({ ...status }),
     on: emitter.on,
     off: emitter.off,
   }
