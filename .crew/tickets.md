@@ -140,3 +140,14 @@ Both report findings with file:line and a severity each; orchestrator appends cr
 2. `packages/tokrec/test/resolvers.test.ts`: add emitted-`source` assertions for the delegated paths so every source string is pinned by a direct test. Read the existing file and fixtures first, reuse their harness. Minimum: a `createProfileSource()` case where the profile page carries a roomId → resolves through `ctx.webcast.fetchRoomInfoFromRoomApi` and emits `source: "room-info"` (use the healthy `anomaliaa27-*` fixture pairing or the equivalent already used in `tiktok-api.test.ts`); if the page resolver's universal-data path is not already asserted to emit `"room-info"`, add that too. No fixture edits (read-only).
 
 Evidence required (command + exit status + verbatim relevant output): `bun test packages/tokrec`, `bun run typecheck`, `bun run lint`. Report under 250 words.
+
+## Architecture proposal — PR A–D (GitHub issues)
+
+Design: `docs/architecture-proposal.html` (untracked until committed). Base commit `c322f20`. Strictly sequential; the only breaking change lands in D.
+
+- [x] #29 A — move `core/` into `domain/ policy/ ports/ adapters/ session/`, relocate shared types, add `packages/tokrec/test/architecture.test.ts` guardrail. Zero runtime logic change; test assertions byte-unchanged — done in `99b1a73`, evidence: `bun run lint` 0 errors/5 warnings, `bun run typecheck` 0, `bun test` 99 pass/0 fail (95 + 4 guardrail), `bun run build` 0; fixtures diff empty; guardrail proven red by `node:fs` in `domain/verdict.ts` — deviations: same-zone edges allowed for every band, `root` allows `lib`, type-only edges exempt (documented in the test file) — [parallel-safe: yes for #30, needs: none]
+- [ ] #30 B — `Verdict` + `verdictOf`, `Candidate` chain (fixes the `core/api/tiktok.ts:154` dead-end), delete 22 hand-built `LiveInfo` literals, `toLiveInfo` shim. ≈ −80 LOC — [parallel-safe: no, needs: #29]
+- [ ] #31 C — pure `planTick`, delete `decideTick` and the `onTick` if-chain, 24-row table test. ≈ −70 LOC — [parallel-safe: no, needs: #30]
+- [ ] #32 D — `AbortScope`, `RecordingJob`, 16 → 4 events, `TikTokError.code` 11 → 5, CLI 14 → 3 handlers, CHANGELOG `BREAKING`. ≈ −160 LOC — [parallel-safe: no, needs: #31]
+
+Gate for each: `bun run lint && bun run typecheck && bun test && bun run build` all exit 0, plus the ticket-specific evidence named in its issue. Do not start B before A's guardrail test is green.
