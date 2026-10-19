@@ -11,12 +11,12 @@
 
 import { readdirSync, statSync, unlinkSync, utimesSync } from "node:fs"
 import { join, parse } from "node:path"
-import type { RecorderConfig } from "../../lib/config"
-import { TikTokError } from "../../lib/config"
-import type { Logger } from "../../lib/logger"
-import type { Converter } from "./convert"
-import type { AudioNormalizer } from "./normalize"
-import type { DownloadResult } from "./stream"
+import type { Converter } from "../adapters/media/convert"
+import type { AudioNormalizer } from "../adapters/media/normalize"
+import type { DownloadResult } from "../domain/media"
+import type { RecorderConfig } from "../lib/config"
+import { TikTokError } from "../lib/config"
+import type { Logger } from "../lib/logger"
 
 export interface ProcessingDeps {
   runFfmpeg: (args: string[], signal?: AbortSignal) => Promise<void>

@@ -16,16 +16,17 @@
  * 403 errors. All lookups go through room/info (reliable for live + offline).
  */
 
-import type { Logger } from "../../lib/logger"
-import type { HttpClient } from "./client"
-import { createPageFetcher } from "./page-fetch"
-import { createApiLiveSource } from "./resolvers/api-live"
-import { createPageSource } from "./resolvers/page"
-import { createProfileSource } from "./resolvers/profile"
-import type { LiveInfo, ResolveContext, RoomSource } from "./resolvers/types"
-import { createWebcastApi } from "./webcast"
+import { createApiLiveSource } from "../adapters/tiktok/discovery/api-live"
+import { createPageSource } from "../adapters/tiktok/discovery/page"
+import { createProfileSource } from "../adapters/tiktok/discovery/profile"
+import type { ResolveContext, RoomSource } from "../adapters/tiktok/discovery/types"
+import { createPageFetcher } from "../adapters/tiktok/page"
+import { createWebcastApi } from "../adapters/tiktok/webcast"
+import type { LiveInfo } from "../domain/verdict"
+import type { Logger } from "../lib/logger"
+import type { HttpClient } from "../ports/http"
 
-export type { LiveInfo } from "./resolvers/types"
+export type { LiveInfo } from "../domain/verdict"
 
 export interface TikTokApi {
   /** Resolve a username to a room ID. Returns null if not found. */

@@ -1,5 +1,6 @@
+import type { LiveInfo } from "../../../domain/verdict"
 import type { SigiState } from "../parse"
-import type { LiveInfo, ResolveContext } from "./types"
+import type { ResolveContext } from "./types"
 
 /**
  * Secondary live-info extraction when SIGI_STATE's LiveRoom data is

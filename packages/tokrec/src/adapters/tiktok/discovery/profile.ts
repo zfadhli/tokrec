@@ -1,5 +1,6 @@
+import type { LiveInfo } from "../../../domain/verdict"
 import { extractUserFromUniversalData } from "../parse"
-import type { LiveInfo, ResolveContext, RoomSource } from "./types"
+import type { ResolveContext, RoomSource } from "./types"
 
 export function createProfileSource(): RoomSource {
   return {

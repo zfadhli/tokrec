@@ -12,8 +12,8 @@ import {
   extractSigiState,
   extractUserFromUniversalData,
   findStreamUrlRecursively,
-} from "../src/core/api/parse"
-import { createTikTokApi } from "../src/core/api/tiktok"
+} from "../src/adapters/tiktok/parse"
+import { createTikTokApi } from "../src/session/probe"
 import { createMockHttp, loadFixture } from "./utils/mock-http"
 
 // ─── Fixture paths ──────────────────────────────────────────────────

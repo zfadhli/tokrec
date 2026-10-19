@@ -10,7 +10,6 @@
  * ```
  */
 
-export { createRecorder } from "./core/recorder/index"
 export type {
   AppErrorKind,
   LiveReason,
@@ -23,3 +22,4 @@ export type {
 } from "./lib/config"
 export { TikTokError } from "./lib/config"
 export { bytesToHuman, formatDuration, relativeTime, sanitizeUser } from "./lib/utils"
+export { createRecorder } from "./session/index"

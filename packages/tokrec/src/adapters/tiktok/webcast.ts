@@ -1,31 +1,15 @@
-import type { HttpClient } from "./client"
+import type { LiveInfo } from "../../domain/verdict"
+import type { HttpClient } from "../../ports/http"
+import type { RoomApiResult, WebcastReader } from "../../ports/tiktok"
 import { findStreamUrlRecursively } from "./parse"
-import type { LiveInfo } from "./tiktok"
 
 const WEBCAST_BASE = "https://webcast.tiktok.com"
-
-/**
- * Discriminated room/info result: refusals (notably status_code 4003110)
- * and transport failures surface as `{ ok: false }` instead of null.
- */
-export type RoomApiResult<T> =
-  | { ok: true; value: T | null }
-  | { ok: false; statusCode: number; body: string }
 
 export function createWebcastApi(
   http: HttpClient,
   debug: (msg: string) => void,
   flagError: () => void,
-): {
-  fetchFromRoomApi: <T>(
-    roomId: string,
-    extract: (data: Record<string, unknown>) => T | null,
-  ) => Promise<RoomApiResult<T>>
-  fetchCheckAlive: (roomId: string) => Promise<boolean>
-  fetchStreamUrlFromApi: (roomId: string) => Promise<RoomApiResult<string>>
-  fetchRoomInfoFromRoomApi: (roomId: string) => Promise<LiveInfo | null>
-  resolveRefusedRoom: (roomId: string, source: string, title: string | null) => Promise<LiveInfo>
-} {
+): WebcastReader {
   /**
    * Shared boilerplate for Webcast room/info API calls.
    * Handles URL construction, HTTP GET, JSON parsing, and error handling.

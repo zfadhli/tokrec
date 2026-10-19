@@ -7,13 +7,13 @@
  */
 
 import { describe, expect, test } from "bun:test"
-import type { HttpClient } from "../src/core/api/client"
-import { createPageFetcher } from "../src/core/api/page-fetch"
-import { createApiLiveSource } from "../src/core/api/resolvers/api-live"
-import { createPageSource } from "../src/core/api/resolvers/page"
-import { createProfileSource } from "../src/core/api/resolvers/profile"
-import type { ResolveContext } from "../src/core/api/resolvers/types"
-import { createWebcastApi } from "../src/core/api/webcast"
+import { createApiLiveSource } from "../src/adapters/tiktok/discovery/api-live"
+import { createPageSource } from "../src/adapters/tiktok/discovery/page"
+import { createProfileSource } from "../src/adapters/tiktok/discovery/profile"
+import type { ResolveContext } from "../src/adapters/tiktok/discovery/types"
+import { createPageFetcher } from "../src/adapters/tiktok/page"
+import { createWebcastApi } from "../src/adapters/tiktok/webcast"
+import type { HttpClient } from "../src/ports/http"
 import { createMockHttp, loadFixture } from "./utils/mock-http"
 
 const FIXTURES = "tiktok"

@@ -1,3 +1,4 @@
+import type { LiveInfo } from "../../../domain/verdict"
 import type { SigiState } from "../parse"
 import {
   extractSigiState,
@@ -6,7 +7,7 @@ import {
   findStreamUrlRecursively,
 } from "../parse"
 import { fetchSigiLegacy } from "./sigi-legacy"
-import type { LiveInfo, ResolveContext, RoomSource } from "./types"
+import type { ResolveContext, RoomSource } from "./types"
 
 export function createPageSource(): RoomSource {
   return {

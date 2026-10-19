@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
-import type { LiveInfo } from "../src/core/api/tiktok"
-import { decideTick } from "../src/core/recorder/index"
+import { decideTick } from "../src/session/index"
+import type { LiveInfo } from "../src/session/probe"
 
 function info(reason: LiveInfo["reason"]): LiveInfo {
   return {

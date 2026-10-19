@@ -6,21 +6,10 @@
  * appropriate downloader based on URL format.
  */
 
-import type { Logger } from "../../lib/logger"
-import { ensureDir } from "../../lib/utils"
-import { downloadStream } from "./download"
-
-export interface ProgressInfo {
-  bytes: number
-  elapsed: number
-  speed: number
-}
-
-export interface DownloadResult {
-  file: string
-  duration: number
-  size: number
-}
+import { downloadStream } from "../adapters/media/download"
+import type { DownloadResult, ProgressInfo } from "../domain/media"
+import type { Logger } from "../lib/logger"
+import { ensureDir } from "../lib/utils"
 
 export interface StreamDownloader {
   /** Download a live stream. Resolves when the stream ends or is aborted. */

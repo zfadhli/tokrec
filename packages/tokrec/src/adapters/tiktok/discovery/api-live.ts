@@ -1,4 +1,5 @@
-import type { LiveInfo, ResolveContext, RoomSource } from "./types"
+import type { LiveInfo } from "../../../domain/verdict"
+import type { ResolveContext, RoomSource } from "./types"
 
 export function createApiLiveSource(): RoomSource {
   return {

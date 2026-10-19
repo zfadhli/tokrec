@@ -3,6 +3,8 @@
  * The single source of truth for every user-facing option.
  */
 
+import type { LiveReason } from "../domain/verdict"
+
 /**
  * TikTok cookie key-value pairs extracted from Firefox or cookies.json.
  * Includes session cookies (sessionid_ss, tt-target-idc) and any WAF
@@ -13,20 +15,9 @@ export type CookieAuth = Record<string, string>
 export type LogLevel = "debug" | "info" | "warn" | "error"
 
 /**
- * Machine-readable reason for a LIVE status verdict.
- * "live" = stream URL resolved; "offline" = room not live;
- * "restricted" = live but age-protected/gated (stream refused);
- * "no-stream-url" = live but no URL and no gate evidence;
- * "no-room-id" = no discovery path produced a room ID;
- * "error" = network/parse failure across paths.
+ * Machine-readable reason for a LIVE status verdict — lives in `domain/verdict.ts`.
  */
-export type LiveReason =
-  | "live"
-  | "offline"
-  | "restricted"
-  | "no-stream-url"
-  | "no-room-id"
-  | "error"
+export type { LiveReason } from "../domain/verdict"
 
 export interface RecorderConfig {
   /** TikTok username (required) */

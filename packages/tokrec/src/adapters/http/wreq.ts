@@ -6,7 +6,7 @@
 
 import { createSession, type Session } from "wreq-js"
 import type { RecorderConfig } from "../../lib/config"
-import { createRateLimiter } from "./rate-limiter"
+import { createRateLimiter } from "./rate-limit"
 
 // BodyInit is only available inside declare module "bun" in bun-types, not as a global
 // under the ES2022 lib. We explicitly import it to keep lib focused on ES2022.

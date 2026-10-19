@@ -12,11 +12,11 @@
 
 import { createWriteStream, statSync } from "node:fs"
 import { join } from "node:path"
+import type { DownloadResult, ProgressInfo } from "../../domain/media"
 import { TikTokError } from "../../lib/config"
 import type { Logger } from "../../lib/logger"
 import { bytesToHuman, findFfmpegPath, formatDuration, formatFilename } from "../../lib/utils"
 import { pipeFfmpegSegment } from "./ffmpeg-utils"
-import type { DownloadResult, ProgressInfo } from "./stream"
 
 export async function downloadStream(
   liveUrl: string,

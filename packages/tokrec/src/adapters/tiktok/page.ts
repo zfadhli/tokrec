@@ -1,4 +1,4 @@
-import type { HttpClient } from "./client"
+import type { HttpClient } from "../../ports/http"
 
 const TIKTOK_BASES = ["https://www.tiktok.com", "https://m.tiktok.com"]
 
