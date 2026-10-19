@@ -1,0 +1,1053 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>tokrec — architecture proposal</title>
+<style>
+  :root {
+    --bg: #0e1116;
+    --panel: #151a21;
+    --panel-2: #1a202a;
+    --line: #2a323d;
+    --line-soft: #212832;
+    --ink: #dfe5ee;
+    --muted: #8d97a6;
+    --dim: #6b7482;
+    --accent: #5ee0c8;
+    --warn: #ff8a80;
+    --amber: #f0c674;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 16px/1.62 var(--sans);
+    font-feature-settings: "kern" 1, "liga" 1;
+  }
+  .wrap { max-width: 1020px; margin: 0 auto; padding: 72px 28px 140px; }
+
+  header.masthead { border-bottom: 1px solid var(--line); padding-bottom: 28px; margin-bottom: 8px; }
+  .eyebrow {
+    font: 600 11px/1 var(--mono); letter-spacing: .16em; text-transform: uppercase;
+    color: var(--accent); margin: 0 0 18px;
+  }
+  h1 { font-size: 40px; line-height: 1.1; letter-spacing: -0.02em; margin: 0 0 14px; font-weight: 650; }
+  .sub { color: var(--muted); font-size: 15px; margin: 0; max-width: 62ch; }
+  .meta { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 22px; }
+  .tag {
+    font: 11px/1 var(--mono); color: var(--muted); border: 1px solid var(--line);
+    border-radius: 999px; padding: 7px 11px; background: var(--panel);
+  }
+  .tag b { color: var(--ink); font-weight: 600; }
+
+  nav.toc { display: flex; flex-wrap: wrap; gap: 6px 20px; margin: 26px 0 0; }
+  nav.toc a { color: var(--muted); text-decoration: none; font-size: 13px; border-bottom: 1px solid transparent; }
+  nav.toc a:hover { color: var(--accent); border-color: var(--accent); }
+
+  section { margin-top: 64px; scroll-margin-top: 24px; }
+  h2 {
+    font: 600 12px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase;
+    color: var(--dim); margin: 0 0 22px; padding-bottom: 12px; border-bottom: 1px solid var(--line-soft);
+  }
+  h2 .n { color: var(--accent); margin-right: 12px; }
+  h3 { font-size: 19px; line-height: 1.3; margin: 34px 0 10px; font-weight: 620; letter-spacing: -0.01em; }
+  h3:first-of-type { margin-top: 0; }
+  p { margin: 0 0 14px; max-width: 74ch; color: #c9d1dd; }
+  p.lead { font-size: 18px; color: var(--ink); }
+  strong { color: #fff; font-weight: 620; }
+  code {
+    font: 13.5px/1.4 var(--mono); background: var(--panel-2); border: 1px solid var(--line-soft);
+    border-radius: 4px; padding: 1.5px 5px; color: #e6eefc; white-space: nowrap;
+  }
+  a { color: var(--accent); }
+  pre code {
+    display: block; white-space: pre; background: none; border: 0; padding: 0;
+    font: inherit; color: inherit; border-radius: 0;
+  }
+
+  ul.tight { margin: 0 0 16px; padding-left: 20px; max-width: 74ch; color: #c9d1dd; }
+  ul.tight li { margin-bottom: 7px; }
+
+  .callout {
+    border-left: 2px solid var(--accent); background: linear-gradient(90deg, rgba(94,224,200,.06), transparent 60%);
+    padding: 16px 20px; margin: 22px 0; border-radius: 0 6px 6px 0;
+  }
+  .callout p:last-child { margin-bottom: 0; }
+  .callout .k { font: 600 10px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--accent); display: block; margin-bottom: 8px; }
+
+  figure { margin: 26px 0 34px; }
+  figure svg { width: 100%; height: auto; display: block; }
+  figcaption {
+    font: 12px/1.55 var(--mono); color: var(--dim); margin-top: 14px;
+    padding-top: 12px; border-top: 1px solid var(--line-soft);
+  }
+  figcaption b { color: var(--muted); font-weight: 600; }
+
+  table { width: 100%; border-collapse: collapse; margin: 20px 0 26px; font-size: 14px; }
+  th {
+    text-align: left; font: 600 10px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase;
+    color: var(--dim); padding: 0 14px 10px 0; border-bottom: 1px solid var(--line);
+  }
+  td { padding: 11px 14px 11px 0; border-bottom: 1px solid var(--line-soft); vertical-align: top; color: #c9d1dd; }
+  td:last-child, th:last-child { padding-right: 0; }
+  td.path { font: 12px/1.5 var(--mono); color: var(--muted); white-space: nowrap; }
+  td.path em { color: var(--dim); font-style: normal; }
+  tr.hot td:first-child { color: var(--warn); }
+  td .why { display: block; color: var(--dim); font-size: 13px; margin-top: 3px; }
+  td code { white-space: normal; overflow-wrap: break-word; }
+
+  pre {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+    padding: 18px 20px; overflow-x: auto; margin: 16px 0 24px;
+    font: 13px/1.65 var(--mono); color: #d5deeb; tab-size: 2;
+  }
+  pre .c { color: var(--dim); }
+  pre .k { color: var(--amber); }
+  pre .t { color: var(--accent); }
+  pre .bad { color: var(--warn); }
+  .filename {
+    font: 600 10.5px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase;
+    color: var(--dim); margin: 26px 0 -6px; display: block;
+  }
+
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 20px 22px; }
+  .card h4 { margin: 0 0 10px; font: 600 11px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+  .card p { font-size: 14px; color: #c1cad7; margin-bottom: 0; }
+  .card.bad h4 { color: var(--warn); }
+  .card.good h4 { color: var(--accent); }
+
+  .flow { font: 12.5px/1.9 var(--mono); color: var(--muted); }
+  .flow b { color: var(--ink); font-weight: 600; }
+  .flow .ar { color: var(--accent); }
+
+  footer { margin-top: 90px; padding-top: 24px; border-top: 1px solid var(--line-soft); color: var(--dim); font: 12px/1.7 var(--mono); }
+
+  /* SVG label styles */
+  .svgH { font: 11.5px/1 var(--mono); fill: var(--muted); letter-spacing: .03em; }
+  .svgN { font: 11px/1 var(--mono); fill: var(--dim); }
+  .svgC { font: 11.5px/1 var(--mono); fill: #b6c0ce; }
+  .svgCb { font: 600 12px/1 var(--mono); fill: var(--ink); }
+  .svgBad { font: 11.5px/1 var(--mono); fill: var(--warn); }
+  .svgAcc { font: 11px/1 var(--mono); fill: var(--accent); letter-spacing: .06em; }
+
+  @media (max-width: 720px) {
+    .wrap { padding: 44px 18px 90px; }
+    h1 { font-size: 30px; }
+    .grid2 { grid-template-columns: 1fr; }
+    td.path { white-space: normal; }
+  }
+  @media print {
+    :root { --bg: #fff; --panel: #f7f8fa; --panel-2: #f2f4f7; --line: #ccd2da; --line-soft: #e2e6eb;
+            --ink: #14181f; --muted: #4d5765; --dim: #6d7887; --accent: #0a7d6b; --warn: #b3261e; --amber: #8a5a00; }
+    body { font-size: 11pt; }
+    .wrap { max-width: none; padding: 0; }
+    section { break-inside: auto; page-break-inside: auto; }
+    figure, pre, table, .card { page-break-inside: avoid; }
+    nav.toc { display: none; }
+    p, td { color: #14181f; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="masthead">
+  <p class="eyebrow">Architecture proposal · packages/tokrec</p>
+  <h1>One verdict, one loop, one abort</h1>
+  <p class="sub">
+    A redesign of the tokrec library around a single typed truth value, a pure tick policy, and a
+    single cancellation scope. Breaking changes included and staged.
+  </p>
+  <div class="meta">
+    <span class="tag">baseline <b>c322f20</b></span>
+    <span class="tag"><b>2,658</b> LOC · <b>25</b> files</span>
+    <span class="tag"><b>3</b> import cycles</span>
+    <span class="tag"><b>22</b> hand-built verdict literals</span>
+    <span class="tag"><b>4</b> cancellation channels</span>
+    <span class="tag"><b>16</b> events, 1 of them a no-op</span>
+  </div>
+  <nav class="toc">
+    <a href="#diagnosis">1 · Diagnosis</a>
+    <a href="#shape">2 · Target shape</a>
+    <a href="#domain">3 · Domain</a>
+    <a href="#discovery">4 · Discovery</a>
+    <a href="#policy">5 · Policy</a>
+    <a href="#session">6 · Session &amp; effects</a>
+    <a href="#tick">7 · One tick</a>
+    <a href="#layout">8 · Layout &amp; guardrail</a>
+    <a href="#breaking">9 · Breaking changes</a>
+    <a href="#not">10 · Not fixed</a>
+  </nav>
+</header>
+
+<section id="diagnosis">
+  <h2><span class="n">01</span>Diagnosis</h2>
+
+  <p class="lead">
+    The library works. Its shape does not. Two of the three defects below are correctness bugs that
+    survive only because the fixtures never exercise them; the rest are structural — every new source
+    or output step costs edits in five files instead of one.
+  </p>
+
+  <table>
+    <thead>
+      <tr><th style="width:22%">Where</th><th style="width:26%">Defect</th><th>Why it hurts</th></tr>
+    </thead>
+    <tbody>
+      <tr class="hot">
+        <td class="path">core/api/tiktok.ts:154</td>
+        <td>A throwing source aborts the whole chain</td>
+        <td><code>fetchLiveInfo</code> returns <code>null</code> on the first <code>catch</code>, so one page-parser throw skips both <code>api-live</code> and <code>profile</code>. The chain is ordered for resilience and defeats itself.</td>
+      </tr>
+      <tr class="hot">
+        <td class="path">core/api/tiktok.ts:126</td>
+        <td>Cache key conflation</td>
+        <td><code>ensureCache(cachedUser || roomId)</code> — a room ID is passed where a username is expected. Works only because the cache is invalidated between ticks.</td>
+      </tr>
+      <tr>
+        <td class="path">api/tiktok ↔ webcast</td>
+        <td>Import cycles ×3</td>
+        <td><code>webcast.ts</code> imports <code>LiveInfo</code> from <code>tiktok.ts</code>, which imports its factory back. <code>resolvers/types.ts</code> types <code>ResolveContext.webcast</code> as <code>ReturnType&lt;typeof createWebcastApi&gt;</code> — adding a webcast method silently widens the resolver context. <code>stream.ts ↔ download.ts</code> repeat the pattern.</td>
+      </tr>
+      <tr>
+        <td class="path">5 files, 22 sites</td>
+        <td><code>LiveInfo</code> built by hand everywhere</td>
+        <td>The same four-branch cascade (<em>live / no-stream-url / restricted / offline</em>) is retyped in <code>page.ts</code>, <code>api-live.ts</code>, <code>sigi-legacy.ts</code>, <code>webcast.ts</code>, and the recorder. <code>isLive</code> is derivable from <code>reason</code>, so <code>decideTick()</code> exists purely to undo the duplication.</td>
+      </tr>
+      <tr>
+        <td class="path">tiktok.ts:51,142</td>
+        <td>Errors via mutable side channel</td>
+        <td><code>flagError()</code> mutates a closure variable read 60 lines later. The reset at <code>:134</code> and the read at <code>:80</code> are in different functions — the invariant is invisible.</td>
+      </tr>
+      <tr>
+        <td class="path">recorder/index.ts:51–59</td>
+        <td>God closure</td>
+        <td>9 mutable fields, 15 imports, a 100-line inline <code>onTick</code>, and <code>as TikTokApi</code> casts because every dependency is <code>null</code> until <code>start()</code>. The tick policy is untestable without a fake recorder.</td>
+      </tr>
+      <tr>
+        <td class="path">4 modules</td>
+        <td>Four cancellation channels</td>
+        <td><code>stopRequested</code>, <code>stopAbortController</code>, <code>stream.ts</code>'s private controller, <code>monitor.ts</code>'s <code>stopSignal</code> — plus <code>post-processing</code> holding the recorder's controller by reference. <code>stop()</code> must abort all of them in the right order.</td>
+      </tr>
+      <tr>
+        <td class="path">post-processing.ts:106–136</td>
+        <td>Filename round-trip</td>
+        <td>After ffmpeg writes segments, the code <code>readdirSync</code>s the output dir, regexes <code>_part(\d+)\.mp4</code>, sorts by that integer, and <code>statSync</code>s each file — reconstructing a list ffmpeg already knew.</td>
+      </tr>
+      <tr>
+        <td class="path">lib/config.ts</td>
+        <td>Six concerns in one file</td>
+        <td>Config type, verdict reason type, status type, all 16 event signatures, the error class with 11 kinds, and two functions. Return type is <code>Required&lt;Omit&lt;RecorderConfig, …&gt;&gt; &amp; Pick&lt;…&gt;</code>. Six of the eleven error kinds are never constructed.</td>
+      </tr>
+      <tr>
+        <td class="path">config.ts · cli/bin.ts:228</td>
+        <td>Event surface bloat</td>
+        <td>16 events for 5 phases. <code>recording:end</code> has an empty handler with a comment explaining it is a no-op; <code>download:end</code> and <code>recording:end</code> carry identical payloads.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>
+    The common root: <strong>one value is doing three jobs.</strong> <code>LiveInfo</code> is
+    simultaneously the verdict (<em>is the room live?</em>), the evidence (<em>which of three page
+    shapes told us?</em>), and the transport result (<em>here is the URL</em>). Five modules each
+    assemble it from their own partial view, so the mapping table is duplicated five times and each
+    copy can drift.
+  </p>
+</section>
+
+<section id="shape">
+  <h2><span class="n">02</span>Target shape</h2>
+
+  <p>
+    Five bands. Arrows point one way. Only <em>session</em> holds mutable state; only
+    <em>adapters</em> touch the network, the filesystem, or ffmpeg.
+  </p>
+
+  <figure>
+    <svg viewBox="0 0 900 600" role="img" aria-label="Today's dependency shape: cyclic, closure-heavy, four abort channels">
+      <defs>
+        <marker id="ar1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="#6b7482"/>
+        </marker>
+        <marker id="arr1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="#ff8a80"/>
+        </marker>
+      </defs>
+
+      <!-- band A -->
+      <rect x="60" y="18" width="820" height="56" rx="7" fill="#171b22" stroke="#2a323d"/>
+      <text x="76" y="38" class="svgH">app · packages/cli</text>
+      <rect x="76" y="46" width="100" height="20" rx="3" fill="#1a202a" stroke="#2a323d"/>
+      <text x="88" y="60" class="svgC">bin.ts</text>
+      <rect x="184" y="46" width="86" height="20" rx="3" fill="#1a202a" stroke="#2a323d"/>
+      <text x="196" y="60" class="svgC">ui.ts</text>
+      <rect x="278" y="46" width="96" height="20" rx="3" fill="#1a202a" stroke="#2a323d"/>
+      <text x="290" y="60" class="svgC">cli.ts</text>
+      <text x="400" y="60" class="svgN">14 × recorder.on(…) · one handler is empty (bin.ts:228)</text>
+
+      <!-- band B -->
+      <rect x="60" y="90" width="820" height="172" rx="7" fill="#171b22" stroke="#2a323d"/>
+      <text x="76" y="110" class="svgH">core/recorder — orchestration</text>
+      <text x="500" y="110" class="svgN">263 LOC · 15 imports · 9 mutable fields</text>
+
+      <rect x="76" y="120" width="300" height="128" rx="5" fill="#141920" stroke="#2a323d"/>
+      <text x="88" y="138" class="svgH">onTick()   ~100 lines</text>
+      <text x="88" y="158" class="svgC">invalidateCache()</text>
+      <text x="88" y="176" class="svgC">getLiveInfo(user)</text>
+      <text x="88" y="194" class="svgC">if reason === … × 3</text>
+      <text x="88" y="212" class="svgC">streamDownloader.download(…)</text>
+      <text x="88" y="230" class="svgC">processRecording(…)</text>
+      <text x="88" y="246" class="svgC">duration &gt; 0 ? stopAfterCurrentTick()</text>
+
+      <rect x="392" y="120" width="250" height="24" rx="3" fill="#1a202a" stroke="#2a323d"/>
+      <text x="402" y="136" class="svgC">monitor.ts · own AbortController</text>
+      <rect x="392" y="148" width="250" height="24" rx="3" fill="#1a202a" stroke="#ff8a80" stroke-opacity=".45"/>
+      <text x="402" y="164" class="svgC">stream.ts · own AbortController</text>
+      <rect x="392" y="176" width="250" height="24" rx="3" fill="#1a202a" stroke="#ff8a80" stroke-opacity=".45"/>
+      <text x="402" y="192" class="svgC">download.ts · own AbortController</text>
+      <rect x="392" y="204" width="250" height="24" rx="3" fill="#1a202a" stroke="#2a323d"/>
+      <text x="402" y="220" class="svgC">post-processing · readdir+regex</text>
+      <text x="392" y="240" class="svgBad">↻ stream ↔ download (DownloadResult)</text>
+
+      <rect x="654" y="120" width="214" height="24" rx="3" fill="#1a202a" stroke="#2a323d"/>
+      <text x="664" y="136" class="svgC">convert.ts</text>
+      <rect x="654" y="148" width="214" height="24" rx="3" fill="#1a202a" stroke="#2a323d"/>
+      <text x="664" y="164" class="svgC">normalize.ts</text>
+      <rect x="654" y="176" width="214" height="24" rx="3" fill="#1a202a" stroke="#2a323d"/>
+      <text x="664" y="192" class="svgC">ffmpeg-utils.ts · spawn</text>
+      <rect x="654" y="204" width="214" height="24" rx="3" fill="#1a202a" stroke="#2a323d"/>
+      <text x="664" y="220" class="svgC">recorder-state · 5 states</text>
+
+      <!-- band C -->
+      <rect x="60" y="278" width="820" height="176" rx="7" fill="#171b22" stroke="#2a323d"/>
+      <text x="76" y="298" class="svgH">core/api — resolution</text>
+      <text x="470" y="298" class="svgN">webcast exposes 5 methods, one generic escape hatch</text>
+
+      <rect x="76" y="306" width="190" height="52" rx="4" fill="#141920" stroke="#2a323d"/>
+      <text x="86" y="324" class="svgCb">tiktok.ts</text>
+      <text x="86" y="340" class="svgC">cache + verdict mapping</text>
+      <rect x="274" y="306" width="220" height="52" rx="4" fill="#141920" stroke="#ff8a80" stroke-opacity=".5"/>
+      <text x="284" y="324" class="svgCb">webcast.ts</text>
+      <text x="284" y="340" class="svgC">room/info + check_alive</text>
+      <rect x="502" y="306" width="150" height="52" rx="4" fill="#141920" stroke="#2a323d"/>
+      <text x="512" y="324" class="svgCb">parse.ts</text>
+      <text x="512" y="340" class="svgC">3 extractors</text>
+      <rect x="660" y="306" width="100" height="52" rx="4" fill="#141920" stroke="#2a323d"/>
+      <text x="670" y="324" class="svgCb">page-fetch</text>
+      <text x="670" y="340" class="svgC">fallback</text>
+      <rect x="768" y="306" width="100" height="52" rx="4" fill="#141920" stroke="#2a323d"/>
+      <text x="778" y="324" class="svgCb">client.ts</text>
+      <text x="778" y="340" class="svgC">wreq-js</text>
+
+      <text x="76" y="384" class="svgN">resolvers/</text>
+      <rect x="76" y="392" width="300" height="26" rx="3" fill="#1a202a" stroke="#ff8a80" stroke-opacity=".45"/>
+      <text x="86" y="409" class="svgC">types.ts · ResolveContext ← factory</text>
+      <rect x="384" y="392" width="100" height="26" rx="3" fill="#1a202a" stroke="#2a323d"/>
+      <text x="394" y="409" class="svgC">page</text>
+      <rect x="492" y="392" width="100" height="26" rx="3" fill="#1a202a" stroke="#2a323d"/>
+      <text x="502" y="409" class="svgC">api-live</text>
+      <rect x="600" y="392" width="100" height="26" rx="3" fill="#1a202a" stroke="#2a323d"/>
+      <text x="610" y="409" class="svgC">profile</text>
+      <rect x="708" y="392" width="160" height="26" rx="3" fill="#1a202a" stroke="#2a323d"/>
+      <text x="718" y="409" class="svgC">sigi-legacy</text>
+
+      <text x="76" y="438" class="svgBad">↻ tiktok ↔ webcast — LiveInfo crosses both ways</text>
+      <text x="470" y="438" class="svgBad">↻ types → webcast → tiktok → page → types</text>
+
+      <!-- band D -->
+      <rect x="60" y="470" width="820" height="58" rx="7" fill="#171b22" stroke="#2a323d"/>
+      <text x="76" y="490" class="svgH">lib/</text>
+      <rect x="76" y="498" width="420" height="20" rx="3" fill="#1a202a" stroke="#2a323d"/>
+      <text x="86" y="512" class="svgC">config.ts — config + verdict types + events + error</text>
+      <rect x="504" y="498" width="110" height="20" rx="3" fill="#1a202a" stroke="#2a323d"/>
+      <text x="514" y="512" class="svgC">logger.ts</text>
+      <rect x="622" y="498" width="110" height="20" rx="3" fill="#1a202a" stroke="#2a323d"/>
+      <text x="632" y="512" class="svgC">utils.ts</text>
+
+      <!-- inter-band arrows -->
+      <line x1="470" y1="74" x2="470" y2="88" stroke="#6b7482" stroke-width="1.4" marker-end="url(#ar1)"/>
+      <line x1="470" y1="262" x2="470" y2="276" stroke="#6b7482" stroke-width="1.4" marker-end="url(#ar1)"/>
+      <line x1="470" y1="454" x2="470" y2="468" stroke="#6b7482" stroke-width="1.4" marker-end="url(#ar1)"/>
+
+      <text x="60" y="562" class="svgBad">Today: 2,658 LOC · 25 files · 3 cycles · 22 LiveInfo literals · 4 cancellation channels · 16 events</text>
+      <text x="60" y="582" class="svgN">Every box below the app band can reach every other box below it. Nothing prevents a fourth cycle.</text>
+    </svg>
+    <figcaption>
+      <b>Figure 1 — as built.</b> The resolution band is the tangle: <code>types.ts</code> derives the resolver
+      context from <code>webcast.ts</code>'s factory return type, <code>webcast.ts</code> needs <code>LiveInfo</code>
+      from <code>tiktok.ts</code>, and <code>tiktok.ts</code> imports the page resolver. Recorder has the mirror-image
+      problem with its own type imports and four independent abort channels.
+    </figcaption>
+  </figure>
+
+  <figure>
+    <svg viewBox="0 0 920 600" role="img" aria-label="Proposed layered architecture: app, session, policy, domain, ports, adapters with one-way dependencies">
+      <defs>
+        <marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="#5ee0c8"/>
+        </marker>
+        <marker id="ar3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="#6b7482"/>
+        </marker>
+      </defs>
+
+      <rect x="80" y="20" width="700" height="48" rx="7" fill="#171b22" stroke="#2a323d"/>
+      <text x="96" y="40" class="svgCb">app</text>
+      <text x="140" y="40" class="svgC">cli/bin.ts · cli/ui.ts</text>
+      <text x="96" y="57" class="svgN">terminal output only — knows nothing about discovery, ffmpeg, or state</text>
+
+      <rect x="80" y="88" width="700" height="76" rx="7" fill="#15201f" stroke="#3d5f59"/>
+      <text x="96" y="109" class="svgCb">session</text>
+      <text x="160" y="109" class="svgC">RecorderSession · RecordingJob · AbortScope</text>
+      <text x="96" y="129" class="svgC">the only mutable state in the library</text>
+      <text x="96" y="149" class="svgN">one AbortSignal flows into download, ffmpeg, sleep, and post-processing</text>
+
+      <rect x="80" y="196" width="700" height="66" rx="7" fill="#15201f" stroke="#3d5f59"/>
+      <text x="96" y="217" class="svgCb">policy</text>
+      <text x="152" y="217" class="svgC">planTick() · planSegments() · naming()</text>
+      <text x="96" y="237" class="svgC">pure functions · no I/O · no clock · no promises</text>
+      <text x="96" y="255" class="svgN">table-testable: (verdict, facts) → TickPlan</text>
+
+      <rect x="80" y="294" width="700" height="76" rx="7" fill="#15201f" stroke="#3d5f59"/>
+      <text x="96" y="315" class="svgCb">domain</text>
+      <text x="164" y="315" class="svgC">Verdict · verdictOf() · RoomRef · StreamRef</text>
+      <text x="96" y="335" class="svgC">RecorderConfig · TikTokError · RecorderEvents · Phase</text>
+      <text x="96" y="355" class="svgN">imports nothing outside domain/ — no node:, no bun:, no process</text>
+
+      <rect x="80" y="402" width="700" height="60" rx="7" fill="#171b22" stroke="#2a323d"/>
+      <text x="96" y="423" class="svgCb">ports</text>
+      <text x="146" y="423" class="svgC">Http · Media · Files · Clock · Log</text>
+      <text x="96" y="443" class="svgN">interfaces only — zero imports, zero implementation</text>
+
+      <rect x="80" y="494" width="700" height="76" rx="7" fill="#171b22" stroke="#2a323d"/>
+      <text x="96" y="515" class="svgCb">adapters</text>
+      <text x="168" y="515" class="svgC">http/wreq · tiktok/{webcast, page, parse, discovery} · media/ffmpeg · fs/local</text>
+      <text x="96" y="535" class="svgC">implements ports · returns domain types</text>
+      <text x="96" y="555" class="svgN">the only place that opens a socket, spawns a process, or writes a file</text>
+
+      <!-- down arrows -->
+      <line x1="430" y1="68" x2="430" y2="86" stroke="#6b7482" stroke-width="1.4" marker-end="url(#ar3)"/>
+      <line x1="430" y1="164" x2="430" y2="194" stroke="#6b7482" stroke-width="1.4" marker-end="url(#ar3)"/>
+      <line x1="430" y1="262" x2="430" y2="292" stroke="#6b7482" stroke-width="1.4" marker-end="url(#ar3)"/>
+      <line x1="430" y1="370" x2="430" y2="400" stroke="#6b7482" stroke-width="1.4" marker-end="url(#ar3)"/>
+      <text x="440" y="80" class="svgN">drives</text>
+      <text x="440" y="182" class="svgN">asks</text>
+      <text x="440" y="280" class="svgN">uses</text>
+
+      <!-- right rail: adapters implement ports, produce domain -->
+      <path d="M780,512 H828 V432 H782" fill="none" stroke="#5ee0c8" stroke-width="1.3" stroke-dasharray="4 3" marker-end="url(#ar2)"/>
+      <text x="834" y="472" class="svgAcc" transform="rotate(-90 834 472)">implements</text>
+      <path d="M780,528 H866 V332 H782" fill="none" stroke="#5ee0c8" stroke-width="1.3" stroke-dasharray="4 3" marker-end="url(#ar2)"/>
+      <text x="880" y="430" class="svgAcc" transform="rotate(-90 880 430)">produces</text>
+
+      <!-- session calls ports (left rail) -->
+      <path d="M80,150 H48 V432 H78" fill="none" stroke="#5ee0c8" stroke-width="1.3" stroke-dasharray="4 3" marker-end="url(#ar2)"/>
+      <text x="38" y="300" class="svgAcc" transform="rotate(-90 38 300)">calls</text>
+
+      <text x="80" y="594" class="svgN">Rule: every arrow points one way. No file in a lower band may import a higher band.</text>
+    </svg>
+    <figcaption>
+      <b>Figure 2 — proposed.</b> Two pure bands (policy, domain) and one mutable band (session). Adapters
+      depend inward through <code>ports</code>; nothing above them knows ffmpeg exists. The single upward
+      dependency — adapters producing domain values — is what lets resolvers return a <code>Verdict</code>
+      without importing the orchestrator.
+    </figcaption>
+  </figure>
+
+  <div class="grid2">
+    <div class="card bad">
+      <h4>Today</h4>
+      <p>
+        <code>LiveInfo</code> is constructed in 22 places. The mapping <em>reason → isLive</em> is
+        re-derived by <code>decideTick</code>, called from one place, tested in isolation from the
+        real thing.
+      </p>
+    </div>
+    <div class="card good">
+      <h4>Proposed</h4>
+      <p>
+        <code>Verdict</code> is constructed by one total function. <code>isLive</code> and
+        <code>decideTick</code> cease to exist; <code>reason</code> is the only axis and the compiler
+        enforces exhaustiveness at the policy boundary.
+      </p>
+    </div>
+  </div>
+</section>
+
+<section id="domain">
+  <h2><span class="n">03</span>Domain — the truth value</h2>
+
+  <p>
+    Three decisions shrink the type surface. Drop <code>isLive</code>: it is a projection of
+    <code>reason</code>. Drop the free-string <code>source</code>: it becomes an evidence trail.
+    Split <code>room</code> from <code>stream</code>: a live room with no URL is a legitimate state,
+    not a half-filled record.
+  </p>
+
+  <span class="filename">domain/verdict.ts</span>
+<pre><code><span class="k">export type</span> LiveReason =
+  | <span class="t">"live"</span>          <span class="c">// room live, stream URL resolved</span>
+  | <span class="t">"no-stream-url"</span> <span class="c">// room live, no URL yet</span>
+  | <span class="t">"restricted"</span>    <span class="c">// room gate refused (status_code 4003110)</span>
+  | <span class="t">"offline"</span>       <span class="c">// room reported not live</span>
+  | <span class="t">"no-room-id"</span>    <span class="c">// discovery exhausted, no room found</span>
+  | <span class="t">"error"</span>         <span class="c">// transport/parse failure, no verdict reached</span>
+
+<span class="k">export interface</span> RoomRef {
+  <span class="k">readonly</span> id: <span class="k">string</span>
+  <span class="k">readonly</span> title: <span class="k">string</span> | <span class="k">null</span>
+  <span class="k">readonly</span> live: <span class="k">boolean</span>
+}
+
+<span class="k">export interface</span> StreamRef {
+  <span class="k">readonly</span> url: <span class="k">string</span>
+  <span class="k">readonly</span> kind: <span class="t">"flv"</span> | <span class="t">"hls"</span>
+}
+
+<span class="k">export type</span> SourceId = <span class="t">"page"</span> | <span class="t">"api-live"</span> | <span class="t">"profile"</span> | <span class="t">"webcast"</span>
+
+<span class="k">export interface</span> Evidence {
+  <span class="k">readonly</span> source: SourceId
+  <span class="k">readonly</span> outcome: <span class="t">"hit"</span> | <span class="t">"miss"</span> | <span class="t">"denied"</span> | <span class="t">"error"</span>
+  <span class="k">readonly</span> note?: <span class="k">string</span>
+}
+
+<span class="k">export interface</span> Verdict {
+  <span class="k">readonly</span> reason: LiveReason
+  <span class="k">readonly</span> room: RoomRef | <span class="k">null</span>
+  <span class="k">readonly</span> stream: StreamRef | <span class="k">null</span>
+  <span class="k">readonly</span> evidence: <span class="k">readonly</span> Evidence[]
+  <span class="k">readonly</span> failure: TikTokError | <span class="k">null</span>
+}</code></pre>
+
+  <p>
+    <code>reason</code> is <strong>derived, never passed</strong>. This is the whole fix for the
+    five-cascade duplication — every caller hands over facts, one function decides what they mean.
+  </p>
+
+  <span class="filename">domain/verdict.ts</span>
+<pre><code><span class="k">export function</span> verdictOf(x: {
+  room?: RoomRef | <span class="k">null</span>
+  stream?: StreamRef | <span class="k">null</span>
+  denied?: <span class="k">boolean</span>
+  failure?: TikTokError | <span class="k">null</span>
+  evidence?: <span class="k">readonly</span> Evidence[]
+}): Verdict {
+  <span class="k">const</span> room = x.room ?? <span class="k">null</span>
+  <span class="k">const</span> stream = x.stream ?? <span class="k">null</span>
+  <span class="k">const</span> base = { room, stream, evidence: x.evidence ?? [], failure: x.failure ?? <span class="k">null</span> }
+
+  <span class="k">if</span> (x.failure)        <span class="k">return</span> { ...base, reason: <span class="t">"error"</span> }
+  <span class="k">if</span> (!room)             <span class="k">return</span> { ...base, reason: <span class="t">"no-room-id"</span> }
+  <span class="k">if</span> (!room.live)        <span class="k">return</span> { ...base, reason: <span class="t">"offline"</span> }
+  <span class="k">if</span> (x.denied)          <span class="k">return</span> { ...base, reason: <span class="t">"restricted"</span> }
+  <span class="k">if</span> (stream)            <span class="k">return</span> { ...base, reason: <span class="t">"live"</span> }
+  <span class="k">return</span> { ...base, reason: <span class="t">"no-stream-url"</span> }
+}</code></pre>
+
+  <p>
+    Six branches replace 22 literals. Every <code>reason</code> value in the union is reachable and
+    each is exercised by one line of this function, which is table-testable in ten lines.
+  </p>
+</section>
+
+<section id="discovery">
+  <h2><span class="n">04</span>Discovery — a chain that cannot be killed by one throw</h2>
+
+  <p>
+    Today a source either returns a finished <code>LiveInfo</code> or <code>null</code>, and a throw
+    ends the chain. Replace both with a four-case <code>Candidate</code>. Discovery now reports
+    <em>what happened</em>; the orchestrator decides what it means.
+  </p>
+
+  <span class="filename">adapters/tiktok/discovery/source.ts</span>
+<pre><code><span class="k">export type</span> Candidate =
+  | { kind: <span class="t">"room"</span>;   room: RoomRef; stream: StreamRef | <span class="k">null</span> }
+  | { kind: <span class="t">"denied"</span>; room: RoomRef; code: <span class="k">number</span> }
+  | { kind: <span class="t">"miss"</span>;   note: <span class="k">string</span> }
+  | { kind: <span class="t">"failed"</span>; error: TikTokError }
+
+<span class="k">export interface</span> DiscoveryContext {
+  <span class="k">readonly</span> user: <span class="k">string</span>
+  <span class="k">readonly</span> log: Logger
+  <span class="k">readonly</span> page: PageReader     <span class="c">// read(user, "/live" | "") → { html, baseUrl } | null</span>
+  <span class="k">readonly</span> webcast: WebcastReader <span class="c">// room(id) · alive(id)</span>
+  <span class="k">readonly</span> signal: AbortSignal
+}
+
+<span class="k">export interface</span> DiscoverySource {
+  <span class="k">readonly</span> id: SourceId
+  find(ctx: DiscoveryContext): Promise&lt;Candidate&gt;
+}</code></pre>
+
+  <span class="filename">adapters/tiktok/discovery/chain.ts</span>
+<pre><code><span class="k">export async function</span> discover(
+  sources: <span class="k">readonly</span> DiscoverySource[],
+  ctx: DiscoveryContext,
+): Promise&lt;{ candidate: Candidate; evidence: Evidence[] }&gt; {
+  <span class="k">const</span> evidence: Evidence[] = []
+  <span class="k">let</span> last: Candidate = { kind: <span class="t">"miss"</span>, note: <span class="t">"no sources configured"</span> }
+
+  <span class="k">for</span> (<span class="k">const</span> source <span class="k">of</span> sources) {
+    <span class="c">// A throw becomes evidence, never a dead end. This is tiktok.ts:154's bug, inverted.</span>
+    <span class="k">const</span> candidate = <span class="k">await</span> source.find(ctx).catch(
+      (e): Candidate =&gt; ({ kind: <span class="t">"failed"</span>, error: toTikTokError(e) }),
+    )
+    evidence.push({ source: source.id, ...outcomeOf(candidate) })
+    last = candidate
+    <span class="k">if</span> (candidate.kind === <span class="t">"room"</span> || candidate.kind === <span class="t">"denied"</span>) <span class="k">break</span>
+  }
+
+  <span class="k">return</span> { candidate: last, evidence }
+}</code></pre>
+
+  <p>
+    The sources shrink accordingly. <code>page</code> keeps its SIGI_STATE path but stops composing
+    verdicts; it returns <code>{ kind: "room", room, stream }</code> or <code>{ kind: "miss" }</code>.
+    <code>api-live</code> and <code>profile</code> lose their duplicated <code>reason</code> tables
+    entirely. The 4003110 handling lives once, in the webcast adapter, as
+    <code>{ ok: false, statusCode: 4003110 }</code> — already true today, now with a single consumer.
+  </p>
+
+  <p>
+    <code>WebcastReader</code> exposes two methods instead of five. The generic escape hatch
+    <code>fetchFromRoomApi&lt;T&gt;</code> disappears: each capability gets a named method that returns a
+    domain type, so no caller can invent a fifth interpretation of <code>room/info</code>.
+  </p>
+
+  <span class="filename">ports/tiktok.ts</span>
+<pre><code><span class="k">export interface</span> WebcastReader {
+  room(id: <span class="k">string</span>, signal: AbortSignal): Promise&lt;
+    | { ok: <span class="k">true</span>;  room: RoomRef | <span class="k">null</span> }
+    | { ok: <span class="k">false</span>; statusCode: <span class="k">number</span> }
+  &gt;
+  alive(id: <span class="k">string</span>, signal: AbortSignal): Promise&lt;<span class="k">boolean</span>&gt;
+}
+
+<span class="k">export interface</span> PageReader {
+  read(user: <span class="k">string</span>, path: <span class="t">""</span> | <span class="t">"/live"</span>, signal: AbortSignal): Promise&lt;
+    { html: <span class="k">string</span>; baseUrl: <span class="k">string</span> } | <span class="k">null</span>
+  &gt;
+}</code></pre>
+
+  <p>
+    Note <code>signal</code> on every port. Today cancellation stops at the tick boundary: an in-flight
+    HTTP request during <code>stop()</code> runs to its 15-second timeout. With the signal passed
+    through, <code>stop()</code> is immediate.
+  </p>
+</section>
+
+<section id="policy">
+  <h2><span class="n">05</span>Policy — a pure tick</h2>
+
+  <p>
+    The 100-line <code>onTick</code> mixes two things: <em>what to do given a verdict</em> (policy)
+    and <em>doing it</em> (effects). Split them and the policy becomes a table.
+  </p>
+
+  <span class="filename">policy/tick.ts</span>
+<pre><code><span class="k">export interface</span> TickFacts {
+  <span class="k">readonly</span> recording: <span class="k">boolean</span>
+  <span class="k">readonly</span> recordedSec: <span class="k">number</span>
+  <span class="k">readonly</span> oneShot: <span class="k">boolean</span>        <span class="c">// duration &gt; 0</span>
+  <span class="k">readonly</span> consecutiveErrors: <span class="k">number</span>
+  <span class="k">readonly</span> stopRequested: <span class="k">boolean</span>
+}
+
+<span class="k">export type</span> TickPlan =
+  | { kind: <span class="t">"poll"</span>;   note: <span class="k">string</span> }
+  | { kind: <span class="t">"hold"</span>;   reason: <span class="t">"restricted"</span> | <span class="t">"no-stream-url"</span>; room: RoomRef }
+  | { kind: <span class="t">"record"</span>; room: RoomRef; stream: StreamRef }
+  | { kind: <span class="t">"stop"</span>;   why: <span class="t">"one-shot"</span> | <span class="t">"user"</span> | <span class="t">"gave-up"</span> }
+
+<span class="k">export function</span> planTick(v: Verdict, f: TickFacts): TickPlan {
+  <span class="k">if</span> (f.stopRequested) <span class="k">return</span> { kind: <span class="t">"stop"</span>, why: <span class="t">"user"</span> }
+  <span class="k">switch</span> (v.reason) {
+    <span class="k">case</span> <span class="t">"live"</span>:
+      <span class="k">return</span> f.recording
+        ? { kind: <span class="t">"poll"</span>, note: <span class="t">"already recording"</span> }
+        : { kind: <span class="t">"record"</span>, room: v.room!, stream: v.stream! }
+    <span class="k">case</span> <span class="t">"no-stream-url"</span>:
+    <span class="k">case</span> <span class="t">"restricted"</span>:
+      <span class="k">return</span> { kind: <span class="t">"hold"</span>, reason: v.reason, room: v.room! }
+    <span class="k">case</span> <span class="t">"offline"</span>:
+      <span class="k">return</span> f.oneShot &amp;&amp; f.recordedSec &gt; 0
+        ? { kind: <span class="t">"stop"</span>, why: <span class="t">"one-shot"</span> }
+        : { kind: <span class="t">"poll"</span>, note: <span class="t">"offline"</span> }
+    <span class="k">case</span> <span class="t">"no-room-id"</span>:
+      <span class="k">return</span> f.consecutiveErrors &gt;= 10
+        ? { kind: <span class="t">"stop"</span>, why: <span class="t">"gave-up"</span> }
+        : { kind: <span class="t">"poll"</span>, note: <span class="t">"no room"</span> }
+    <span class="k">case</span> <span class="t">"error"</span>:
+      <span class="k">return</span> { kind: <span class="t">"poll"</span>, note: v.failure?.message ?? <span class="t">"error"</span> }
+  }
+}</code></pre>
+
+  <p>
+    Two non-null assertions are the price of keeping <code>room</code> optional on <code>Verdict</code>.
+    If that is unacceptable, make <code>Verdict</code> a discriminated union on <code>reason</code> and
+    the assertions vanish — the cost is a wider type and more construction syntax. The policy file
+    is where the choice is visible and reversible.
+  </p>
+
+  <div class="callout">
+    <span class="k">Why this matters more than it looks</span>
+    <p>
+      Today the decision "is this tick live?" is spread across three <code>if</code> blocks in
+      <code>recorder/index.ts</code> plus <code>decideTick</code>, and it branches on both
+      <code>reason</code> and <code>isLive</code> — two fields that can disagree. With one axis, an
+      impossible state cannot be constructed, and the CLI's display logic keys off the same value.
+    </p>
+  </div>
+</section>
+
+<section id="session">
+  <h2><span class="n">06</span>Session &amp; effects</h2>
+
+  <p>
+    <code>RecorderSession</code> owns the loop, the phase, and one <code>AbortScope</code>. Everything
+    it calls takes the signal. Nothing else creates a controller.
+  </p>
+
+  <span class="filename">session/abort.ts</span>
+<pre><code><span class="k">export interface</span> AbortScope {
+  <span class="k">readonly</span> signal: AbortSignal
+  close(reason?: <span class="k">string</span>): <span class="k">void</span>
+}
+
+<span class="k">export function</span> abortScope(parent?: AbortSignal): AbortScope {
+  <span class="k">const</span> controller = <span class="k">new</span> AbortController()
+  <span class="k">if</span> (parent) {
+    <span class="k">if</span> (parent.aborted) controller.abort(parent.reason)
+    <span class="k">else</span> parent.addEventListener(<span class="t">"abort"</span>, () =&gt; controller.abort(parent.reason), { once: <span class="k">true</span> })
+  }
+  <span class="k">return</span> { signal: controller.signal, close: (r) =&gt; controller.abort(r) }
+}</code></pre>
+
+  <span class="filename">session/session.ts</span>
+<pre><code><span class="k">export interface</span> RecorderDeps {
+  <span class="k">readonly</span> http: Http
+  <span class="k">readonly</span> media: Media
+  <span class="k">readonly</span> files: Files
+  <span class="k">readonly</span> clock: Clock
+  <span class="k">readonly</span> log: Logger
+}
+
+<span class="k">export function</span> createRecorder(
+  config: RecorderConfig,
+  overrides: Partial&lt;RecorderDeps&gt; = {},
+): RecorderController
+
+<span class="c">// no, `let`, no `as`, no null checks: dependencies are built once, in start().</span>
+<span class="k">async function</span> run(cfg: ResolvedConfig, deps: RecorderDeps, scope: AbortScope) {
+  <span class="k">for</span> (<span class="k">;;</span>) {
+    <span class="k">const</span> { candidate, evidence } = <span class="k">await</span> discover(sources, ctx)
+    <span class="k">const</span> verdict = toVerdict(candidate, evidence)
+    emit(<span class="t">"tick"</span>, { verdict })
+
+    <span class="k">const</span> plan = planTick(verdict, facts())
+    <span class="k">if</span> (plan.kind === <span class="t">"stop"</span>) <span class="k">break</span>
+    <span class="k">if</span> (plan.kind === <span class="t">"record"</span>) <span class="k">await</span> newJob(plan).finish()
+    <span class="k">if</span> (!(<span class="k">await</span> sleep(cfg.intervalMs, scope.signal))) <span class="k">break</span>
+  }
+}</code></pre>
+
+  <p>
+    <code>RecordingJob</code> replaces <code>processRecording</code> + <code>pendingRemuxes</code>.
+    The job owns its in-flight ffmpeg work and exposes one method, so <code>stop()</code> no longer
+    reaches into a shared array that a callee mutates.
+  </p>
+
+  <span class="filename">session/job.ts</span>
+<pre><code><span class="k">export interface</span> RecordingJob {
+  <span class="k">readonly</span> file: <span class="k">string</span>
+  <span class="c">// Awaits the in-flight download, then segment → convert → normalize. Idempotent.</span>
+  finish(): Promise&lt;RecordedFile[]&gt;
+}
+
+<span class="c">// Segmenting stops guessing filenames: ffmpeg reports its own list.</span>
+<span class="k">const</span> args = [
+  <span class="t">"-i"</span>, input, <span class="t">"-c"</span>, <span class="t">"copy"</span>, <span class="t">"-f"</span>, <span class="t">"segment"</span>,
+  <span class="t">"-segment_time"</span>, <span class="k">String</span>(seconds),
+  <span class="t">"-segment_list"</span>, <span class="t">"pipe:1"</span>, <span class="t">"-segment_list_type"</span>, <span class="t">"csv"</span>,
+  outputPattern,
+]
+<span class="c">// stdout lines: "file,start,end" — parse, don't re-read the directory.</span></code></pre>
+
+  <p>
+    Five direct <code>node:fs</code> imports become one <code>Files</code> port and one
+    <code>Media</code> port. Two benefits beyond tidiness: post-processing tests stop needing a real
+    temp directory, and the duplicate <code>execa</code> call in <code>recorder/index.ts:76</code>
+    (which re-implements <code>ffmpeg-utils.ts</code>) collapses into the port.
+  </p>
+
+  <h3>Event contract: 16 → 4</h3>
+
+  <table>
+    <thead><tr><th style="width:30%">Now</th><th style="width:24%">Proposed</th><th>Change</th></tr></thead>
+    <tbody>
+      <tr><td><code>checking</code>, <code>tick</code></td><td class="path">verdict</td><td>One event carrying the full <code>Verdict</code>; the CLI stops re-deriving display state from <code>reason</code> + <code>isLive</code>.</td></tr>
+      <tr><td><code>recording:start</code>, <code>download:end</code>, <code>segmenting:*</code>, <code>converting:start</code>, <code>converted</code>, <code>recording:end</code>, <code>normalize:*</code></td><td class="path">record</td><td>One discriminated union on <code>phase</code>: <code>start | download | segment | convert | normalize | end</code>, each with its own payload. Kills the empty handler at <code>bin.ts:228</code>.</td></tr>
+      <tr><td><code>download:progress</code>, <code>normalize:progress</code></td><td class="path">progress</td><td>Union on <code>kind</code>. Both feed the same spinner.</td></tr>
+      <tr><td class="path">error</td><td class="path">failure</td><td>Carries <code>TikTokError</code> with a 5-value <code>code</code>.</td></tr>
+    </tbody>
+  </table>
+
+  <p>
+    Three channels means the CLI's 14 subscriptions become 3 handlers with exhaustive switches. That
+    is the same trade as the verdict: fewer names, stronger types, no drift between two payloads that
+    mean the same thing.
+  </p>
+</section>
+
+<section id="tick">
+  <h2><span class="n">07</span>One tick, end to end</h2>
+
+  <figure>
+    <svg viewBox="0 0 920 320" role="img" aria-label="Data flow for one tick: probe, discovery chain, verdict, policy, plan">
+      <defs>
+        <marker id="ar4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="#6b7482"/>
+        </marker>
+      </defs>
+
+      <rect x="20" y="110" width="110" height="64" rx="6" fill="#171b22" stroke="#2a323d"/>
+      <text x="34" y="134" class="svgCb">probe(user)</text>
+      <text x="34" y="152" class="svgN">session</text>
+
+      <line x1="130" y1="142" x2="154" y2="142" stroke="#6b7482" stroke-width="1.4" marker-end="url(#ar4)"/>
+
+      <rect x="158" y="78" width="240" height="144" rx="6" fill="#15201f" stroke="#3d5f59"/>
+      <text x="172" y="98" class="svgCb">discover()</text>
+      <rect x="170" y="108" width="216" height="24" rx="3" fill="#1a202a" stroke="#2a323d"/>
+      <text x="180" y="124" class="svgC">1 · page (SIGI / universal)</text>
+      <rect x="170" y="140" width="216" height="24" rx="3" fill="#1a202a" stroke="#2a323d"/>
+      <text x="180" y="156" class="svgC">2 · api-live</text>
+      <rect x="170" y="172" width="216" height="24" rx="3" fill="#1a202a" stroke="#2a323d"/>
+      <text x="180" y="188" class="svgC">3 · profile</text>
+      <text x="172" y="212" class="svgN">miss / failed → next</text>
+
+      <line x1="398" y1="142" x2="422" y2="142" stroke="#6b7482" stroke-width="1.4" marker-end="url(#ar4)"/>
+
+      <rect x="426" y="110" width="104" height="64" rx="6" fill="#15201f" stroke="#3d5f59"/>
+      <text x="440" y="134" class="svgCb">verdictOf()</text>
+      <text x="440" y="152" class="svgN">total · pure</text>
+
+      <line x1="530" y1="142" x2="554" y2="142" stroke="#6b7482" stroke-width="1.4" marker-end="url(#ar4)"/>
+
+      <rect x="558" y="80" width="150" height="128" rx="6" fill="#171b22" stroke="#5ee0c8" stroke-opacity=".5"/>
+      <text x="570" y="100" class="svgCb">Verdict</text>
+      <text x="570" y="120" class="svgC">reason</text>
+      <text x="570" y="138" class="svgC">room?  stream?</text>
+      <text x="570" y="156" class="svgC">evidence[]</text>
+      <text x="570" y="174" class="svgC">failure?</text>
+      <text x="570" y="194" class="svgN">the only truth value</text>
+
+      <line x1="708" y1="142" x2="732" y2="142" stroke="#6b7482" stroke-width="1.4" marker-end="url(#ar4)"/>
+
+      <rect x="736" y="110" width="104" height="64" rx="6" fill="#15201f" stroke="#3d5f59"/>
+      <text x="750" y="134" class="svgCb">planTick()</text>
+      <text x="750" y="152" class="svgN">pure</text>
+
+      <path d="M788,174 V186 H726 V250" fill="none" stroke="#6b7482" stroke-width="1.2"/>
+      <line x1="726" y1="202" x2="736" y2="202" stroke="#6b7482" stroke-width="1.2" marker-end="url(#ar4)"/>
+      <line x1="726" y1="226" x2="736" y2="226" stroke="#6b7482" stroke-width="1.2" marker-end="url(#ar4)"/>
+      <line x1="726" y1="250" x2="736" y2="250" stroke="#6b7482" stroke-width="1.2" marker-end="url(#ar4)"/>
+
+      <rect x="736" y="192" width="118" height="20" rx="3" fill="#1a202a" stroke="#2a323d"/>
+      <text x="746" y="206" class="svgC">poll</text>
+      <rect x="736" y="216" width="118" height="20" rx="3" fill="#1a202a" stroke="#2a323d"/>
+      <text x="746" y="230" class="svgC">hold · unusable</text>
+      <rect x="736" y="240" width="118" height="20" rx="3" fill="#1a202a" stroke="#3d5f59"/>
+      <text x="746" y="254" class="svgC">record → job</text>
+
+      <text x="20" y="258" class="svgN">← I/O and mutation</text>
+      <text x="440" y="258" class="svgAcc">pure →</text>
+      <line x1="20" y1="270" x2="880" y2="270" stroke="#2a323d" stroke-dasharray="2 4"/>
+      <text x="20" y="294" class="svgN">Everything right of the verdict is a table test. Everything left of it is an adapter test with fixtures.</text>
+    </svg>
+    <figcaption>
+      <b>Figure 3 — one tick.</b> The verdict is the seam. Adapters do the I/O and emit evidence;
+      <code>verdictOf</code> collapses evidence into one of six reasons; <code>planTick</code> maps that
+      plus session facts to one of four actions. No clock, no network, no filesystem in either pure
+      function.
+    </figcaption>
+  </figure>
+</section>
+
+<section id="layout">
+  <h2><span class="n">08</span>Layout &amp; guardrail</h2>
+
+  <p>Same import specifier for the public surface; internals move and become unimportable by convention-plus-test.</p>
+
+<pre><code><span class="c">packages/tokrec/src/</span>
+  index.ts                 <span class="c">public surface only — 11 exports, nothing else</span>
+  domain/                  <span class="c">pure · no imports outside domain/</span>
+    verdict.ts             <span class="c">Verdict · verdictOf · RoomRef · StreamRef · Evidence</span>
+    config.ts              <span class="c">RecorderConfig · ResolvedConfig · normalize · validate</span>
+    errors.ts              <span class="c">TikTokError (5 codes)</span>
+    events.ts              <span class="c">RecorderEvents (4 channels)</span>
+    phase.ts               <span class="c">Phase · advance()</span>
+  policy/                  <span class="c">pure · imports domain/ only</span>
+    tick.ts                <span class="c">planTick</span>
+    segment.ts             <span class="c">planSegments</span>
+    naming.ts              <span class="c">recording filenames</span>
+  ports/                   <span class="c">interfaces only · zero imports</span>
+    http.ts  media.ts  files.ts  clock.ts  log.ts  tiktok.ts
+  adapters/
+    http/wreq.ts  http/rate-limit.ts
+    tiktok/webcast.ts  tiktok/page.ts  tiktok/stream-url.ts
+    tiktok/parse/sigi.ts  tiktok/parse/universal.ts
+    tiktok/discovery/{source,chain,page,api-live,profile}.ts
+    media/ffmpeg-pipe.ts  media/ffmpeg-remux.ts  media/segment-list.ts
+    fs/local.ts
+  session/
+    session.ts  job.ts  abort.ts
+  lib/
+    logger.ts  format.ts</code></pre>
+
+  <p>
+    The old <code>core/</code> tree disappears in one mechanical commit. Keeping the current layout
+    "because it works" is what allowed <code>types.ts</code> to type itself from a factory's return
+    value; the bands are the design, so they get to be directories.
+  </p>
+
+  <h3>Guardrail — a 40-line test, not a convention document</h3>
+
+<pre><code><span class="c">// packages/tokrec/test/architecture.test.ts</span>
+<span class="k">const</span> ALLOWED: Record&lt;Zone, Zone[]&gt; = {
+  domain:   [<span class="t">"domain"</span>],
+  policy:   [<span class="t">"domain"</span>, <span class="t">"policy"</span>],
+  ports:    [],
+  adapters: [<span class="t">"domain"</span>, <span class="t">"ports"</span>, <span class="t">"lib"</span>],
+  session:  [<span class="t">"domain"</span>, <span class="t">"policy"</span>, <span class="t">"ports"</span>, <span class="t">"adapters"</span>, <span class="t">"lib"</span>],
+  lib:      [<span class="t">"lib"</span>],
+  root:     [<span class="t">"domain"</span>, <span class="t">"policy"</span>, <span class="t">"ports"</span>, <span class="t">"adapters"</span>, <span class="t">"session"</span>],
+}
+
+<span class="c">// 1. every import edge respects ALLOWED</span>
+<span class="c">// 2. domain/ and policy/ import no node:* or bun:* module</span>
+<span class="c">// 3. no module in the graph is part of a cycle (DFS over resolved edges)</span>
+<span class="c">// 4. index.ts exports only from domain/, session/, lib/format, lib/utils</span></code></pre>
+
+  <p>
+    These four assertions are exactly the four failure modes seen today — cross-band imports, hidden
+    I/O in policy, cycles, and a barrel that leaks internals. A reviewer no longer has to hold the
+    graph in their head; the suite does. It also makes the next refactor cheap: the test tells you
+    where a new file may live.
+  </p>
+</section>
+
+<section id="breaking">
+  <h2><span class="n">09</span>Breaking changes &amp; migration</h2>
+
+  <table>
+    <thead><tr><th style="width:32%">Surface</th><th style="width:30%">Before</th><th>After</th></tr></thead>
+    <tbody>
+      <tr><td class="path">createRecorder</td><td><code>createRecorder(cfg)</code></td><td><code>createRecorder(cfg, deps?)</code> — second arg optional, same semantics.</td></tr>
+      <tr><td class="path">Verdict</td><td><code>LiveInfo { isLive, source }</code></td><td><code>Verdict { reason, room, stream, evidence, failure }</code></td></tr>
+      <tr><td class="path">events</td><td>16 names</td><td>4: <code>verdict</code>, <code>record</code>, <code>progress</code>, <code>failure</code></td></tr>
+      <tr><td class="path">errors</td><td><code>TikTokError.kind</code>, 11 values</td><td><code>TikTokError.code</code>, 5 values</td></tr>
+      <tr><td class="path">api</td><td><code>getRoomId</code> · <code>isRoomAlive</code> · <code>getLiveUrl</code> · <code>getLiveInfo</code> · <code>invalidateCache</code></td><td>deleted from the public surface; <code>getRoomId</code> is unused in <code>src</code> today, and <code>getLiveUrl</code> carries the key-conflation bug.</td></tr>
+      <tr><td class="path">decideTick</td><td>exported helper</td><td>deleted — <code>planTick</code> replaces it and is not exported from the barrel.</td></tr>
+      <tr><td class="path">RecorderStatus.state</td><td><code>"idle"</code> · <code>"polling"</code> · <code>"recording"</code> · <code>"converting"</code> · <code>"stopped"</code></td><td><code>Phase</code> — adds <code>"segmenting"</code>, drops the impossible <code>idle → recording</code> transition.</td></tr>
+    </tbody>
+  </table>
+
+  <p>
+    Four PRs, each independently shippable and green. Breaking changes land only in the last one, so a
+    consumer has three releases of warning.
+  </p>
+
+  <table>
+    <thead><tr><th style="width:8%">PR</th><th style="width:26%">Scope</th><th style="width:34%">Net code</th><th>Gate</th></tr></thead>
+    <tbody>
+      <tr>
+        <td class="path">A</td>
+        <td>Move only: <code>core/</code> → <code>domain/ policy/ ports/ adapters/ session/</code>. No logic edits.</td>
+        <td>0 LOC delta, ~25 import lines. Adds <code>architecture.test.ts</code>.</td>
+        <td><code>bun test</code>, <code>typecheck</code> — must pass untouched.</td>
+      </tr>
+      <tr>
+        <td class="path">B</td>
+        <td><code>Verdict</code> + <code>verdictOf</code>. Sources return <code>Candidate</code>. <code>toLiveInfo()</code> shim keeps the old surface alive.</td>
+        <td>−80 LOC: 22 literals and 5 cascades become one function.</td>
+        <td>Fix <code>tiktok.ts:154</code>: add a fixture where the page source throws and assert <code>api-live</code> still runs.</td>
+      </tr>
+      <tr>
+        <td class="path">C</td>
+        <td><code>planTick</code> replaces the <code>onTick</code> if-chain. Delete <code>decideTick</code>.</td>
+        <td>−70 LOC. <code>recorder-tick.test.ts</code> becomes a (verdict, facts) table.</td>
+        <td>Same behaviour across all 6 reasons × 4 fact combinations.</td>
+      </tr>
+      <tr>
+        <td class="path">D</td>
+        <td><code>AbortScope</code>, <code>RecordingJob</code>, 4 events, <code>TikTokError.code</code>. Delete the shim.</td>
+        <td>−100 LOC in lib, −60 in <code>cli/bin.ts</code>. CHANGELOG <code>BREAKING</code>.</td>
+        <td><code>bun run lint &amp;&amp; bun run typecheck &amp;&amp; bun test &amp;&amp; bun run build</code>; manual <code>tokrec &lt;user&gt;</code> smoke.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>
+    Total: <strong>≈ −250 net lines</strong>, 25 → 33 files, cycles 3 → 0. Files go up because each
+    concept gets one home; lines go down because the duplication that made the file count tolerable
+    disappears with it.
+  </p>
+
+  <h3>Version</h3>
+  <p>
+    Pre-1.0, so <code>0.14.0</code> with a <code>BREAKING</code> section is semver-legal. If the event
+    and verdict shapes are meant to be a contract other people build on, take <code>1.0.0</code> now,
+    while the only consumer is this repo's CLI — the cheapest possible moment to freeze a public
+    surface.
+  </p>
+
+  <h3>What the CLI gains</h3>
+  <ul class="tight">
+    <li><code>bin.ts:181–256</code> — 14 subscriptions and two closures of display state (<code>lastWasLive</code>, <code>firstOfflineTime</code>) collapse to 3 handlers. The "offline repeat" timer can read <code>Verdict.evidence</code> instead of tracking its own history.</li>
+    <li><code>bin.ts:228</code> — the empty <code>recording:end</code> handler with its apologetic comment is deleted, not ported.</li>
+    <li><code>ui.ts</code> unchanged: it already speaks in <code>display.*</code> verbs, which is the right seam.</li>
+  </ul>
+</section>
+
+<section id="not">
+  <h2><span class="n">10</span>What this does not fix</h2>
+
+  <p>Being explicit about scope, so this does not read as a promise of stability it cannot keep.</p>
+
+  <ul class="tight">
+    <li><strong>TikTok's page churn.</strong> Three extraction strategies remain because TikTok genuinely serves three shapes. The redesign makes adding a fourth a one-file change with a fixture test, not a guarantee that fixtures stay valid.</li>
+    <li><strong>Live-network tests.</strong> All 95 tests run against captured fixtures. A redesign cannot fix the fact that the first sign of WAF drift is a production run — but the evidence trail on <code>Verdict</code> makes that run diagnosable from the log alone.</li>
+    <li><strong>The <code>peaknorm → @zfadhli/koko-cli</code> transitive.</strong> Unchanged: <code>picocolors</code> and <code>cli-spinners</code> stay in the tree until that dependency is fixed upstream.</li>
+    <li><strong>ffmpeg as a hard requirement.</strong> Kept. The <code>Media</code> port makes it swappable and testable, not optional.</li>
+    <li><strong>Multi-room recording.</strong> Out of scope, but the shape permits it: <code>RecorderSession</code> takes a config and a scope, so N sessions behind a supervisor is an addition, not a rewrite. Today's god closure makes it a rewrite.</li>
+    <li><strong>CHANGELOG for <code>c322f20</code>.</strong> Independent of this proposal; still owed.</li>
+  </ul>
+
+  <div class="callout">
+    <span class="k">Recommendation</span>
+    <p>
+      Do PR A and PR B. A costs an afternoon and buys the guardrail; B removes the correctness bug at
+      <code>tiktok.ts:154</code> plus the duplication that will otherwise be copied a sixth time the
+      next time TikTok changes its page. C and D are worth doing but are refactors of working code —
+      schedule them behind whatever the recorder needs next, not before.
+    </p>
+  </div>
+</section>
+
+<footer>
+  Proposal against <code>c322f20</code> · 2,658 LOC measured with <code>wc -l</code> over
+  <code>packages/tokrec/src</code> · all line references verified in that tree.
+</footer>
+
+</div>
+</body>
+</html>
