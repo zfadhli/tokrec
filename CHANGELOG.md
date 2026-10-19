@@ -5,6 +5,64 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.0] — 2026-10-19
+
+Version: `0.15.0`. Internal restructuring plus one fix that landed on `main`
+after 0.14.0. **No public API change** — the exports of `@zfadhli/tokrec` are
+identical to 0.14.0; everything below is `src/` layout, deleted internals, and
+CLI wiring.
+
+### Fixed
+
+- **Ctrl+C remuxes the partial recording again.** 0.14.0's `AbortScope` threaded
+  one signal through both the download and its post-processing, so `stop()`
+  aborted the shared signal before `RecordingJob` was constructed and the `.ts`
+  was never converted — `pendingRemuxes` had been deleted with it. Post-processing
+  now has its own scope with a 10-minute grace: Ctrl+C still aborts the download
+  immediately, and the partial recording is still remuxed to `.mp4` before the
+  process exits.
+
+### Changed — internal only
+
+- **Seven bands → three.** `src/` is now `core/` (pure: verdict, plan, format
+  helpers, error type, `Logger` contract), `io/` (http, tiktok, media) and
+  `app/` (recorder, job, loop, abort, events, config, logger).
+  `test/architecture.test.ts` enforces the 3×3 matrix, `PURE = [core]`, and a
+  barrel that may only re-export from `core/` + `app/`.
+- **`ports/` deleted.** `HttpClient`/`HttpBody` are declared once, in
+  `io/http.ts`, which also absorbed the rate limiter; `WebcastReader`,
+  `RoomApiResult`, and `RoomFacts` live beside the client that implements them.
+- **One result shape.** `domain/media.ts` deleted — `DownloadResult` was
+  `RecordedFile`, `ProgressInfo` is now the named `DownloadProgress`; the second
+  `runFfmpeg` copy is gone and `io/media/ffmpeg.ts` owns every FFmpeg call
+  (`Converter.segment()` included, so `RecordingJob` no longer builds argv).
+- **`session/stream.ts` deleted** — a nine-argument pass-through to
+  `downloadStream`; the HLS label and output-dir creation moved into the
+  downloader.
+- **`session/recorder-state.ts` deleted.** Its six-state transition table
+  re-encoded `Phase` and logged-then-ignored illegal moves; status is a plain
+  object. `session/recorder-events.ts` became a typed façade over `node:events`.
+- **Discovery: seven files → three** (`chain.ts`, `page.ts`, `fallback.ts`).
+- **TikTok client.** `session/probe.ts` → `io/tiktok/client.ts`,
+  `createTikTokApi`/`TikTokApi` → `createTikTokClient`/`TikTokClient`, and the
+  dead `getRoomId` is gone along with `TickFacts.stopRequested` and `planTick`'s
+  `{kind: "stop", why: "user"}` arm — a user stop is a signal, not a verdict.
+- **Config.** `normalizeConfig`'s conditional return type is the named
+  `ResolvedConfig` returned by `resolveConfig()`.
+- **CLI.** One `OPTIONS` table declares each recorder flag and its parsing; the
+  record-flow display wiring moved from `bin.ts` into `ui.attachDisplay()`.
+
+### Numbers
+
+| | before | after |
+|---|---|---|
+| `packages/tokrec/src` | 33 modules / 2859 lines | 25 modules / ≈2700 lines |
+| `packages/cli/src` | 5 modules / 959 lines | 5 modules / 1040 lines |
+| test suite | 13 files / 135 tests | 13 files / 136 tests |
+
+The CLI grew: the option table is one multi-line row per flag where the old
+code had two compact shapes, and `ui.ts` now owns the display wiring.
+
 ## [0.14.0] — 2026-10-19
 
 Version: `0.14.0`. The project is still pre-1.0, so the event, error, and

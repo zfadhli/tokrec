@@ -14,7 +14,7 @@
     },
     "packages/cli": {
       "name": "@zfadhli/tokrec-cli",
-      "version": "0.14.0",
+      "version": "0.15.0",
       "bin": {
         "tokrec": "./dist/bin.mjs",
       },
@@ -28,7 +28,7 @@
     },
     "packages/tokrec": {
       "name": "@zfadhli/tokrec",
-      "version": "0.14.0",
+      "version": "0.15.0",
       "dependencies": {
         "execa": "^9.6.1",
         "peaknorm": "^0.7.0",
