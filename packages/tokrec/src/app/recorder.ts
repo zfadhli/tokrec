@@ -17,7 +17,7 @@ import { type AudioNormalizer, createAudioNormalizer } from "../io/media/normali
 import { createTikTokClient, type TikTokClient } from "../io/tiktok/client"
 import { type AbortScope, abortScope } from "./abort"
 import type { RecorderConfig, RecorderController, RecorderStatus } from "./config"
-import { normalizeConfig } from "./config"
+import { resolveConfig } from "./config"
 import { createEventEmitter } from "./events"
 import { createRecordingJob, type RecordingJob } from "./job"
 import { createLogger } from "./logger"
@@ -44,7 +44,7 @@ interface Running {
 }
 
 export function createRecorder(config: RecorderConfig): RecorderController {
-  const cfg = normalizeConfig(config)
+  const cfg = resolveConfig(config)
   const logger = createLogger({
     level: cfg.logLevel,
     logFile: "tiktok-recorder.log",

@@ -123,45 +123,45 @@ export interface RecorderEventHandler {
   failure: (err: TikTokError) => void
 }
 
-const DEFAULTS = {
-  outputDir: ".",
-  interval: 3,
-  duration: 0,
-  logLevel: "info" as LogLevel,
-  logConsole: true,
-  segmentMinutes: 0,
-  normalizeAudio: false,
-  normalizeLoudness: -14,
-  ratePerSecond: 5,
-  debug: false,
+/** A `RecorderConfig` with every default applied — what the recorder runs on. */
+export interface ResolvedConfig {
+  user: string
+  outputDir: string
+  interval: number
+  duration: number
+  proxy?: string
+  cookiesPath?: string
+  cookies?: CookieAuth
+  logLevel: LogLevel
+  logConsole: boolean
+  segmentMinutes: number
+  normalizeAudio: boolean
+  normalizeLoudness: number
+  normalizeCodec?: string
+  normalizeBitrate?: string
+  ratePerSecond: number
+  debug: boolean
 }
 
-export function normalizeConfig(
-  config: RecorderConfig,
-): Required<
-  Omit<RecorderConfig, "cookies" | "cookiesPath" | "proxy" | "normalizeCodec" | "normalizeBitrate">
-> &
-  Pick<
-    RecorderConfig,
-    "cookies" | "cookiesPath" | "proxy" | "normalizeCodec" | "normalizeBitrate"
-  > {
+/** Apply defaults once, at the entry point; nothing downstream re-reads `??`. */
+export function resolveConfig(config: RecorderConfig): ResolvedConfig {
   return {
     user: config.user,
-    outputDir: config.outputDir ?? DEFAULTS.outputDir,
-    interval: config.interval ?? DEFAULTS.interval,
-    duration: config.duration ?? DEFAULTS.duration,
-    logLevel: config.logLevel ?? DEFAULTS.logLevel,
-    logConsole: config.logConsole ?? DEFAULTS.logConsole,
+    outputDir: config.outputDir ?? ".",
+    interval: config.interval ?? 3,
+    duration: config.duration ?? 0,
     proxy: config.proxy,
     cookies: config.cookies,
     cookiesPath: config.cookiesPath,
-    segmentMinutes: config.segmentMinutes ?? DEFAULTS.segmentMinutes,
-    normalizeAudio: config.normalizeAudio ?? DEFAULTS.normalizeAudio,
-    normalizeLoudness: config.normalizeLoudness ?? DEFAULTS.normalizeLoudness,
+    logLevel: config.logLevel ?? "info",
+    logConsole: config.logConsole ?? true,
+    segmentMinutes: config.segmentMinutes ?? 0,
+    normalizeAudio: config.normalizeAudio ?? false,
+    normalizeLoudness: config.normalizeLoudness ?? -14,
     normalizeCodec: config.normalizeCodec,
     normalizeBitrate: config.normalizeBitrate,
-    ratePerSecond: config.ratePerSecond ?? DEFAULTS.ratePerSecond,
-    debug: config.debug ?? DEFAULTS.debug,
+    ratePerSecond: config.ratePerSecond ?? 5,
+    debug: config.debug ?? false,
   }
 }
 

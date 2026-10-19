@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test"
-import { normalizeConfig, validateConfig } from "../src/app/config"
+import { resolveConfig, validateConfig } from "../src/app/config"
 import { TikTokError } from "../src/core/errors"
 
-describe("normalizeConfig", () => {
+describe("resolveConfig", () => {
   test("fills in defaults for missing fields", () => {
-    const cfg = normalizeConfig({ user: "testuser" })
+    const cfg = resolveConfig({ user: "testuser" })
     expect(cfg.user).toBe("testuser")
     expect(cfg.outputDir).toBe(".")
     expect(cfg.interval).toBe(3)
@@ -13,7 +13,7 @@ describe("normalizeConfig", () => {
   })
 
   test("preserves explicit values", () => {
-    const cfg = normalizeConfig({
+    const cfg = resolveConfig({
       user: "testuser",
       outputDir: "/custom/path",
       interval: 10,
@@ -27,13 +27,13 @@ describe("normalizeConfig", () => {
   })
 
   test("normalizeCodec and normalizeBitrate are undefined when not set", () => {
-    const cfg = normalizeConfig({ user: "testuser" })
+    const cfg = resolveConfig({ user: "testuser" })
     expect(cfg.normalizeCodec).toBeUndefined()
     expect(cfg.normalizeBitrate).toBeUndefined()
   })
 
   test("normalizeCodec and normalizeBitrate pass through when set", () => {
-    const cfg = normalizeConfig({
+    const cfg = resolveConfig({
       user: "testuser",
       normalizeCodec: "aac",
       normalizeBitrate: "192k",
@@ -43,22 +43,22 @@ describe("normalizeConfig", () => {
   })
 
   test("normalizeAudio defaults to false", () => {
-    const cfg = normalizeConfig({ user: "testuser" })
+    const cfg = resolveConfig({ user: "testuser" })
     expect(cfg.normalizeAudio).toBe(false)
   })
 
   test("normalizeAudio can be explicitly set to false", () => {
-    const cfg = normalizeConfig({ user: "testuser", normalizeAudio: false })
+    const cfg = resolveConfig({ user: "testuser", normalizeAudio: false })
     expect(cfg.normalizeAudio).toBe(false)
   })
 
   test("normalizeAudio can be explicitly set to true", () => {
-    const cfg = normalizeConfig({ user: "testuser", normalizeAudio: true })
+    const cfg = resolveConfig({ user: "testuser", normalizeAudio: true })
     expect(cfg.normalizeAudio).toBe(true)
   })
 
   test("preserves cookies and proxy", () => {
-    const cfg = normalizeConfig({
+    const cfg = resolveConfig({
       user: "testuser",
       proxy: "http://127.0.0.1:8080",
       cookies: { sessionid_ss: "abc123" },
