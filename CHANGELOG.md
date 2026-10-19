@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.2] — 2026-10-19
+
+Documentation only. No source, build, or public API change; both packages are
+bumped together so the READMEs below reach their npm pages.
+
+### Added
+
+- **README for each package.** `@zfadhli/tokrec` and `@zfadhli/tokrec-cli` were
+  published without one, so both npm pages were blank. The library README
+  documents `createRecorder`, all 16 config fields with their defaults, the four
+  event channels, the controller, and the exported surface. The CLI README
+  documents the five commands, all 14 flags, and the two cookie sources.
+  Both describe the code as it is, not as the root README claimed: four event
+  channels (not "15 events"), 136 tests (not "71+"), and the units split where
+  the library takes seconds and `-d` takes minutes.
+
+### Changed
+
+- `.gitignore` covers `.agents/`, `.pi/` and `skills-lock.json` — local agent
+  tooling, not package content.
+
 ## [0.15.1] — 2026-10-19
 
 CLI packaging fix. `@zfadhli/tokrec` is unchanged from 0.15.0 and is not
