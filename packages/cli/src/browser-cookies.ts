@@ -12,6 +12,25 @@ import { homedir } from "node:os"
 import { join } from "node:path"
 
 /**
+ * Load `{ sessionid_ss, ... }` from a cookies.json path (default
+ * `./cookies.json`). Returns null when the file is missing, unparseable, or
+ * carries no session cookie — the caller decides whether to warn or prompt.
+ */
+export function loadCookiesFile(cookiesPath?: string): Record<string, string> | null {
+  const path = cookiesPath ?? join(process.cwd(), "cookies.json")
+  if (!existsSync(path)) return null
+  try {
+    const data = JSON.parse(readFileSync(path, "utf-8")) as Record<string, string | undefined>
+    if (data.sessionid_ss && data.sessionid_ss.length > 0) {
+      return data as Record<string, string>
+    }
+    return null
+  } catch {
+    return null
+  }
+}
+
+/**
  * Extract TikTok session cookies from Firefox's cookie store.
  *
  * Queries ALL cookies for TikTok domains from Firefox, including the

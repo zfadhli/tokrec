@@ -5,7 +5,13 @@
  * stdout/stderr (the file logger handles persistent logs).
  */
 
-import { formatDuration } from "@zfadhli/tokrec"
+import {
+  bytesToHuman,
+  formatDuration,
+  isLiveReason,
+  type RecorderController,
+  relativeTime,
+} from "@zfadhli/tokrec"
 import yoctoSpinner, { type Spinner } from "yocto-spinner"
 import * as color from "yoctocolors"
 
@@ -261,4 +267,71 @@ export function createDisplay(): Display {
       offlineLineShown = false
     },
   }
+}
+
+/**
+ * Wire the recorder's four event channels to the terminal.
+ *
+ * Lives next to the display it drives: the mapping from recorder phase to
+ * terminal line is presentation, so `bin.ts` should not carry it.
+ */
+export function attachDisplay(
+  display: Display,
+  recorder: Pick<RecorderController, "on">,
+  user: string,
+): void {
+  let lastWasLive: boolean | null = null
+  let firstOfflineTime = 0
+
+  recorder.on("verdict", (verdict) => {
+    if (verdict.reason === "restricted") {
+      display.userRestricted(user)
+    } else if (verdict.reason === "no-stream-url") {
+      display.userLiveNoStream(user, verdict.room?.id ?? "?")
+    } else if (isLiveReason(verdict.reason)) {
+      display.userLive(user, verdict.room?.id ?? "?")
+    } else if (lastWasLive === null || lastWasLive === true) {
+      display.userOffline(user)
+      firstOfflineTime = Date.now()
+    } else {
+      display.userOfflineRepeat(user, relativeTime(Date.now() - firstOfflineTime))
+    }
+    lastWasLive = isLiveReason(verdict.reason)
+  })
+
+  recorder.on("record", (event) => {
+    switch (event.phase) {
+      case "start":
+        display.startRecording()
+        break
+      case "download": {
+        const parsed = event.file.split("/").pop() ?? event.file
+        display.finishRecording(parsed, event.duration, bytesToHuman(event.size))
+        break
+      }
+      case "segment":
+        if (event.status === "start") display.startSegmenting()
+        else display.segmentsCreated(event.segments)
+        break
+      case "convert":
+        if (event.status === "start") display.startConverting()
+        else display.conversionDone(event.output.split("/").pop() ?? event.output)
+        break
+      case "normalize":
+        if (event.status === "start") display.normalizeStart()
+        else if (event.status === "done") display.normalizeComplete()
+        else display.normalizeError(event.error)
+        break
+      case "end":
+        break
+    }
+  })
+
+  recorder.on("progress", (event) => {
+    if (event.kind === "normalize") display.normalizeProgress(event.percent, event.phase)
+  })
+
+  recorder.on("failure", (err) => {
+    display.showError(`[${err.code}] ${err.message}`)
+  })
 }

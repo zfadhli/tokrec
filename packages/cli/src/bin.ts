@@ -1,41 +1,18 @@
 #!/usr/bin/env bun
 /**
  * Entry point — parses CLI args, creates the recorder, and handles signals.
- * Uses the terminal Display manager for beautiful console output.
+ * The record flow's output wiring lives in `ui.attachDisplay`.
  */
 
-import { existsSync, readFileSync, writeFileSync } from "node:fs"
+import { existsSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import type { RecorderConfig } from "@zfadhli/tokrec"
-import {
-  bytesToHuman,
-  createRecorder,
-  isLiveReason,
-  relativeTime,
-  TikTokError,
-} from "@zfadhli/tokrec"
+import { createRecorder, TikTokError } from "@zfadhli/tokrec"
 import * as color from "yoctocolors"
-import { extractTikTokCookiesFromFirefox } from "./browser-cookies"
+import { extractTikTokCookiesFromFirefox, loadCookiesFile } from "./browser-cookies"
 import { type CLIResult, parseArgs } from "./cli"
 import { tmuxStart, tmuxStatus, tmuxStop } from "./tmux"
-import { createDisplay } from "./ui"
-
-async function loadCookies(cookiesPath?: string): Promise<Record<string, string> | undefined> {
-  const path = cookiesPath ?? join(process.cwd(), "cookies.json")
-  if (!existsSync(path)) {
-    return undefined
-  }
-  try {
-    const content = readFileSync(path, "utf-8")
-    const data = JSON.parse(content) as Record<string, string | undefined>
-    if (data.sessionid_ss && data.sessionid_ss.length > 0) {
-      return data as Record<string, string>
-    }
-    return undefined
-  } catch {
-    return undefined
-  }
-}
+import { attachDisplay, createDisplay } from "./ui"
 
 async function main(): Promise<void> {
   let result: CLIResult
@@ -115,14 +92,10 @@ async function main(): Promise<void> {
     // 2. Check cookies.json
     const cookiesPath = join(process.cwd(), "cookies.json")
     if (existsSync(cookiesPath)) {
-      try {
-        const data = JSON.parse(readFileSync(cookiesPath, "utf-8"))
-        if (data.sessionid_ss) {
-          console.log(`${color.green("✓")} cookies.json found at ./cookies.json`)
-          return
-        }
-      } catch {
-        // invalid JSON, fall through to setup
+      const fromFile = loadCookiesFile(cookiesPath)
+      if (fromFile) {
+        console.log(`${color.green("✓")} cookies.json found at ./cookies.json`)
+        return
       }
     }
 
@@ -158,7 +131,7 @@ async function main(): Promise<void> {
 
   // Load cookies: try Firefox browser first, then fall back to cookies.json
   const firefoxCookies = extractTikTokCookiesFromFirefox()
-  config.cookies = firefoxCookies ?? (await loadCookies(config.cookiesPath))
+  config.cookies = firefoxCookies ?? loadCookiesFile(config.cookiesPath) ?? undefined
 
   // Suppress internal logger's console output — the Display owns the terminal
   config.logConsole = false
@@ -178,63 +151,7 @@ async function main(): Promise<void> {
   }
 
   const recorder = createRecorder(config)
-
-  let lastWasLive: boolean | null = null
-  let firstOfflineTime = 0
-
-  // Subscribe to the four-channel event contract
-  recorder.on("verdict", (verdict) => {
-    if (verdict.reason === "restricted") {
-      display.userRestricted(config.user)
-    } else if (verdict.reason === "no-stream-url") {
-      display.userLiveNoStream(config.user, verdict.room?.id ?? "?")
-    } else if (isLiveReason(verdict.reason)) {
-      display.userLive(config.user, verdict.room?.id ?? "?")
-    } else if (lastWasLive === null || lastWasLive === true) {
-      display.userOffline(config.user)
-      firstOfflineTime = Date.now()
-    } else {
-      const elapsed = Date.now() - firstOfflineTime
-      display.userOfflineRepeat(config.user, relativeTime(elapsed))
-    }
-    lastWasLive = isLiveReason(verdict.reason)
-  })
-
-  recorder.on("record", (event) => {
-    switch (event.phase) {
-      case "start":
-        display.startRecording()
-        break
-      case "download": {
-        const parsed = event.file.split("/").pop() ?? event.file
-        display.finishRecording(parsed, event.duration, bytesToHuman(event.size))
-        break
-      }
-      case "segment":
-        if (event.status === "start") display.startSegmenting()
-        else display.segmentsCreated(event.segments)
-        break
-      case "convert":
-        if (event.status === "start") display.startConverting()
-        else display.conversionDone(event.output.split("/").pop() ?? event.output)
-        break
-      case "normalize":
-        if (event.status === "start") display.normalizeStart()
-        else if (event.status === "done") display.normalizeComplete()
-        else display.normalizeError(event.error)
-        break
-      case "end":
-        break
-    }
-  })
-
-  recorder.on("progress", (event) => {
-    if (event.kind === "normalize") display.normalizeProgress(event.percent, event.phase)
-  })
-
-  recorder.on("failure", (err) => {
-    display.showError(`[${err.code}] ${err.message}`)
-  })
+  attachDisplay(display, recorder, config.user)
 
   // Signal handling
   let stopping = false

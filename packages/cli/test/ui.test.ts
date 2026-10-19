@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test"
-import { createDisplay } from "../src/ui"
+import type { RecorderController } from "@zfadhli/tokrec"
+import { attachDisplay, createDisplay } from "../src/ui"
 
 const writes: string[] = []
 let writeSpy: ReturnType<typeof spyOn> | null = null
@@ -41,5 +42,55 @@ describe("spinner in non-interactive mode", () => {
     expect(out).toContain("Checking @x")
     expect(out).not.toContain("\u001B[?25l")
     expect(out).not.toContain("\r")
+  })
+})
+
+/** Minimal `on`-only recorder stand-in; `attachDisplay` subscribes, never calls. */
+function stubRecorder(): {
+  recorder: Pick<RecorderController, "on">
+  emit: (event: string, payload: unknown) => void
+} {
+  const handlers = new Map<string, (payload: unknown) => void>()
+  const recorder = {
+    on: (event: string, handler: (payload: unknown) => void) => {
+      handlers.set(event, handler)
+    },
+  }
+  return {
+    recorder: recorder as unknown as Pick<RecorderController, "on">,
+    emit: (event, payload) => handlers.get(event)?.(payload),
+  }
+}
+
+describe("attachDisplay", () => {
+  test("a live verdict prints [LIVE] with the room id", () => {
+    spyStdout()
+    const { recorder, emit } = stubRecorder()
+    attachDisplay(createDisplay(), recorder, "someone")
+    emit("verdict", {
+      reason: "live",
+      room: { id: "42", title: null, live: true },
+      stream: { url: "https://cdn/x.flv" },
+      evidence: [],
+      failure: null,
+    })
+    const out = writes.join("")
+    expect(out).toContain("[LIVE]")
+    expect(out).toContain("42")
+  })
+
+  test("a finished download prints [DONE] with filename and size", () => {
+    spyStdout()
+    const { recorder, emit } = stubRecorder()
+    attachDisplay(createDisplay(), recorder, "someone")
+    emit("record", {
+      phase: "download",
+      file: "/out/someone=20260101_000000.ts",
+      duration: 12,
+      size: 2048,
+    })
+    const out = writes.join("")
+    expect(out).toContain("someone=20260101_000000.ts")
+    expect(out).toContain("KB")
   })
 })

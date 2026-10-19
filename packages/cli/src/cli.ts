@@ -16,29 +16,149 @@ export type CLIResult =
   | { command: "status"; user?: string }
   | { command: "setup" }
 
-/** Shared recorder options for both default and start commands. */
-function registerRecorderOptions(cmd: Command) {
-  cmd.option("-u, --user <name>", "TikTok username (or pass as first argument)")
-  cmd.option("-o, --output <dir>", "Output directory", {
+const LOG_LEVELS: readonly LogLevel[] = ["debug", "info", "warn", "error"]
+
+/**
+ * One row per `RecorderConfig` field the CLI exposes. The flag string is the
+ * only declaration: `cmd.option()` and the argv → config mapping both read this
+ * table, so a new option is one row instead of two edits in two shapes.
+ */
+interface OptionSpec {
+  flags: string
+  description: string
+  /** cac default, passed through to `cmd.option`. */
+  default?: string
+  /** Merge into the config. Only called when argv carried the option. */
+  apply: (config: RecorderConfig, raw: unknown) => void
+}
+
+/** `-i, --interval <minutes>` → `interval`, the key cac writes into `opts`. */
+function optsKey(flags: string): string {
+  const long = flags.split(",").at(-1)?.trim() ?? flags
+  const name = long.replace(/^--/, "").split(" ")[0] ?? ""
+  return name.replace(/-([a-z])/g, (_, ch: string) => ch.toUpperCase())
+}
+
+/** Typed setter: coerce the raw argv string, then write the named field. */
+function set<K extends keyof RecorderConfig>(
+  key: K,
+  parse: (raw: string) => RecorderConfig[K],
+): OptionSpec["apply"] {
+  return (config, raw) => {
+    config[key] = parse(String(raw))
+  }
+}
+
+function numberOf(raw: string, message: string): number {
+  const n = Number(raw)
+  if (!Number.isFinite(n)) throw new TikTokError("config-error", message)
+  return n
+}
+
+/** Parse `raw`, require `>= min`, optionally scale (minutes → seconds). */
+function atLeast(min: number, message: string, scale = 1) {
+  return (raw: string): number => {
+    const n = numberOf(raw, message)
+    if (n < min) throw new TikTokError("config-error", message)
+    return n * scale
+  }
+}
+
+const OPTIONS: OptionSpec[] = [
+  {
+    flags: "-o, --output <dir>",
+    description: "Output directory",
     default: ".",
-  })
-  cmd.option("-i, --interval <minutes>", "Polling interval in minutes", {
+    apply: set("outputDir", (raw) => raw),
+  },
+  {
+    flags: "-i, --interval <minutes>",
+    description: "Polling interval in minutes",
     default: "3",
-  })
-  cmd.option("-d, --duration <minutes>", "Max recording duration in minutes")
-  cmd.option("-p, --proxy <url>", "HTTP proxy (e.g. http://127.0.0.1:8080)")
-  cmd.option("-l, --log-level <level>", "Log level: debug | info | warn | error")
-  cmd.option("-c, --cookies <path>", "Path to cookies.json")
-  cmd.option(
-    "-s, --segment-minutes <minutes>",
-    "Segment duration in minutes (default: disabled). Split recording into segments of this length.",
-  )
-  cmd.option("--normalize", "Normalize audio loudness (EBU R128)")
-  cmd.option("--normalize-loudness <num>", "Target loudness in LUFS (default: -14)")
-  cmd.option("--normalize-codec <name>", "Audio codec for normalized output (default: libopus)")
-  cmd.option("--normalize-bitrate <str>", "Audio bitrate for normalized output (default: 96k)")
-  cmd.option("--rate <n>", "Max API requests per second (default: 5). Set 0 for unlimited.")
-  cmd.option("--debug", "Show API debug logging on stderr for troubleshooting")
+    apply: set("interval", atLeast(1, "--interval must be a number >= 1")),
+  },
+  {
+    flags: "-d, --duration <minutes>",
+    description: "Max recording duration in minutes",
+    apply: set("duration", atLeast(0, "--duration must be a number >= 0 (minutes)", 60)),
+  },
+  {
+    flags: "-p, --proxy <url>",
+    description: "HTTP proxy (e.g. http://127.0.0.1:8080)",
+    apply: set("proxy", (raw) => raw),
+  },
+  {
+    flags: "-l, --log-level <level>",
+    description: "Log level: debug | info | warn | error",
+    apply: set("logLevel", (raw) => {
+      if (!LOG_LEVELS.includes(raw as LogLevel)) {
+        throw new TikTokError(
+          "config-error",
+          `--log-level must be one of: ${LOG_LEVELS.join(", ")}`,
+        )
+      }
+      return raw as LogLevel
+    }),
+  },
+  {
+    flags: "-c, --cookies <path>",
+    description: "Path to cookies.json",
+    apply: set("cookiesPath", (raw) => raw),
+  },
+  {
+    flags: "-s, --segment-minutes <minutes>",
+    description:
+      "Segment duration in minutes (default: disabled). Split recording into segments of this length.",
+    apply: set("segmentMinutes", atLeast(0, "--segment-minutes must be a number >= 0")),
+  },
+  {
+    flags: "--normalize",
+    description: "Normalize audio loudness (EBU R128)",
+    apply: (config) => {
+      config.normalizeAudio = true
+    },
+  },
+  {
+    flags: "--normalize-loudness <num>",
+    description: "Target loudness in LUFS (default: -14)",
+    apply: set("normalizeLoudness", (raw) =>
+      numberOf(raw, "--normalize-loudness must be a number"),
+    ),
+  },
+  {
+    flags: "--normalize-codec <name>",
+    description: "Audio codec for normalized output (default: libopus)",
+    apply: set("normalizeCodec", (raw) => raw),
+  },
+  {
+    flags: "--normalize-bitrate <str>",
+    description: "Audio bitrate for normalized output (default: 96k)",
+    apply: set("normalizeBitrate", (raw) => raw),
+  },
+  {
+    flags: "--rate <n>",
+    description: "Max API requests per second (default: 5). Set 0 for unlimited.",
+    apply: set("ratePerSecond", atLeast(0, "--rate must be a number >= 0")),
+  },
+  {
+    flags: "--debug",
+    description: "Show API debug logging on stderr for troubleshooting",
+    apply: (config) => {
+      config.debug = true
+    },
+  },
+]
+
+/** Shared recorder options for both default and start commands. */
+function registerRecorderOptions(cmd: Command): void {
+  cmd.option("-u, --user <name>", "TikTok username (or pass as first argument)")
+  for (const option of OPTIONS) {
+    cmd.option(
+      option.flags,
+      option.description,
+      option.default === undefined ? {} : { default: option.default },
+    )
+  }
 }
 
 function parseRecorderOpts(opts: Record<string, unknown>): RecorderConfig {
@@ -47,60 +167,12 @@ function parseRecorderOpts(opts: Record<string, unknown>): RecorderConfig {
     throw new TikTokError("config-error", "<user> is required (--user or -u)")
   }
 
-  const parsed: RecorderConfig = {
-    user: sanitizeUser(user),
+  const parsed: RecorderConfig = { user: sanitizeUser(user) }
+  for (const option of OPTIONS) {
+    const raw = opts[optsKey(option.flags)]
+    if (raw === undefined) continue
+    option.apply(parsed, raw)
   }
-
-  if (opts.output) parsed.outputDir = opts.output as string
-  if (opts.interval !== undefined) {
-    const n = Number(opts.interval)
-    if (!Number.isFinite(n) || n < 1) {
-      throw new TikTokError("config-error", "--interval must be a number >= 1")
-    }
-    parsed.interval = n
-  }
-  if (opts.duration !== undefined) {
-    const n = Number(opts.duration)
-    if (!Number.isFinite(n) || n < 0) {
-      throw new TikTokError("config-error", "--duration must be a number >= 0 (minutes)")
-    }
-    parsed.duration = n * 60
-  }
-  if (opts.proxy) parsed.proxy = opts.proxy as string
-  if (opts.logLevel) {
-    const levels = ["debug", "info", "warn", "error"]
-    if (!levels.includes(opts.logLevel as string)) {
-      throw new TikTokError("config-error", `--log-level must be one of: ${levels.join(", ")}`)
-    }
-    parsed.logLevel = opts.logLevel as LogLevel
-  }
-  if (opts.cookies) parsed.cookiesPath = opts.cookies as string
-  if (opts.segmentMinutes !== undefined) {
-    const n = Number(opts.segmentMinutes)
-    if (!Number.isFinite(n) || n < 0) {
-      throw new TikTokError("config-error", "--segment-minutes must be a number >= 0")
-    }
-    parsed.segmentMinutes = n
-  }
-  if (opts.normalize !== undefined) parsed.normalizeAudio = opts.normalize as boolean
-  if (opts.normalizeLoudness !== undefined) {
-    const n = Number(opts.normalizeLoudness)
-    if (!Number.isFinite(n)) {
-      throw new TikTokError("config-error", "--normalize-loudness must be a number")
-    }
-    parsed.normalizeLoudness = n
-  }
-  if (opts.normalizeCodec) parsed.normalizeCodec = opts.normalizeCodec as string
-  if (opts.normalizeBitrate) parsed.normalizeBitrate = opts.normalizeBitrate as string
-  if (opts.rate !== undefined) {
-    const n = Number(opts.rate)
-    if (!Number.isFinite(n) || n < 0) {
-      throw new TikTokError("config-error", "--rate must be a number >= 0")
-    }
-    parsed.ratePerSecond = n
-  }
-  if (opts.debug) parsed.debug = true
-
   return parsed
 }
 
