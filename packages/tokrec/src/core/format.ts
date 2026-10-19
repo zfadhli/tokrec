@@ -1,8 +1,8 @@
 /**
- * Utility helpers — pure functions, no side effects.
+ * Pure formatting helpers — no I/O, no imports. Output filenames, byte counts,
+ * and human durations, shared by `io/` (download logging and output names) and
+ * the public API.
  */
-
-import { mkdirSync } from "node:fs"
 
 /** Format a filename like username=2025.06.09_14-30-00_1.flv */
 export function formatFilename(user: string, ext = "flv", part?: number): string {
@@ -12,38 +12,6 @@ export function formatFilename(user: string, ext = "flv", part?: number): string
   const time = `${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`
   const partSuffix = part !== undefined ? `_part${part}` : ""
   return `${user}=${date}_${time}${partSuffix}.${ext}`
-}
-
-/** Ensure a directory exists (recursive) */
-export function ensureDir(dir: string): void {
-  mkdirSync(dir, { recursive: true })
-}
-
-/**
- * Sleep for `ms` milliseconds.
- *
- * When an `AbortSignal` is provided and fires before the timer elapses,
- * the promise resolves immediately and the underlying timeout is cleared.
- * This prevents orphaned timers in Promise.race patterns.
- */
-export function sleep(ms: number, signal?: AbortSignal): Promise<void> {
-  return new Promise((resolve) => {
-    if (signal?.aborted) {
-      resolve()
-      return
-    }
-    const timer = setTimeout(resolve, ms)
-    if (signal) {
-      signal.addEventListener(
-        "abort",
-        () => {
-          clearTimeout(timer)
-          resolve()
-        },
-        { once: true },
-      )
-    }
-  })
 }
 
 /** Format bytes to human-readable size */

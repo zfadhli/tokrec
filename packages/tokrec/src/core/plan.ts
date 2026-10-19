@@ -4,7 +4,7 @@
  * No I/O, no clock, no promises. `session/` executes the returned plan.
  */
 
-import type { RoomRef, StreamRef, Verdict } from "../domain/verdict"
+import type { RoomRef, StreamRef, Verdict } from "./verdict"
 
 export interface TickFacts {
   readonly recording: boolean

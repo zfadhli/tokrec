@@ -6,17 +6,17 @@
 
 import { statSync, unlinkSync, utimesSync } from "node:fs"
 import { join, parse } from "node:path"
-import type { Converter } from "../adapters/media/convert"
-import type { AudioNormalizer } from "../adapters/media/normalize"
+import { TikTokError } from "../core/errors"
+import type { Logger } from "../core/log"
+import type { Converter } from "../io/media/convert"
+import type { AudioNormalizer } from "../io/media/normalize"
 import type {
   ProgressEvent,
   RecordEvent,
   RecordedFile,
   RecorderConfig,
   RecorderStatus,
-} from "../lib/config"
-import { TikTokError } from "../lib/config"
-import type { Logger } from "../lib/logger"
+} from "./config"
 
 export interface RecordingJob {
   readonly file: string

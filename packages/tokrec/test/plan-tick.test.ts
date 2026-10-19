@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
-import type { LiveReason, RoomRef, Verdict } from "../src/domain/verdict"
-import { verdictOf } from "../src/domain/verdict"
-import { planTick, type TickFacts, type TickPlan } from "../src/policy/tick"
+import { planTick, type TickFacts, type TickPlan } from "../src/core/plan"
+import type { LiveReason, RoomRef, Verdict } from "../src/core/verdict"
+import { verdictOf } from "../src/core/verdict"
 
 const ROOM: RoomRef = { id: "123", title: "t", live: true }
 const STREAM = { url: "https://example.test/s.flv" }

@@ -6,10 +6,10 @@
  *     'https://www.tiktok.com/@user/live': livePageHtml,
  *     'https://webcast.tiktok.com/webcast/room/info/': roomInfoJson,
  *   })
- *   const api = createTikTokApi(http)
+ *   const api = createTikTokClient(http)
  */
 
-import type { HttpClient } from "../../src/adapters/http/wreq"
+import type { HttpClient } from "../../src/io/http"
 
 export interface MockResponse {
   status: number

@@ -3,7 +3,8 @@
  * The single source of truth for every user-facing option.
  */
 
-import type { Verdict } from "../domain/verdict"
+import { TikTokError } from "../core/errors"
+import type { Verdict } from "../core/verdict"
 
 /**
  * TikTok cookie key-value pairs extracted from Firefox or cookies.json.
@@ -17,7 +18,7 @@ export type LogLevel = "debug" | "info" | "warn" | "error"
 /**
  * Machine-readable reason for a LIVE status verdict — lives in `domain/verdict.ts`.
  */
-export type { LiveReason } from "../domain/verdict"
+export type { LiveReason } from "../core/verdict"
 
 export interface RecorderConfig {
   /** TikTok username (required) */
@@ -120,24 +121,6 @@ export interface RecorderEventHandler {
   record: (event: RecordEvent) => void
   progress: (event: ProgressEvent) => void
   failure: (err: TikTokError) => void
-}
-
-export type TikTokErrorCode =
-  | "config-error"
-  | "ffmpeg-not-found"
-  | "ffmpeg-error"
-  | "aborted"
-  | "unknown"
-
-export class TikTokError extends Error {
-  constructor(
-    public readonly code: TikTokErrorCode,
-    message: string,
-    public override readonly cause?: unknown,
-  ) {
-    super(message)
-    this.name = "TikTokError"
-  }
 }
 
 const DEFAULTS = {

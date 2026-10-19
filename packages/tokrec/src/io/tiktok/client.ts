@@ -1,13 +1,13 @@
 /**
  * TikTok API — resolves room IDs, live status, and stream URLs.
  *
- * `createTikTokApi` is a thin orchestrator: per-user cache, cache invalidation,
+ * `createTikTokClient` is a thin orchestrator: per-user cache, cache invalidation,
  * and `discover()` over sources returning `Candidate`s. The chain turns
  * failures into evidence instead of aborting. `getVerdict` is the only
  * public verdict surface.
  *
  * Architecture:
- *   createTikTokApi(httpClient) → { isRoomAlive, getLiveUrl, getVerdict }
+ *   createTikTokClient(httpClient) → { isRoomAlive, getLiveUrl, getVerdict }
  *
  * All public methods share a per-tick cache so the page is fetched at most once
  * per poll cycle. The optional `signal` aborts in-flight HTTP requests.
@@ -16,20 +16,16 @@
  * 403 errors. All lookups go through room/info (reliable for live + offline).
  */
 
-import type { HttpClient } from "../adapters/http/wreq"
-import {
-  type DiscoverySource,
-  discover,
-  type ResolveContext,
-} from "../adapters/tiktok/discovery/chain"
-import { createApiLiveSource, createProfileSource } from "../adapters/tiktok/discovery/fallback"
-import { createPageSource } from "../adapters/tiktok/discovery/page"
-import { createPageFetcher } from "../adapters/tiktok/page"
-import { createWebcastApi } from "../adapters/tiktok/webcast"
-import { isLiveReason, type Verdict, verdictOf } from "../domain/verdict"
-import type { Logger } from "../lib/logger"
+import type { Logger } from "../../core/log"
+import { isLiveReason, type Verdict, verdictOf } from "../../core/verdict"
+import type { HttpClient } from "../http"
+import { type DiscoverySource, discover, type ResolveContext } from "./discovery/chain"
+import { createApiLiveSource, createProfileSource } from "./discovery/fallback"
+import { createPageSource } from "./discovery/page"
+import { createPageFetcher } from "./page"
+import { createWebcastApi } from "./webcast"
 
-export interface TikTokApi {
+export interface TikTokClient {
   /** Check if a room is currently live. */
   isRoomAlive(roomId: string): Promise<boolean>
   /** Get the best-quality FLV stream URL for a room. Returns null on failure. */
@@ -40,12 +36,12 @@ export interface TikTokApi {
   invalidateCache(): void
 }
 
-export function createTikTokApi(
+export function createTikTokClient(
   http: HttpClient,
   logger?: Logger,
   showDebug?: boolean,
   signal?: AbortSignal,
-): TikTokApi {
+): TikTokClient {
   // Debug logging helper — writes to stderr only when --debug is passed.
   const debug = (msg: string) => {
     logger?.debug(msg)

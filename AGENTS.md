@@ -4,10 +4,11 @@ Bun workspace. Read this before changing layout, publishing, or delegating.
 
 ## Layout
 
-- `packages/tokrec` — `@zfadhli/tokrec`, library only: `src/core/**`, `src/lib/{config,logger,utils}.ts`, public API re-exported from `src/index.ts`.
+- `packages/tokrec` — `@zfadhli/tokrec`, library only: `src/core/**` (pure), `src/io/**` (network/disk/process), `src/app/**` (orchestration), public API re-exported from `src/index.ts`.
+- Bands are enforced, not aspirational: `packages/tokrec/test/architecture.test.ts` fails on a cross-band import, on any `node:*`/`bun:*` import reachable from `core/`, on an import cycle, or on a barrel that exports from outside `core/`+`app/`. `io/` may import `core/` and `io/`; `app/` may import all three; `core/` imports only itself. Type-only edges are exempt.
 - `packages/cli` — `@zfadhli/tokrec-cli`, `bin: tokrec`: `src/{bin,cli,ui,tmux,browser-cookies}.ts`. May import the lib **only** through `@zfadhli/tokrec` — never a lib internal path.
 - Root — private; owns tooling only (`biome.json`, `lefthook.yml`, `tsconfig.base.json`, scripts, workflows).
-- `packages/tokrec/src/core/api/resolvers/` — one file per resolution phase (`page` → `api-live` → `profile`) behind the internal `RoomSource` interface; `tiktok.ts` is orchestrator-only (cache, chain wiring, verdict mapping). Pure parsing lives in `parse.ts`, Webcast endpoints in `webcast.ts`, page fetching in `page-fetch.ts`. Internal only — not a public extension point; keep resolver files under 150 LOC.
+- `packages/tokrec/src/io/tiktok/discovery/` — three files: `chain.ts` (candidate types, constructor helpers, `discover()`), `page.ts` (SIGI page source plus its legacy fallback), `fallback.ts` (api-live + profile sources). Internal only — not a public extension point; pure parsing lives in `io/tiktok/parse.ts`, Webcast endpoints in `io/tiktok/webcast.ts`, page fetching in `io/tiktok/page.ts`. Keep discovery files under 150 LOC.
 
 Run everything from the root: `bun run lint`, `bun run typecheck`, `bun test`, `bun run build`. The build chain is explicit: lib, then cli. `bun test` discovers tests in both packages.
 

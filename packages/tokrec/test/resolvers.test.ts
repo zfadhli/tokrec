@@ -8,17 +8,17 @@
  */
 
 import { describe, expect, test } from "bun:test"
-import type { HttpClient } from "../src/adapters/http/wreq"
+import type { HttpClient } from "../src/io/http"
 import {
   type Candidate,
   type DiscoverySource,
   discover,
   type ResolveContext,
-} from "../src/adapters/tiktok/discovery/chain"
-import { createApiLiveSource, createProfileSource } from "../src/adapters/tiktok/discovery/fallback"
-import { createPageSource } from "../src/adapters/tiktok/discovery/page"
-import { createPageFetcher } from "../src/adapters/tiktok/page"
-import { createWebcastApi } from "../src/adapters/tiktok/webcast"
+} from "../src/io/tiktok/discovery/chain"
+import { createApiLiveSource, createProfileSource } from "../src/io/tiktok/discovery/fallback"
+import { createPageSource } from "../src/io/tiktok/discovery/page"
+import { createPageFetcher } from "../src/io/tiktok/page"
+import { createWebcastApi } from "../src/io/tiktok/webcast"
 import { createMockHttp, loadFixture } from "./utils/mock-http"
 
 const FIXTURES = "tiktok"

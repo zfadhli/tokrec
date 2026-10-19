@@ -1,4 +1,4 @@
-import type { RoomRef } from "../../../domain/verdict"
+import type { RoomRef } from "../../../core/verdict"
 import type { SigiState } from "../parse"
 import {
   extractSigiState,

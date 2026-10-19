@@ -6,8 +6,8 @@
  */
 
 import { unlinkSync } from "node:fs"
-import type { Logger } from "../../lib/logger"
-import { runFfmpeg } from "./ffmpeg-utils"
+import type { Logger } from "../../core/log"
+import { runFfmpeg } from "./ffmpeg"
 
 export interface Converter {
   /** Convert a TS file to MP4 (stream copy). Deletes the original on success. */

@@ -8,14 +8,8 @@
  * added import edges.
  */
 
-import type {
-  Evidence,
-  EvidenceOutcome,
-  RoomRef,
-  SourceId,
-  StreamRef,
-} from "../../../domain/verdict"
-import type { HttpClient } from "../../http/wreq"
+import type { Evidence, EvidenceOutcome, RoomRef, SourceId, StreamRef } from "../../../core/verdict"
+import type { HttpClient } from "../../http"
 import type { WebcastReader } from "../webcast"
 
 /**

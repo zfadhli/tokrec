@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { bytesToHuman, formatFilename, sanitizeUser } from "../src/lib/utils"
+import { bytesToHuman, formatFilename, sanitizeUser } from "../src/core/format"
 
 describe("formatFilename", () => {
   test("produces correct format", () => {

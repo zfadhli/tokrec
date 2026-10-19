@@ -2,9 +2,9 @@ import { afterEach, describe, expect, test } from "bun:test"
 import { mkdtempSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import type { RecordEvent } from "../src/lib/config"
-import type { Logger } from "../src/lib/logger"
-import { createRecordingJob } from "../src/session/job"
+import type { RecordEvent } from "../src/app/config"
+import { createRecordingJob } from "../src/app/job"
+import type { Logger } from "../src/core/log"
 
 const logger: Logger = { debug() {}, info() {}, warn() {}, error() {} }
 const dirs: string[] = []

@@ -1,18 +1,17 @@
 /**
- * HTTP client — thin wrapper around wreq-js createSession.
- * Provides TLS fingerprint impersonation, cookie jar, proxy support,
- * and configurable rate limiting to prevent WAF triggering.
+ * HTTP — the transport layer in one file: the wreq-js session (TLS fingerprint
+ * impersonation, cookie jar, proxy) and the token-bucket rate limiter that
+ * keeps polling from tripping TikTok's WAF.
  *
  * This file owns the `HttpClient` contract: it is the seam every adapter and
  * `test/utils/mock-http.ts` implement. There is no second definition.
  */
 
 import { createSession, type Session } from "wreq-js"
-import type { RecorderConfig } from "../../lib/config"
-import { createRateLimiter } from "./rate-limit"
+import type { RecorderConfig } from "../app/config"
 
 // BodyInit is only available inside declare module "bun" in bun-types, not as a global
-// under the ES2022 lib. We explicitly import it to keep lib focused on ES2022.
+// under the ES2022 lib. We explicitly import it to keep core/ focused on ES2022.
 export type HttpBody = import("bun").BodyInit
 
 export interface HttpClient {
@@ -116,6 +115,53 @@ export async function createHttpClient(config: RecorderConfig): Promise<HttpClie
       ),
     close: async () => {
       await session.close()
+    },
+  }
+}
+
+// ─── rate limiting ─────────────────────────────────────────
+
+interface RateLimiter {
+  /** Wait until a rate-limit token is available, then consume it. */
+  acquire(signal?: AbortSignal): Promise<void>
+}
+
+/**
+ * Token bucket: a minimum interval between requests. `0` or less is unlimited.
+ * Abort-aware, so a stop does not wait out a pending token.
+ */
+function createRateLimiter(tokensPerSecond: number): RateLimiter {
+  if (tokensPerSecond <= 0) {
+    return { acquire: async () => {} }
+  }
+
+  const MIN_INTERVAL_MS = 1000 / tokensPerSecond
+  let lastTokenTime = 0
+
+  return {
+    async acquire(signal?: AbortSignal): Promise<void> {
+      if (signal?.aborted) return
+
+      const now = Date.now()
+      const waitTime = Math.max(0, lastTokenTime + MIN_INTERVAL_MS - now)
+
+      if (waitTime > 0) {
+        await new Promise<void>((resolve) => {
+          const timer = setTimeout(resolve, waitTime)
+          if (signal) {
+            signal.addEventListener(
+              "abort",
+              () => {
+                clearTimeout(timer)
+                resolve()
+              },
+              { once: true },
+            )
+          }
+        })
+      }
+
+      lastTokenTime = Date.now()
     },
   }
 }

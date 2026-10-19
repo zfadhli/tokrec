@@ -5,8 +5,8 @@
 
 import { appendFileSync, existsSync, mkdirSync, renameSync, statSync, writeFileSync } from "node:fs"
 import { dirname } from "node:path"
-
-export type LogLevel = "debug" | "info" | "warn" | "error"
+import type { Logger } from "../core/log"
+import type { LogLevel } from "./config"
 
 const LEVEL_ORDER: Record<LogLevel, number> = {
   debug: 0,
@@ -23,13 +23,6 @@ const LEVEL_COLORS: Record<LogLevel, string> = {
 }
 
 const RESET = "\x1b[0m"
-
-export interface Logger {
-  debug: (msg: string, ...args: unknown[]) => void
-  info: (msg: string, ...args: unknown[]) => void
-  warn: (msg: string, ...args: unknown[]) => void
-  error: (msg: string, ...args: unknown[]) => void
-}
 
 export function createLogger(opts: {
   level?: LogLevel

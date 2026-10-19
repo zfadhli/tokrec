@@ -10,12 +10,13 @@
  * the only difference is an optional label in the log messages.
  */
 
-import { createWriteStream, statSync } from "node:fs"
+import { createWriteStream, mkdirSync, statSync } from "node:fs"
 import { join } from "node:path"
-import { type DownloadProgress, type RecordedFile, TikTokError } from "../../lib/config"
-import type { Logger } from "../../lib/logger"
-import { bytesToHuman, ensureDir, formatDuration, formatFilename } from "../../lib/utils"
-import { findFfmpegPath, pipeFfmpegSegment } from "./ffmpeg-utils"
+import type { DownloadProgress, RecordedFile } from "../../app/config"
+import { TikTokError } from "../../core/errors"
+import { bytesToHuman, formatDuration, formatFilename } from "../../core/format"
+import type { Logger } from "../../core/log"
+import { findFfmpegPath, pipeFfmpegSegment } from "./ffmpeg"
 
 export async function downloadStream(
   liveUrl: string,
@@ -28,7 +29,7 @@ export async function downloadStream(
   logger?: Logger,
   cookies?: Record<string, string>,
 ): Promise<RecordedFile> {
-  ensureDir(outputDir)
+  mkdirSync(outputDir, { recursive: true })
   const filename = formatFilename(user, "ts")
   const filepath = join(outputDir, filename)
   // FLV is the default container — an .m3u8 URL means the CDN served HLS.

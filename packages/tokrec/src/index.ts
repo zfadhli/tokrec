@@ -11,15 +11,6 @@
  */
 
 export type {
-  Evidence,
-  EvidenceOutcome,
-  RoomRef,
-  SourceId,
-  StreamRef,
-  Verdict,
-} from "./domain/verdict"
-export { isLiveReason } from "./domain/verdict"
-export type {
   LiveReason,
   LogLevel,
   Phase,
@@ -31,8 +22,17 @@ export type {
   RecorderEvent,
   RecorderEventHandler,
   RecorderStatus,
-  TikTokErrorCode,
-} from "./lib/config"
-export { TikTokError } from "./lib/config"
-export { bytesToHuman, formatDuration, relativeTime, sanitizeUser } from "./lib/utils"
-export { createRecorder } from "./session/index"
+} from "./app/config"
+export { createRecorder } from "./app/recorder"
+export type { TikTokErrorCode } from "./core/errors"
+export { TikTokError } from "./core/errors"
+export { bytesToHuman, formatDuration, relativeTime, sanitizeUser } from "./core/format"
+export type {
+  Evidence,
+  EvidenceOutcome,
+  RoomRef,
+  SourceId,
+  StreamRef,
+  Verdict,
+} from "./core/verdict"
+export { isLiveReason } from "./core/verdict"

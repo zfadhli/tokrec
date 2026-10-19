@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, test } from "bun:test"
-import { isLiveReason, verdictOf } from "../src/domain/verdict"
+import { isLiveReason, verdictOf } from "../src/core/verdict"
 
 const LIVE_ROOM = { id: "1", title: "t", live: true }
 const OFFLINE_ROOM = { id: "1", title: "t", live: false }

@@ -6,8 +6,28 @@
  * sleep and any in-flight tick; there is no private controller.
  */
 
-import type { Logger } from "../lib/logger"
-import { sleep } from "../lib/utils"
+import type { Logger } from "../core/log"
+
+/** Sleep for `ms`, resolving early when `signal` aborts (timer cleared, no orphan). */
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal?.aborted) {
+      resolve()
+      return
+    }
+    const timer = setTimeout(resolve, ms)
+    if (signal) {
+      signal.addEventListener(
+        "abort",
+        () => {
+          clearTimeout(timer)
+          resolve()
+        },
+        { once: true },
+      )
+    }
+  })
+}
 
 export interface PollingMonitor {
   start: () => Promise<void>

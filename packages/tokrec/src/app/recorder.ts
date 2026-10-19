@@ -8,27 +8,27 @@
  * assert a non-null module-level `let` back into existence.
  */
 
-import { createHttpClient, type HttpClient } from "../adapters/http/wreq"
-import { type Converter, createConverter } from "../adapters/media/convert"
-import { downloadStream } from "../adapters/media/download"
-import { type AudioNormalizer, createAudioNormalizer } from "../adapters/media/normalize"
-import { verdictOf } from "../domain/verdict"
-import type { RecorderConfig, RecorderController, RecorderStatus } from "../lib/config"
-import { normalizeConfig } from "../lib/config"
-import { createLogger } from "../lib/logger"
-import { planTick, type TickFacts } from "../policy/tick"
+import { planTick, type TickFacts } from "../core/plan"
+import { verdictOf } from "../core/verdict"
+import { createHttpClient, type HttpClient } from "../io/http"
+import { type Converter, createConverter } from "../io/media/convert"
+import { downloadStream } from "../io/media/download"
+import { type AudioNormalizer, createAudioNormalizer } from "../io/media/normalize"
+import { createTikTokClient, type TikTokClient } from "../io/tiktok/client"
 import { type AbortScope, abortScope } from "./abort"
+import type { RecorderConfig, RecorderController, RecorderStatus } from "./config"
+import { normalizeConfig } from "./config"
 import { createEventEmitter } from "./events"
 import { createRecordingJob, type RecordingJob } from "./job"
+import { createLogger } from "./logger"
 import { createPollingMonitor, type PollingMonitor } from "./loop"
-import { createTikTokApi, type TikTokApi } from "./probe"
 
 /** Max wait for a stop-time remux before aborting it (matches the pre-#32 cap). */
 const POST_REMUX_GRACE_MS = 10 * 60 * 1000
 
 /** Everything one poll tick needs, built by `start()` before the tick can run. */
 interface TickDeps {
-  client: TikTokApi
+  client: TikTokClient
   monitor: PollingMonitor
   scope: AbortScope
   post: AbortScope
@@ -210,7 +210,7 @@ export function createRecorder(config: RecorderConfig): RecorderController {
 
     logger.info(`Starting recorder for @${cfg.user}`)
     const http = await createHttpClient(cfg)
-    const client = createTikTokApi(http, logger, cfg.debug, scope.signal)
+    const client = createTikTokClient(http, logger, cfg.debug, scope.signal)
     const converter = createConverter(logger, post.signal)
     const audioNormalizer = cfg.normalizeAudio
       ? createAudioNormalizer(

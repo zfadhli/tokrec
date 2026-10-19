@@ -8,14 +8,14 @@
  */
 
 import { describe, expect, test } from "bun:test"
-import type { HttpClient } from "../src/adapters/http/wreq"
+import { isLiveReason, type Verdict } from "../src/core/verdict"
+import type { HttpClient } from "../src/io/http"
+import { createTikTokClient } from "../src/io/tiktok/client"
 import {
   extractSigiState,
   extractUserFromUniversalData,
   findStreamUrlRecursively,
-} from "../src/adapters/tiktok/parse"
-import { isLiveReason, type Verdict } from "../src/domain/verdict"
-import { createTikTokApi } from "../src/session/probe"
+} from "../src/io/tiktok/parse"
 import { createMockHttp, loadFixture } from "./utils/mock-http"
 
 // ─── Fixture paths ──────────────────────────────────────────────────
@@ -72,7 +72,7 @@ describe("extractUserFromUniversalData", () => {
 
 // ─── API-level integration tests with mocked HTTP ───────────────────
 
-describe("createTikTokApi with fixture mocks", () => {
+describe("createTikTokClient with fixture mocks", () => {
   test("detects live user via SIGI_STATE (Tier 1)", async () => {
     const livePageHtml = loadFixture(FIXTURES, "anomaliaa27-live.html")
     const roomInfoJson = loadFixture(FIXTURES, "anomaliaa27-room-info.json")
@@ -82,7 +82,7 @@ describe("createTikTokApi with fixture mocks", () => {
       "https://webcast.tiktok.com/webcast/room/info/": roomInfoJson,
     })
 
-    const api = createTikTokApi(http)
+    const api = createTikTokClient(http)
     const roomId = (await api.getVerdict("anomaliaa27")).room?.id ?? null
     expect(roomId).toBe("7649515096078600981")
 
@@ -101,7 +101,7 @@ describe("createTikTokApi with fixture mocks", () => {
       "https://www.tiktok.com/@nonexistent/live": { status: 404, body: "Not found" },
     })
 
-    const api = createTikTokApi(http)
+    const api = createTikTokClient(http)
     const roomId = (await api.getVerdict("nonexistent")).room?.id ?? null
     expect(roomId).toBeNull()
 
@@ -115,7 +115,7 @@ describe("createTikTokApi with fixture mocks", () => {
       "https://www.tiktok.com/@naylaarindinta/live": offlineLiveHtml,
     })
 
-    const api = createTikTokApi(http)
+    const api = createTikTokClient(http)
     // TikTok assigns persistent room IDs even when offline
     const roomId = (await api.getVerdict("naylaarindinta")).room?.id ?? null
     expect(roomId).toBe("7649522507606919957")
@@ -139,7 +139,7 @@ describe("createTikTokApi with fixture mocks", () => {
       "https://www.tiktok.com/@anomaliaa27": profileShell,
     })
 
-    const api = createTikTokApi(http)
+    const api = createTikTokClient(http)
     const roomId = (await api.getVerdict("anomaliaa27")).room?.id ?? null
     // No SSR data, no universal data, no room/info API → should return null
     expect(roomId).toBeNull()
@@ -159,7 +159,7 @@ describe("createTikTokApi with fixture mocks", () => {
       "https://www.tiktok.com/@anomaliaa27": offlineProfileHtml,
     })
 
-    const api = createTikTokApi(http)
+    const api = createTikTokClient(http)
     const roomId = (await api.getVerdict("anomaliaa27")).room?.id ?? null
     // The profile page has universal data with userId but no roomId
     // API will try room/enter API which returns 404 → null
@@ -179,7 +179,7 @@ describe("isRoomAlive with check_alive endpoint", () => {
       "https://webcast.tiktok.com/webcast/room/check_alive/": checkAliveJson,
     })
 
-    const api = createTikTokApi(http)
+    const api = createTikTokClient(http)
     const alive = await api.isRoomAlive("7649515096078600981")
     expect(alive).toBe(true)
 
@@ -193,7 +193,7 @@ describe("isRoomAlive with check_alive endpoint", () => {
       "https://webcast.tiktok.com/webcast/room/check_alive/": checkAliveJson,
     })
 
-    const api = createTikTokApi(http)
+    const api = createTikTokClient(http)
     const alive = await api.isRoomAlive("7649515096078600981")
     expect(alive).toBe(false)
 
@@ -205,7 +205,7 @@ describe("isRoomAlive with check_alive endpoint", () => {
       "https://webcast.tiktok.com/webcast/room/check_alive/": { status: 500, body: "Error" },
     })
 
-    const api = createTikTokApi(http)
+    const api = createTikTokClient(http)
     const alive = await api.isRoomAlive("7649515096078600981")
     expect(alive).toBe(false)
 
@@ -229,7 +229,7 @@ describe("isRoomAlive with check_alive endpoint", () => {
       return origGet(url)
     }
 
-    const api = createTikTokApi(http)
+    const api = createTikTokClient(http)
 
     // First call populates cache via getVerdict
     const roomId = (await api.getVerdict("anomaliaa27")).room?.id ?? null
@@ -274,7 +274,7 @@ describe("getVerdict with reason taxonomy", () => {
       ),
     })
 
-    const api = createTikTokApi(http)
+    const api = createTikTokClient(http)
     const verdict = await api.getVerdict("restricteduser")
     expect(verdict.room?.id).toBe(RESTRICTED_ROOM_ID)
     expect(isLiveReason(verdict.reason)).toBe(true)
@@ -297,7 +297,7 @@ describe("getVerdict with reason taxonomy", () => {
       ),
     })
 
-    const api = createTikTokApi(http)
+    const api = createTikTokClient(http)
     const verdict = await api.getVerdict("restricteduser")
     expect(verdict.room?.id).toBe(RESTRICTED_ROOM_ID)
     expect(isLiveReason(verdict.reason)).toBe(false)
@@ -315,7 +315,7 @@ describe("getVerdict with reason taxonomy", () => {
       ),
     })
 
-    const api = createTikTokApi(http)
+    const api = createTikTokClient(http)
     const verdict = await api.getVerdict("anomaliaa27")
     expect(verdict.reason).toBe("live")
     expect(verdict.stream?.url).toMatch(/\.(flv|m3u8)/)
@@ -340,7 +340,7 @@ describe("api-live fallback", () => {
       }),
     })
 
-    const api = createTikTokApi(http)
+    const api = createTikTokClient(http)
     const verdict = await api.getVerdict("bigpageuser")
     // Mock returns 404 for unregistered URLs, so a roomId here proves api-live was fetched
     expect(verdict.room?.id).toBe(roomId)
@@ -358,7 +358,7 @@ describe("api-live fallback", () => {
       }),
     })
 
-    const api = createTikTokApi(http)
+    const api = createTikTokClient(http)
     const verdict = await api.getVerdict("offlineuser")
     expect(verdict.room?.id).toBe(roomId)
     expect(isLiveReason(verdict.reason)).toBe(false)
@@ -373,7 +373,7 @@ describe("api-live fallback", () => {
       "https://www.tiktok.com/api-live/user/room/": "<html>not json</html>",
     })
 
-    const api = createTikTokApi(http)
+    const api = createTikTokClient(http)
     const verdict = await api.getVerdict("brokenuser")
     expect(verdict.room).toBeNull()
     expect(isLiveReason(verdict.reason)).toBe(false)
@@ -404,7 +404,7 @@ describe("discovery chain resilience", () => {
       },
     }
 
-    const api = createTikTokApi(http)
+    const api = createTikTokClient(http)
     const verdict = await api.getVerdict("throwuser")
     expect(verdict.room?.id).toBe(roomId)
     expect(sourceOf(verdict)).toBe("api-live")
@@ -435,7 +435,7 @@ describe("discovery chain resilience", () => {
       },
     }
 
-    const api = createTikTokApi(http)
+    const api = createTikTokClient(http)
     const verdict = await api.getVerdict("legacyuser")
     expect(verdict.room?.id).toBe(roomId)
     expect(isLiveReason(verdict.reason)).toBe(true)

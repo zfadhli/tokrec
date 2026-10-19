@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
-import { normalizeConfig, TikTokError, validateConfig } from "../src/lib/config"
+import { normalizeConfig, validateConfig } from "../src/app/config"
+import { TikTokError } from "../src/core/errors"
 
 describe("normalizeConfig", () => {
   test("fills in defaults for missing fields", () => {

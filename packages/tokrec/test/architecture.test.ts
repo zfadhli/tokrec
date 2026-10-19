@@ -1,13 +1,15 @@
 /**
- * Architecture guardrail — freezes the layer bands in `src/`.
+ * Architecture guardrail — freezes the three bands in `src/`.
  *
- * The bands are the design (docs/architecture-proposal.html §8). This test is
- * the convention: cross-band imports, I/O in the pure bands, import cycles, and
- * a barrel that leaks internals all fail here instead of in review.
+ * The bands are the design (docs/slimming-proposal.html §02): `core/` is pure,
+ * `io/` touches the network/disk/child processes, `app/` orchestrates both.
+ * This test is the convention: cross-band imports, I/O reachable from `core/`,
+ * import cycles, and a barrel that leaks internals all fail here instead of in
+ * review.
  *
  * Type-only edges are exempt: they erase at compile time and cannot couple
- * runtime behaviour. That exemption is what lets `lib/config.ts` borrow
- * `LiveReason` from `domain/verdict.ts` until config itself moves into `domain/`.
+ * runtime behaviour. `io/` borrowing `RecordedFile` / `RecorderConfig` types
+ * from `app/config.ts` is the one such edge today.
  */
 
 import { describe, expect, test } from "bun:test"
@@ -16,21 +18,21 @@ import { dirname, join, relative, resolve, sep } from "node:path"
 
 const SRC = resolve(import.meta.dir, "..", "src")
 
-type Zone = "domain" | "policy" | "ports" | "adapters" | "session" | "lib" | "root"
+type Zone = "core" | "io" | "app" | "root"
 
 /** Which zones each zone may import. Same-zone edges are always allowed. */
 const ALLOWED: Record<Zone, Zone[]> = {
-  domain: ["domain"],
-  policy: ["domain", "policy"],
-  ports: ["ports"],
-  adapters: ["domain", "ports", "lib", "adapters"],
-  session: ["domain", "policy", "ports", "adapters", "lib", "session"],
-  lib: ["lib"],
-  root: ["domain", "policy", "ports", "adapters", "session", "lib"],
+  core: ["core"],
+  io: ["core", "io"],
+  app: ["core", "io", "app"],
+  root: ["core", "io", "app"],
 }
 
-/** Pure bands: no Node/Bun built-ins, directly or transitively by convention. */
-const PURE: Zone[] = ["domain", "policy"]
+/** Pure band: no Node/Bun built-ins, directly or by transitive convention. */
+const PURE: Zone[] = ["core"]
+
+/** The only bands the public barrel may re-export from. */
+const BARREL_FROM: Zone[] = ["core", "app"]
 
 interface Edge {
   from: string
@@ -51,7 +53,7 @@ function walk(dir: string): string[] {
 
 function zoneOf(file: string): Zone {
   const head = relative(SRC, file).split(sep)[0]
-  const zones: Zone[] = ["domain", "policy", "ports", "adapters", "session", "lib"]
+  const zones: Zone[] = ["core", "io", "app"]
   return zones.find((zone) => zone === head) ?? "root"
 }
 
@@ -97,7 +99,7 @@ describe("architecture — bands", () => {
     expect(violations).toEqual([])
   })
 
-  test("domain/ and policy/ import no node:* or bun:* module", () => {
+  test("core/ imports no node:* or bun:* module", () => {
     const violations = files
       .filter((file) => PURE.includes(zoneOf(file)))
       .flatMap((file) =>
@@ -138,7 +140,7 @@ describe("architecture — bands", () => {
     expect(cycles).toEqual([])
   })
 
-  test("index.ts exports only from domain/, session/, lib/", () => {
+  test("index.ts exports only from core/ and app/", () => {
     const barrel = join(SRC, "index.ts")
     const violations = [...readFileSync(barrel, "utf8").matchAll(STATEMENT)]
       .map(([, , spec]) => spec)
@@ -148,7 +150,7 @@ describe("architecture — bands", () => {
         if (!to) throw new Error(`index.ts: unresolvable export "${spec}"`)
         return { spec, zone: zoneOf(to) }
       })
-      .filter(({ zone }) => !["domain", "session", "lib"].includes(zone))
+      .filter(({ zone }) => !BARREL_FROM.includes(zone))
       .map(({ spec, zone }) => `${spec} (${zone})`)
     expect(violations).toEqual([])
   })

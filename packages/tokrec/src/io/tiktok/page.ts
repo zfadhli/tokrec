@@ -1,4 +1,4 @@
-import type { HttpClient } from "../http/wreq"
+import type { HttpClient } from "../http"
 
 const TIKTOK_BASES = ["https://www.tiktok.com", "https://m.tiktok.com"]
 

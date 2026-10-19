@@ -6,7 +6,7 @@
  */
 
 import { EventEmitter } from "node:events"
-import type { RecorderEvent, RecorderEventHandler } from "../lib/config"
+import type { RecorderEvent, RecorderEventHandler } from "./config"
 
 export interface RecorderEventEmitter {
   on<E extends RecorderEvent>(event: E, handler: RecorderEventHandler[E]): void

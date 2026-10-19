@@ -4,7 +4,7 @@
  * `miss`/`failed` so the chain keeps its evidence trail.
  */
 
-import type { RoomRef } from "../../../domain/verdict"
+import type { RoomRef } from "../../../core/verdict"
 import { extractUserFromUniversalData } from "../parse"
 import {
   type Candidate,

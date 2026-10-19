@@ -1,5 +1,5 @@
-import type { RoomRef, StreamRef } from "../../domain/verdict"
-import type { HttpClient } from "../http/wreq"
+import type { RoomRef, StreamRef } from "../../core/verdict"
+import type { HttpClient } from "../http"
 import { findStreamUrlRecursively } from "./parse"
 
 const WEBCAST_BASE = "https://webcast.tiktok.com"
