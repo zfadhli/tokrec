@@ -1,0 +1,601 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>tokrec — slimming proposal</title>
+<style>
+  :root {
+    --bg: #0e1116;
+    --panel: #151a21;
+    --panel-2: #1a202a;
+    --line: #2a323d;
+    --line-soft: #212832;
+    --ink: #dfe5ee;
+    --muted: #8d97a6;
+    --dim: #6b7482;
+    --accent: #5ee0c8;
+    --warn: #ff8a80;
+    --amber: #f0c674;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 16px/1.62 var(--sans);
+    font-feature-settings: "kern" 1, "liga" 1;
+  }
+  .wrap { max-width: 1020px; margin: 0 auto; padding: 72px 28px 140px; }
+
+  header.masthead { border-bottom: 1px solid var(--line); padding-bottom: 28px; margin-bottom: 8px; }
+  .eyebrow {
+    font: 600 11px/1 var(--mono); letter-spacing: .16em; text-transform: uppercase;
+    color: var(--accent); margin: 0 0 18px;
+  }
+  h1 { font-size: 40px; line-height: 1.1; letter-spacing: -0.02em; margin: 0 0 14px; font-weight: 650; }
+  .sub { color: var(--muted); font-size: 15px; margin: 0; max-width: 62ch; }
+  .meta { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 22px; }
+  .tag {
+    font: 11px/1 var(--mono); color: var(--muted); border: 1px solid var(--line);
+    border-radius: 999px; padding: 7px 11px; background: var(--panel);
+  }
+  .tag b { color: var(--ink); font-weight: 600; }
+
+  nav.toc { display: flex; flex-wrap: wrap; gap: 6px 20px; margin: 26px 0 0; }
+  nav.toc a { color: var(--muted); text-decoration: none; font-size: 13px; border-bottom: 1px solid transparent; }
+  nav.toc a:hover { color: var(--accent); border-color: var(--accent); }
+
+  section { margin-top: 64px; scroll-margin-top: 24px; }
+  h2 {
+    font: 600 12px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase;
+    color: var(--dim); margin: 0 0 22px; padding-bottom: 12px; border-bottom: 1px solid var(--line-soft);
+  }
+  h2 .n { color: var(--accent); margin-right: 12px; }
+  h3 { font-size: 19px; line-height: 1.3; margin: 34px 0 10px; font-weight: 620; letter-spacing: -0.01em; }
+  h3:first-of-type { margin-top: 0; }
+  p { margin: 0 0 14px; max-width: 74ch; color: #c9d1dd; }
+  p.lead { font-size: 18px; color: var(--ink); }
+  strong { color: #fff; font-weight: 620; }
+  code {
+    font: 13.5px/1.4 var(--mono); background: var(--panel-2); border: 1px solid var(--line-soft);
+    border-radius: 4px; padding: 1.5px 5px; color: #e6eefc; white-space: nowrap;
+  }
+  a { color: var(--accent); }
+  pre code {
+    display: block; white-space: pre; background: none; border: 0; padding: 0;
+    font: inherit; color: inherit; border-radius: 0;
+  }
+
+  ul.tight { margin: 0 0 16px; padding-left: 20px; max-width: 74ch; color: #c9d1dd; }
+  ul.tight li { margin-bottom: 7px; }
+
+  .callout {
+    border-left: 2px solid var(--accent); background: linear-gradient(90deg, rgba(94,224,200,.06), transparent 60%);
+    padding: 16px 20px; margin: 22px 0; border-radius: 0 6px 6px 0;
+  }
+  .callout p:last-child { margin-bottom: 0; }
+  .callout .k { font: 600 10px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--accent); display: block; margin-bottom: 8px; }
+
+  figure { margin: 26px 0 34px; }
+  figure svg { width: 100%; height: auto; display: block; }
+  figcaption {
+    font: 12px/1.55 var(--mono); color: var(--dim); margin-top: 14px;
+    padding-top: 12px; border-top: 1px solid var(--line-soft);
+  }
+  figcaption b { color: var(--muted); font-weight: 600; }
+
+  table { width: 100%; border-collapse: collapse; margin: 20px 0 26px; font-size: 14px; }
+  th {
+    text-align: left; font: 600 10px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase;
+    color: var(--dim); padding: 0 14px 10px 0; border-bottom: 1px solid var(--line);
+  }
+  td { padding: 11px 14px 11px 0; border-bottom: 1px solid var(--line-soft); vertical-align: top; color: #c9d1dd; }
+  td:last-child, th:last-child { padding-right: 0; }
+  td.path { font: 12px/1.5 var(--mono); color: var(--muted); white-space: nowrap; }
+  td.path em { color: var(--dim); font-style: normal; }
+  tr.hot td:first-child { color: var(--warn); }
+  td .why { display: block; color: var(--dim); font-size: 13px; margin-top: 3px; }
+  td code { white-space: normal; overflow-wrap: break-word; }
+
+  pre {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+    padding: 18px 20px; overflow-x: auto; margin: 16px 0 24px;
+    font: 13px/1.65 var(--mono); color: #d5deeb; tab-size: 2;
+  }
+  pre .c { color: var(--dim); }
+  pre .k { color: var(--amber); }
+  pre .t { color: var(--accent); }
+  pre .bad { color: var(--warn); }
+  .filename {
+    font: 600 10.5px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase;
+    color: var(--dim); margin: 26px 0 -6px; display: block;
+  }
+
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 20px 22px; }
+  .card h4 { margin: 0 0 10px; font: 600 11px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+  .card p { font-size: 14px; color: #c1cad7; margin-bottom: 0; }
+  .card.bad h4 { color: var(--warn); }
+  .card.good h4 { color: var(--accent); }
+
+  .flow { font: 12.5px/1.9 var(--mono); color: var(--muted); }
+  .flow b { color: var(--ink); font-weight: 600; }
+  .flow .ar { color: var(--accent); }
+
+  footer { margin-top: 90px; padding-top: 24px; border-top: 1px solid var(--line-soft); color: var(--dim); font: 12px/1.7 var(--mono); }
+
+  /* SVG label styles */
+  .svgH { font: 11.5px/1 var(--mono); fill: var(--muted); letter-spacing: .03em; }
+  .svgN { font: 11px/1 var(--mono); fill: var(--dim); }
+  .svgC { font: 11.5px/1 var(--mono); fill: #b6c0ce; }
+  .svgCb { font: 600 12px/1 var(--mono); fill: var(--ink); }
+  .svgBad { font: 11.5px/1 var(--mono); fill: var(--warn); }
+  .svgAcc { font: 11px/1 var(--mono); fill: var(--accent); letter-spacing: .06em; }
+
+  @media (max-width: 720px) {
+    .wrap { padding: 44px 18px 90px; }
+    h1 { font-size: 30px; }
+    .grid2 { grid-template-columns: 1fr; }
+    td.path { white-space: normal; }
+  }
+  @media print {
+    :root { --bg: #fff; --panel: #f7f8fa; --panel-2: #f2f4f7; --line: #ccd2da; --line-soft: #e2e6eb;
+            --ink: #14181f; --muted: #4d5765; --dim: #6d7887; --accent: #0a7d6b; --warn: #b3261e; --amber: #8a5a00; }
+    body { font-size: 11pt; }
+    .wrap { max-width: none; padding: 0; }
+    section { break-inside: auto; page-break-inside: auto; }
+    figure, pre, table, .card { page-break-inside: avoid; }
+    nav.toc { display: none; }
+    p, td { color: #14181f; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="masthead">
+  <p class="eyebrow">Slimming proposal · packages/tokrec + packages/cli</p>
+  <h1>Three bands, twenty-three modules</h1>
+  <p class="sub">
+    The A–D refactor bought correctness with structure: seven import bands, 33 library modules, and
+    the same fact written three times. This plan keeps every behaviour and removes the scaffolding —
+    seven bands become three, ten modules disappear, and the invariants the extra modules were
+    supposed to carry move into the type system and a 60-line guardrail test.
+  </p>
+  <div class="meta">
+    <span class="tag">base <b>2daf3ff</b></span>
+    <span class="tag">src <b>3818</b> lines / <b>38</b> files</span>
+    <span class="tag">tests <b>1797</b> lines / <b>13</b> files</span>
+    <span class="tag">target <b>−26%</b> files · <b>−16%</b> lines</span>
+    <span class="tag">bands <b>7 → 3</b></span>
+    <span class="tag">public API <b>unchanged</b></span>
+  </div>
+  <nav class="toc">
+    <a href="#diagnosis">01 Diagnosis</a>
+    <a href="#shape">02 Target shape</a>
+    <a href="#design">03 Design</a>
+    <a href="#ledger">04 Deletion ledger</a>
+    <a href="#candidates">05 Candidates considered</a>
+    <a href="#plan">06 Plan</a>
+    <a href="#guardrail">07 Guardrail</a>
+    <a href="#limits">08 Limits, risks, non-goals</a>
+    <a href="#diet">09 Feature diet (optional)</a>
+    <a href="#open">10 OPEN — your calls</a>
+  </nav>
+</header>
+
+<section id="diagnosis">
+  <h2><span class="n">01</span>Diagnosis</h2>
+
+  <p class="lead">
+    The code is not big because the problem is big. It is big because eight abstractions were
+    introduced to hold invariants that nothing enforces today — and each one brought a file, a
+    type, an import edge, and a second copy of a fact.
+  </p>
+
+  <table>
+    <thead><tr><th>Band</th><th>Files</th><th>Lines</th><th>What lives there</th></tr></thead>
+    <tbody>
+      <tr><td class="path">domain/</td><td>2</td><td>96</td><td>Verdict + media result types</td></tr>
+      <tr><td class="path">policy/</td><td>1</td><td>50</td><td>pure <code>planTick</code></td></tr>
+      <tr><td class="path">ports/</td><td>2</td><td>55</td><td>two interfaces</td></tr>
+      <tr><td class="path">adapters/</td><td>16</td><td>1276</td><td>http, wreq, media, tiktok + 7-file discovery</td></tr>
+      <tr><td class="path">session/</td><td>8</td><td>915</td><td>orchestrator, job, probe, loop, stream, state, events, abort</td></tr>
+      <tr><td class="path">lib/</td><td>3</td><td>429</td><td>config, logger, utils</td></tr>
+      <tr><td class="path">index.ts</td><td>1</td><td>38</td><td>public surface</td></tr>
+      <tr><td class="path"><b>total</b></td><td><b>33</b></td><td><b>2859</b></td><td>plus 959 lines in <code>cli/src</code></td></tr>
+    </tbody>
+  </table>
+
+  <h3>Findings, each with a file:line</h3>
+
+  <table>
+    <thead><tr><th>#</th><th>Finding</th><th>Evidence</th></tr></thead>
+    <tbody>
+      <tr class="hot">
+        <td>F1</td>
+        <td><b>Two homes for one interface.</b> <code>HttpClient</code> is declared twice, identically.</td>
+        <td class="path">ports/http.ts:11 · adapters/http/wreq.ts:16<br><span class="why">The band that exists to invert I/O is never faked: <code>test/utils/mock-http.ts:23</code> impersonates <code>HttpClient</code>, and <code>resolvers.test.ts:29-31</code> builds a <i>real</i> <code>createWebcastApi</code> over the mock HTTP, so <code>ports/tiktok.ts:24 WebcastReader</code> has no second implementation anywhere.</span></td>
+      </tr>
+      <tr class="hot">
+        <td>F2</td>
+        <td><b>Pass-through module.</b> <code>session/stream.ts</code> (63 lines) forwards nine arguments to <code>downloadStream</code> and adds an <code>isHlsUrl()</code> label.</td>
+        <td class="path">session/stream.ts:36 → adapters/media/download.ts:21<br><span class="why">Same parameter list, same return, one ternary. It is a seam with nothing on the other side.</span></td>
+      </tr>
+      <tr class="hot">
+        <td>F3</td>
+        <td><b>One fact, three shapes.</b> <code>DownloadResult</code>, <code>RecordedFile</code> and the <code>download</code> member of <code>ProgressEvent</code> all mean <code>{file, duration, size}</code> / <code>{bytes, elapsed, speed}</code>.</td>
+        <td class="path">domain/media.ts:7-16 · lib/config.ts:88-101<br><span class="why"><code>job.ts</code> copies field-by-field between them.</span></td>
+      </tr>
+      <tr class="hot">
+        <td>F4</td>
+        <td><b>Two FFmpeg runners.</b> Both <code>execa</code> + <code>cancelSignal</code> + identical <code>TikTokError</code> mapping; one is injected into the job as a dependency so the job can call the copy the converter already owns privately.</td>
+        <td class="path">session/index.ts:53-77 · adapters/media/convert.ts:47-70</td>
+      </tr>
+      <tr>
+        <td>F5</td>
+        <td><b>Dead paths.</b> <code>getRoomId</code> has six test call sites and zero in <code>src</code>. <code>planTick</code>'s <code>{kind:"stop", why:"user"}</code> is unreachable: the session returns before calling <code>planTick</code> when the signal is aborted, and handles only <code>one-shot</code> / <code>gave-up</code>.</td>
+        <td class="path">session/probe.ts:83 · policy/tick.ts:24<br><span class="why">index.ts:127 (early return) · index.ts:145-152 (only two branches).</span></td>
+      </tr>
+      <tr>
+        <td>F6</td>
+        <td><b>A state machine that no one can fail.</b> Six-state transition table re-encodes the <code>Phase</code> union; illegal moves are logged and ignored. No test covers it.</td>
+        <td class="path">session/recorder-state.ts:12-36<br><span class="why"><code>currentFile</code>, <code>sessionDuration</code>, <code>lastPollTime</code> are written and never read outside the type declaration.</span></td>
+      </tr>
+      <tr>
+        <td>F7</td>
+        <td><b>Four type escapes in the orchestrator</b> — module-level <code>let</code>s assigned in <code>start()</code> so the tick closure can see them, then asserted back to non-null.</td>
+        <td class="path">session/index.ts:41-49, 121-123, 197<br><span class="why"><code>api as TikTokApi</code> · <code>downloader as StreamDownloader</code> · <code>monitor as PollingMonitor</code> · <code>converter as Converter</code>. The constructors already return those types; the <code>let</code>s are what force the casts.</span></td>
+      </tr>
+      <tr>
+        <td>F8</td>
+        <td><b>A generic spelling "apply defaults".</b> <code>normalizeConfig</code>'s return type is <code>Required&lt;Omit&lt;RecorderConfig, …&gt;&gt; &amp; Pick&lt;RecorderConfig, …&gt;</code>.</td>
+        <td class="path">lib/config.ts:150-157<br><span class="why">Eight lines of conditional type to describe a struct that could be named.</span></td>
+      </tr>
+      <tr>
+        <td>F9</td>
+        <td><b>Seven files for one chain</b> (354 lines: types, chain, four helpers, four sources) where <code>candidates.ts</code>'s <code>miss()</code> and <code>failed()</code> are one-liners.</td>
+        <td class="path">adapters/tiktok/discovery/*</td>
+      </tr>
+      <tr>
+        <td>F10</td>
+        <td><b>Doc drift.</b> <code>AGENTS.md</code> points at <code>packages/tokrec/src/core/api/resolvers/</code> — a path that has not existed since the A-refactor landed; the resolvers live at <code>adapters/tiktok/discovery/</code>.</td>
+        <td class="path">AGENTS.md:14</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout">
+    <span class="k">The pattern</span>
+    <p>
+      Every finding is the same shape: <b>a module whose public surface is as wide as its body</b>
+      (F1, F2, F6) or <b>a fact stored twice</b> (F1, F3, F4). Neither costs behaviour — both cost
+      reading time on every future change, which is the actual tax being paid here.
+    </p>
+  </div>
+</section>
+
+<section id="shape">
+  <h2><span class="n">02</span>Target shape</h2>
+
+  <div class="grid2">
+    <div class="card bad">
+      <h4>Before — 7 bands, 33 modules</h4>
+      <div class="flow">
+        <b>index.ts</b><br>
+        <span class="ar">↓</span> session/ <em>(8 modules)</em><br>
+        <span class="ar">↓</span> policy/ · ports/ · adapters/ · lib/<br>
+        <span class="ar">↓</span> domain/<br><br>
+        imports checked by a 155-line test with a 7×7 allow-matrix
+      </div>
+    </div>
+    <div class="card good">
+      <h4>After — 3 bands, 23 modules</h4>
+      <div class="flow">
+        <b>index.ts</b> <em>(public surface, unchanged)</em><br>
+        <span class="ar">↓</span> <b>app/</b> <em>(8) — session, job, config, log, utils</em><br>
+        <span class="ar">↓</span> <b>io/</b> <em>(12) — http, tiktok, media</em><br>
+        <span class="ar">↓</span> <b>core/</b> <em>(2) — verdict, plan</em><br><br>
+        imports checked by a 60-line test with a 3×3 allow-matrix
+      </div>
+    </div>
+  </div>
+
+  <table>
+    <thead><tr><th>Band</th><th>May import</th><th>Rule that is actually load-bearing</th></tr></thead>
+    <tbody>
+      <tr><td class="path">core/</td><td>core</td><td>no <code>node:*</code>, no <code>bun</code>, no I/O — pure data and pure functions</td></tr>
+      <tr><td class="path">io/</td><td>core, io</td><td>network, disk, child processes; never imports <code>app/</code></td></tr>
+      <tr><td class="path">app/</td><td>core, io, app</td><td>orchestration and user-facing config; the only band <code>index.ts</code> may re-export from</td></tr>
+    </tbody>
+  </table>
+
+  <p>
+    Three bands is not a compromise on the A-refactor's intent. That intent was <i>"pure logic cannot
+    reach the network"</i> — which is exactly one rule, and it survives as <code>core/</code>.
+    <code>domain/</code> + <code>policy/</code> + <code>ports/</code> were three spellings of it, and
+    <code>lib/</code> was an <code>app/</code> that had not decided what it was.
+  </p>
+</section>
+
+<section id="design">
+  <h2><span class="n">03</span>Design</h2>
+
+  <p>
+    Written caller-first: the public surface does not change, so the design is best read as what a
+    module <i>inside</i> the recorder now sees.
+  </p>
+
+  <span class="filename">packages/tokrec/src/index.ts — unchanged except comments</span>
+  <pre><code><span class="k">export</span> { createRecorder }            <span class="c">// from ./app/recorder</span>
+<span class="k">export</span> { TikTokError }               <span class="c">// from ./app/config</span>
+<span class="k">export</span> { bytesToHuman, formatDuration, relativeTime, sanitizeUser }
+<span class="k">export type</span> { Verdict, RoomRef, StreamRef, Evidence, LiveReason, SourceId }
+<span class="k">export type</span> { RecorderConfig, RecorderController, RecorderStatus, Phase,
+               RecordEvent, ProgressEvent, RecordedFile, LogLevel,
+               RecorderEvent, RecorderEventHandler, TikTokErrorCode }</code></pre>
+
+  <span class="filename">app/recorder.ts — the 250-line orchestrator (was session/index.ts: 292)</span>
+  <pre><code><span class="k">export function</span> <span class="t">createRecorder</span>(config: RecorderConfig): RecorderController {
+  <span class="k">const</span> cfg    = resolveConfig(config)          <span class="c">// app/config.ts</span>
+  <span class="k">const</span> logger = createLogger({ ... })
+  <span class="k">const</span> events = createEvents()                <span class="c">// app/events.ts — typed node:events</span>
+  <span class="k">const</span> status = { state: <span class="c">"idle" as Phase</span>, user: cfg.user }   <span class="c">// no transition table (F6)</span>
+
+  <span class="k">async function</span> start() {
+    <span class="k">const</span> scope = abortScope()                  <span class="c">// app/abort.ts, unchanged</span>
+    <span class="k">const</span> post  = abortScope()                  <span class="c">// post-processing outlives Ctrl+C</span>
+
+    <span class="c">// built once, as consts — no module-level lets, no casts (F7)</span>
+    <span class="k">const</span> http    = <span class="k">await</span> createHttpClient(cfg)   <span class="c">// io/http.ts</span>
+    <span class="k">const</span> client  = createTikTokClient(http, logger, cfg.debug, scope.signal)
+    <span class="k">const</span> monitor = createPollingMonitor({ intervalMinutes: cfg.interval, signal: scope.signal,
+      onTick: () =&gt; tick({ client, monitor, scope, post }) })
+
+    <span class="k">await</span> monitor.start()
+  }
+
+  <span class="k">async function</span> tick(d) {
+    <span class="k">const</span> verdict = <span class="k">await</span> d.client.verdict(cfg.user)        <span class="c">// cached per tick</span>
+    <span class="k">const</span> plan    = planTick(verdict, facts)                    <span class="c">// core/plan.ts</span>
+    <span class="k">switch</span> (plan.kind) { <span class="c">/* poll · hold · record · stop(one-shot|gave-up) */</span> }
+  }
+
+  <span class="k">return</span> { start, stop, getStatus: () =&gt; ({ ...status }), on: events.on, off: events.off }
+}</code></pre>
+
+  <span class="filename">core/plan.ts — one enum arm fewer (was policy/tick.ts:21-24)</span>
+  <pre><code><span class="k">export interface</span> TickFacts {
+  <span class="k">readonly</span> recording: boolean
+  <span class="k">readonly</span> recordedSec: number
+  <span class="k">readonly</span> oneShot: boolean
+  <span class="k">readonly</span> consecutiveErrors: number
+  <span class="c">// stopRequested deleted — a user stop is a signal, not a verdict (F5)</span>
+}
+<span class="k">export type</span> TickPlan =
+  | { kind: <span class="t">"poll"</span>; note: string }
+  | { kind: <span class="t">"hold"</span>; reason: <span class="t">"restricted"</span> | <span class="t">"no-stream-url"</span>; room: RoomRef }
+  | { kind: <span class="t">"record"</span>; room: RoomRef; stream: StreamRef }
+  | { kind: <span class="t">"stop"</span>; why: <span class="t">"one-shot"</span> | <span class="t">"gave-up"</span> }</code></pre>
+
+  <span class="filename">io/media/ffmpeg.ts — the single runner (F4)</span>
+  <pre><code><span class="k">export function</span> <span class="t">runFfmpeg</span>(args: string[], signal?: AbortSignal): Promise&lt;string&gt;  <span class="c">// execa + cancelSignal + error mapping</span>
+<span class="k">export function</span> <span class="t">pipeFfmpegSegment</span>(ffmpegPath, url, writer, signal, maxDuration?, cookies?)  <span class="c">// spawn + backpressure</span>
+<span class="c">// used by io/media/convert.ts (remux), io/media/download.ts (capture), app/job.ts (segment)</span></code></pre>
+
+  <p>
+    Everything else keeps its current shape and moves address. The three seams that remain — a
+    <code>HttpClient</code> interface for tests, the <code>Verdict</code> value for the domain, and
+    <code>RecordingJob.finish()</code> for post-processing — are the ones with a second
+    implementation today. Nothing else gets an interface.
+  </p>
+</section>
+
+<section id="ledger">
+  <h2><span class="n">04</span>Deletion ledger</h2>
+
+  <table>
+    <thead><tr><th>#</th><th>Action</th><th>Δ lines</th><th>Files</th></tr></thead>
+    <tbody>
+      <tr class="hot"><td>D1</td><td>Delete <code>ports/</code>; <code>HttpClient</code> + <code>HttpBody</code> live in <code>io/http.ts</code>; <code>WebcastReader</code> / <code>RoomApiResult</code> / <code>RoomFacts</code> move beside the client that implements them</td><td>−55</td><td>−2</td></tr>
+      <tr class="hot"><td>D2</td><td>Delete <code>session/stream.ts</code>; the recorder calls <code>downloadStream</code> directly</td><td>−63</td><td>−1</td></tr>
+      <tr class="hot"><td>D3</td><td>Delete <code>domain/media.ts</code>; <code>DownloadResult</code> <em>is</em> <code>RecordedFile</code>, <code>ProgressInfo</code> <em>is</em> <code>ProgressEvent[kind:"download"]</code></td><td>−17</td><td>−1</td></tr>
+      <tr class="hot"><td>D4</td><td>Delete the second <code>runFfmpeg</code> and the <code>deps.runFfmpeg</code> field; <code>io/media/ffmpeg.ts</code> owns invocation</td><td>−25</td><td>0</td></tr>
+      <tr><td>D5</td><td>Delete the transition table and invalid-move logging; <code>status</code> is a plain object (the three write-only fields stay — they are public type surface)</td><td>−41</td><td>−1</td></tr>
+      <tr><td>D6</td><td>Delete dead <code>getRoomId</code>, <code>TickFacts.stopRequested</code>, <code>why:"user"</code>, and their six test call sites</td><td>−28</td><td>0</td></tr>
+      <tr><td>D7</td><td><code>session/recorder-events.ts</code> → <code>app/events.ts</code>: typed façade over <code>node:events</code> (handler errors already cannot escape an <code>emit</code> loop)</td><td>−16</td><td>0</td></tr>
+      <tr><td>D8</td><td>Discovery 7 → 3: <code>chain.ts</code> (types + chain + helpers), <code>page.ts</code> (page source + sigi-legacy), <code>fallback.ts</code> (api-live + profile)</td><td>−26</td><td>−4</td></tr>
+      <tr><td>D9</td><td><code>normalizeConfig</code> mistyping → <code>ResolvedConfig</code>; <code>DEFAULTS</code> inlined</td><td>−48</td><td>0</td></tr>
+      <tr><td>D10</td><td>Remove <code>findFfmpegPath</code> from <code>lib/utils</code> (single home in <code>io/media/ffmpeg.ts</code>); merge <code>rate-limit.ts</code> into <code>io/http.ts</code></td><td>−11</td><td>−1</td></tr>
+      <tr><td>D11</td><td>Header and comment text that restates the code it sits above (several blocks now describe deleted concepts)</td><td>≈ −45</td><td>0</td></tr>
+      <tr><td class="path"><b>total</b></td><td></td><td><b>−388 … −433</b></td><td><b>−10</b></td></tr>
+    </tbody>
+  </table>
+
+  <p>
+    Against <code>2859</code> lines and <code>33</code> modules that is <b>−15% lines, −30% modules</b>.
+    The CLI sheds roughly 130 more (table-driven option parsing, record-flow wiring out of
+    <code>bin.ts</code>).
+  </p>
+</section>
+
+<section id="candidates">
+  <h2><span class="n">05</span>Candidates considered</h2>
+
+  <table>
+    <thead><tr><th>Shape</th><th>Result</th><th>Verdict</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><b>A — three bands</b> <span class="why">core / io / app; merge by capability; keep one interface per live seam</span></td>
+        <td>23 modules · ~2426 lines · 3 concepts removed from the reader's head (bands, ports, pass-through downloader)</td>
+        <td>chosen</td>
+      </tr>
+      <tr>
+        <td><b>B — flat, ten files</b> <span class="why">drop bands entirely: <code>tiktok.ts</code> (~400), <code>recorder.ts</code> (~450), <code>media.ts</code>, <code>config.ts</code>…</span></td>
+        <td>fewest files, but two modules over 400 lines, the "pure cannot touch network" rule becomes unreviewable, and the guardrail test has nothing left to check</td>
+        <td>rejected — hides complexity instead of moving it</td>
+      </tr>
+      <tr>
+        <td><b>C — dedupe only</b> <span class="why">keep all seven bands, apply D1–D11</span></td>
+        <td>27 modules · ~2500 lines</td>
+        <td>rejected as the endpoint — does not fix F7/F9, and a 7×7 allow-matrix outlives its rationale</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>
+    B and C are both defensible; the choice is A because the goal is a codebase a reader can hold,
+    and the reader's cost is dominated by <i>how many things have names</i>, not by lines.
+  </p>
+</section>
+
+<section id="plan">
+  <h2><span class="n">06</span>Plan</h2>
+
+  <p>
+    Nine commits, each independently shippable, each ending green. Mechanics last: every ticket before
+    T6 moves behaviour, every ticket from T6 on moves addresses, so a bisect never lands on a rename
+    mixed with a logic change.
+  </p>
+
+  <table>
+    <thead><tr><th>#</th><th>Commit</th><th>Touches</th><th>Δ</th></tr></thead>
+    <tbody>
+      <tr><td>T1</td><td><code>refactor(tokrec): delete unreachable verdict/tick paths</code><br><span class="why">D6 — <code>getRoomId</code>, <code>stopRequested</code>, <code>why:"user"</code></span></td><td class="path">session/probe.ts · policy/tick.ts · session/index.ts · test/tiktok-api.test.ts</td><td>−28</td></tr>
+      <tr><td>T2</td><td><code>refactor(tokrec): one HTTP seam</code><br><span class="why">D1 — deletes <code>ports/</code>, imports updated in 6 files</span></td><td class="path">ports/* · adapters/http/* · adapters/tiktok/{page,webcast}.ts · discovery/types.ts · test/utils/mock-http.ts</td><td>−55</td></tr>
+      <tr><td>T3</td><td><code>refactor(tokrec): one result shape, one ffmpeg runner</code><br><span class="why">D2, D3, D4</span></td><td class="path">domain/media.ts · session/stream.ts · session/index.ts · session/job.ts · adapters/media/*</td><td>−105</td></tr>
+      <tr><td>T4</td><td><code>refactor(tokrec): three-file discovery</code><br><span class="why">D8 — pure regrouping, no logic edit</span></td><td class="path">adapters/tiktok/discovery/* · test/resolvers.test.ts</td><td>−26</td></tr>
+      <tr><td>T5</td><td><code>refactor(tokrec): recorder owns its state, client owns its cache</code><br><span class="why">D5, D7, F7 — deletes <code>recorder-state.ts</code>, converts <code>probe.ts</code> to <code>io/tiktok/client.ts</code>, kills the four casts</span></td><td class="path">session/{index,probe,recorder-state,recorder-events}.ts · test/job.test.ts</td><td>−85</td></tr>
+      <tr><td>T6</td><td><code>refactor(tokrec): three bands — core, io, app</code><br><span class="why">renames only: <code>git mv domain+policy core</code>, <code>adapters io</code>, <code>session+lib app</code>; rewrites the guardrail; fixes the AGENTS.md path (F10)</span></td><td class="path">all of src/ · test/architecture.test.ts · AGENTS.md</td><td>−1 file</td></tr>
+      <tr><td>T7</td><td><code>refactor(tokrec): name the resolved config</code><br><span class="why">D9 — <code>ResolvedConfig</code> + <code>resolveConfig()</code></span></td><td class="path">app/config.ts · app/recorder.ts · test/config.test.ts</td><td>−48</td></tr>
+      <tr><td>T8</td><td><code>refactor(cli): declare recorder options once</code><br><span class="why">one table drives <code>cmd.option()</code> and parsing; record-flow event wiring moves from <code>bin.ts</code> into <code>ui.ts</code> as <code>attachDisplay()</code></span></td><td class="path">cli/src/{cli,bin,ui}.ts · cli/test/*</td><td>−130</td></tr>
+      <tr><td>T9</td><td><code>chore(release): 0.15.0 — slimming, no API change</code></td><td class="path">CHANGELOG.md · both package.json</td><td>—</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Gates — same four commands after every ticket, from the repo root</h3>
+  <pre><code>bun run lint      <span class="c"># biome; 5 known noNonNullAssertion warnings in test/tiktok-api.test.ts</span>
+bun run typecheck <span class="c"># must stay 0</span>
+bun test          <span class="c"># 135 pass / 0 fail today; architecture.test.ts is the extra gate for T2–T6</span>
+bun run build     <span class="c"># lib, then cli</span></code></pre>
+
+  <h3>Done-when</h3>
+  <ul class="tight">
+    <li><code>fd -e ts . packages/tokrec/src | wc -l</code> → <b>23</b>; <code>wc -l</code> → <b>≈2426</b>.</li>
+    <li><code>rg -n 'ports/|domain/media|session/stream|recorder-state' packages/*/src</code> → empty.</li>
+    <li><code>git diff 2daf3ff -- packages/tokrec/src/index.ts</code> → comments only (no export line changed).</li>
+    <li><code>bun test</code> → same 135 passing assertions plus the rewritten guardrail.</li>
+    <li><code>bun run build</code> → exit 0, both packages, publish order intact.</li>
+  </ul>
+</section>
+
+<section id="guardrail">
+  <h2><span class="n">07</span>Guardrail</h2>
+
+  <p>
+    <code>test/architecture.test.ts</code> is currently 155 lines to police seven bands; the source of
+    the rework is the band count, not the test. Three bands let the whole rule fit in a table a
+    reviewer can check by eye:
+  </p>
+
+  <pre><code><span class="k">const</span> ALLOWED = {
+  core: [<span class="t">"core"</span>],
+  io:   [<span class="t">"core"</span>, <span class="t">"io"</span>],
+  app:  [<span class="t">"core"</span>, <span class="t">"io"</span>, <span class="t">"app"</span>],
+} <span class="k">as const</span>
+
+<span class="k">const</span> PURE = [<span class="t">"core"</span>]   <span class="c">// no node:*, no bun, no transitive I/O</span></code></pre>
+
+  <p>
+    What the new guardrail must keep checking: (1) no edge outside the matrix, (2) no import cycle,
+    (3) no <code>node:*</code>/<code>bun</code> import reachable from <code>core/</code>, (4) only
+    <code>index.ts</code> is a public barrel. What it must gain: an assertion that
+    <b><code>core/</code> exports no functions that are called from only one place</b> is not
+    testable — so instead the review gate is the deletion ledger: any new module added under
+    <code>core/</code> or <code>io/</code> needs a second caller or a fake in the same PR.
+  </p>
+
+  <div class="callout">
+    <span class="k">Why the band count was the bug</span>
+    <p>
+      A 7×7 matrix cannot be reasoned about, so the answer to "where does this file go?" became
+      "wherever the last refactor put something similar". The result is 55 lines of interfaces that
+      assert nothing (<code>ports/</code>), a downloader that forwards nine arguments
+      (<code>session/stream.ts</code>), and a state machine nothing can fail
+      (<code>recorder-state.ts</code>). Three bands answers the placement question by itself.
+    </p>
+  </div>
+</section>
+
+<section id="limits">
+  <h2><span class="n">08</span>Limits, risks, non-goals</h2>
+
+  <table>
+    <thead><tr><th>Risk</th><th>Mitigation</th></tr></thead>
+    <tbody>
+      <tr><td>T6 (renames) is a large mechanical diff that could hide a logic edit.</td><td>Separate commit, no body changes; review with <code>git diff -M --stat</code> and <code>delta</code>, expecting 100% similarity on moved files.</td></tr>
+      <tr><td>T2/T5 touch the discovery context type, which 253 lines of resolver tests reach into.</td><td>Import-path-only edits; <code>resolvers.test.ts</code> must pass with unchanged assertions, no fixture edits.</td></tr>
+      <tr><td>Live verification of the Ctrl+C remux fix (<code>2daf3ff</code>) is still outstanding.</td><td>Do it <i>before</i> T3 or T5, while <code>session/index.ts</code> still has its current shape, so a regression cannot be confused with a rename.</td></tr>
+      <tr><td>The architecture test is the only mechanical proof the shape holds.</td><td>Rewrite it in the same commit as the renames (T6) and re-run it; an injected <code>node:fs</code> import into <code>core/verdict.ts</code> must fail it, as it does today.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Non-goals</h3>
+  <ul class="tight">
+    <li><b>No behaviour change.</b> WAF headers, the rate limiter, ffmpeg reconnect flags, the 30 s startup timeout, the 10-minute remux grace, cookie seeding, and every error string stay as they are — they are the recordings that already work.</li>
+    <li><b>No public API change.</b> Everything deleted is internal (<code>ports/</code>, <code>discovery/*</code>, <code>session/*</code>) — none of it is re-exported by <code>index.ts</code>. Optional fields on <code>RecorderStatus</code> stay even though nothing reads them yet.</li>
+    <li><b>No bundler or build change.</b> The build chain stays lib → cli, <code>dts</code> stays off for the CLI, and the <code>files</code>/<code>exports</code> contract is untouched.</li>
+    <li><b>No test deletion</b> beyond the six <code>getRoomId</code> call sites and the guardrail rewrite.</li>
+  </ul>
+</section>
+
+<section id="diet">
+  <h2><span class="n">09</span>Feature diet (optional, decided separately)</h2>
+
+  <p>
+    After the structure is slimmed, ~2400 lines remain and they are <i>features</i>. If the goal is
+    smaller still, this is where the rest is — each row is a product decision, not a refactor:
+  </p>
+
+  <table>
+    <thead><tr><th>Feature</th><th>Lines today</th><th>What it costs to keep</th></tr></thead>
+    <tbody>
+      <tr><td><b>Post-processing</b> — segment (<code>job.ts:segment</code>) + audio normalize (<code>peaknorm</code>) + remux</td><td>≈ 430 (18% of src)</td><td>3 event phases, 6 config options, the <code>peaknorm</code> dependency, and the largest remaining module (<code>job.ts</code>)</td></tr>
+      <tr><td><b>tmux supervision</b> — <code>start</code> / <code>stop</code> / <code>status</code></td><td>≈ 130 (CLI)</td><td>3 of the 5 commands, a second process lifecycle to reason about</td></tr>
+      <tr><td><b>Rotating file log</b> — the CLI already hides console logs so the Display can own the terminal</td><td>140</td><td>A 40-line logger would cover the same need without rotation, size caps, or backups</td></tr>
+      <tr><td><b>Discovery fallbacks 4 → 2</b> — page + api-live only, dropping sigi-legacy and profile</td><td>≈ 170</td><td>Fewer live-streams resolved when TikTok reshuffles its pages again; this ladder is the reason the tool works at all</td></tr>
+    </tbody>
+  </table>
+
+  <p>
+    <b>Recommendation:</b> ship the structure plan first, then decide the diet against real usage —
+    if <code>--segment-minutes</code> and <code>--normalize</code> are not in a script you run weekly,
+    dropping them halves the remaining library.
+  </p>
+</section>
+
+<section id="open">
+  <h2><span class="n">10</span>OPEN — your calls</h2>
+
+  <ul class="tight">
+    <li><b>Band names.</b> <code>core/io/app</code> as proposed, or keep the words <code>domain/</code> / <code>adapters/</code> / <code>session/</code> with the count reduced to three?</li>
+    <li><b>Public-surface ambition.</b> This plan is non-breaking. If you also want the 17 exported types trimmed (<code>RecorderStatus</code>'s write-only fields, the three unused <code>TikTokErrorCode</code> members, <code>SourceId</code>'s legacy <code>"sigi"</code>), that is a <code>0.15.0</code> BREAKING release instead — say which and T9 changes shape.</li>
+    <li><b>Feature diet.</b> Which rows of §9 are actually dead in your use? Dropping post-processing is the single biggest remaining cut and it changes what the tool <i>is</i>, so it is not in the plan.</li>
+    <li><b>Ticket granularity.</b> One branch with nine commits (as written), or nine PRs? Merge order is strictly 1→9.</li>
+    <li><b>Pending from the previous session</b> — unrelated to this plan, still unapplied: the <code>.gitignore</code> line <code>*=[0-9]*.ts</code> for recording output, and whether <code>2daf3ff</code> (Ctrl+C remux fix) needs its own CHANGELOG note. If yes, it folds into T9's <code>0.15.0</code> entry rather than a separate version.</li>
+  </ul>
+</section>
+
+<footer>
+  Base <b>2daf3ff</b> · 38 src files / 3818 lines · 13 test files / 1797 lines ·
+  target 28 src files / ≈3190 lines, public API unchanged ·
+  companion: <code>docs/architecture-proposal.html</code> (the shipped A–D design this plan trims)
+</footer>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,877 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>tokrec — Perry build proposal</title>
+<style>
+  :root {
+    --bg: #0e1116;
+    --panel: #151a21;
+    --panel-2: #1a202a;
+    --line: #2a323d;
+    --line-soft: #212832;
+    --ink: #dfe5ee;
+    --muted: #8d97a6;
+    --dim: #6b7482;
+    --accent: #5ee0c8;
+    --warn: #ff8a80;
+    --amber: #f0c674;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 16px/1.62 var(--sans);
+    font-feature-settings: "kern" 1, "liga" 1;
+  }
+  .wrap { max-width: 1020px; margin: 0 auto; padding: 72px 28px 140px; }
+
+  header.masthead { border-bottom: 1px solid var(--line); padding-bottom: 28px; margin-bottom: 8px; }
+  .eyebrow {
+    font: 600 11px/1 var(--mono); letter-spacing: .16em; text-transform: uppercase;
+    color: var(--accent); margin: 0 0 18px;
+  }
+  h1 { font-size: 40px; line-height: 1.1; letter-spacing: -0.02em; margin: 0 0 14px; font-weight: 650; }
+  .sub { color: var(--muted); font-size: 15px; margin: 0; max-width: 62ch; }
+  .meta { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 22px; }
+  .tag {
+    font: 11px/1 var(--mono); color: var(--muted); border: 1px solid var(--line);
+    border-radius: 999px; padding: 7px 11px; background: var(--panel);
+  }
+  .tag b { color: var(--ink); font-weight: 600; }
+
+  nav.toc { display: flex; flex-wrap: wrap; gap: 6px 20px; margin: 26px 0 0; }
+  nav.toc a { color: var(--muted); text-decoration: none; font-size: 13px; border-bottom: 1px solid transparent; }
+  nav.toc a:hover { color: var(--accent); border-color: var(--accent); }
+
+  section { margin-top: 64px; scroll-margin-top: 24px; }
+  h2 {
+    font: 600 12px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase;
+    color: var(--dim); margin: 0 0 22px; padding-bottom: 12px; border-bottom: 1px solid var(--line-soft);
+  }
+  h2 .n { color: var(--accent); margin-right: 12px; }
+  h3 { font-size: 19px; line-height: 1.3; margin: 34px 0 10px; font-weight: 620; letter-spacing: -0.01em; }
+  h3:first-of-type { margin-top: 0; }
+  p { margin: 0 0 14px; max-width: 74ch; color: #c9d1dd; }
+  p.lead { font-size: 18px; color: var(--ink); }
+  strong { color: #fff; font-weight: 620; }
+  code {
+    font: 13.5px/1.4 var(--mono); background: var(--panel-2); border: 1px solid var(--line-soft);
+    border-radius: 4px; padding: 1.5px 5px; color: #e6eefc; white-space: nowrap;
+  }
+  a { color: var(--accent); }
+  pre code {
+    display: block; white-space: pre; background: none; border: 0; padding: 0;
+    font: inherit; color: inherit; border-radius: 0;
+  }
+
+  ul.tight { margin: 0 0 16px; padding-left: 20px; max-width: 74ch; color: #c9d1dd; }
+  ul.tight li { margin-bottom: 7px; }
+
+  .callout {
+    border-left: 2px solid var(--accent); background: linear-gradient(90deg, rgba(94,224,200,.06), transparent 60%);
+    padding: 16px 20px; margin: 22px 0; border-radius: 0 6px 6px 0;
+  }
+  .callout p:last-child { margin-bottom: 0; }
+  .callout .k { font: 600 10px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--accent); display: block; margin-bottom: 8px; }
+
+  figure { margin: 26px 0 34px; }
+  figure svg { width: 100%; height: auto; display: block; }
+  figcaption {
+    font: 12px/1.55 var(--mono); color: var(--dim); margin-top: 14px;
+    padding-top: 12px; border-top: 1px solid var(--line-soft);
+  }
+  figcaption b { color: var(--muted); font-weight: 600; }
+
+  table { width: 100%; border-collapse: collapse; margin: 20px 0 26px; font-size: 14px; }
+  th {
+    text-align: left; font: 600 10px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase;
+    color: var(--dim); padding: 0 14px 10px 0; border-bottom: 1px solid var(--line);
+  }
+  td { padding: 11px 14px 11px 0; border-bottom: 1px solid var(--line-soft); vertical-align: top; color: #c9d1dd; }
+  td:last-child, th:last-child { padding-right: 0; }
+  td.path { font: 12px/1.5 var(--mono); color: var(--muted); white-space: nowrap; }
+  td.path em { color: var(--dim); font-style: normal; }
+  tr.hot td:first-child { color: var(--warn); }
+  td .why { display: block; color: var(--dim); font-size: 13px; margin-top: 3px; }
+  td code { white-space: normal; overflow-wrap: break-word; }
+
+  /* long multi-path cells wrap instead of forcing a column wide */
+  td.path { white-space: normal; overflow-wrap: break-word; }
+  table.tickets td:nth-child(1), table.tickets th:nth-child(1) { width: 5%; }
+  table.tickets td:nth-child(2), table.tickets th:nth-child(2) { width: 44%; }
+  table.tickets td:nth-child(3), table.tickets th:nth-child(3) { width: 26%; }
+  table.tickets td:nth-child(4), table.tickets th:nth-child(4) { width: 25%; }
+
+  pre {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+    padding: 18px 20px; overflow-x: auto; margin: 16px 0 24px;
+    font: 13px/1.65 var(--mono); color: #d5deeb; tab-size: 2;
+  }
+  pre .c { color: var(--dim); }
+  pre .k { color: var(--amber); }
+  pre .t { color: var(--accent); }
+  pre .bad { color: var(--warn); }
+  .filename {
+    font: 600 10.5px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase;
+    color: var(--dim); margin: 26px 0 -6px; display: block;
+  }
+
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 20px 22px; }
+  .card h4 { margin: 0 0 10px; font: 600 11px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+  .card p { font-size: 14px; color: #c1cad7; margin-bottom: 0; }
+  .card.bad h4 { color: var(--warn); }
+  .card.good h4 { color: var(--accent); }
+
+  .flow { font: 12.5px/1.9 var(--mono); color: var(--muted); }
+  .flow b { color: var(--ink); font-weight: 600; }
+  .flow .ar { color: var(--accent); }
+
+  footer { margin-top: 90px; padding-top: 24px; border-top: 1px solid var(--line-soft); color: var(--dim); font: 12px/1.7 var(--mono); }
+
+  /* SVG label styles */
+  .svgH { font: 11.5px/1 var(--mono); fill: var(--muted); letter-spacing: .03em; }
+  .svgN { font: 11px/1 var(--mono); fill: var(--dim); }
+  .svgC { font: 11.5px/1 var(--mono); fill: #b6c0ce; }
+  .svgCb { font: 600 12px/1 var(--mono); fill: var(--ink); }
+  .svgBad { font: 11.5px/1 var(--mono); fill: var(--warn); }
+  .svgAcc { font: 11px/1 var(--mono); fill: var(--accent); letter-spacing: .06em; }
+
+  @media (max-width: 720px) {
+    .wrap { padding: 44px 18px 90px; }
+    h1 { font-size: 30px; }
+    .grid2 { grid-template-columns: 1fr; }
+    td.path { white-space: normal; }
+  }
+  @media print {
+    :root { --bg: #fff; --panel: #f7f8fa; --panel-2: #f2f4f7; --line: #ccd2da; --line-soft: #e2e6eb;
+            --ink: #14181f; --muted: #4d5765; --dim: #6d7887; --accent: #0a7d6b; --warn: #b3261e; --amber: #8a5a00; }
+    body { font-size: 11pt; }
+    .wrap { max-width: none; padding: 0; }
+    section { break-inside: auto; page-break-inside: auto; }
+    figure, pre, table, .card { page-break-inside: avoid; }
+    nav.toc { display: none; }
+    p, td { color: #14181f; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="masthead">
+  <p class="eyebrow">Build proposal · packages/cli</p>
+  <h1>tsdown out, Perry in</h1>
+  <p class="sub">
+    tsdown emits one JS file that only runs if the user has Bun. Perry compiles the same TypeScript
+    into a native executable that runs if the user has nothing. That is not a bundler swap — it is a
+    distribution-model swap, so this plan probes compatibility first, swaps the build second, and
+    states plainly what npm users and the release matrix get instead.
+  </p>
+  <div class="meta">
+    <span class="tag">base <b>10a9bd7</b></span>
+    <span class="tag">cli <b>1040</b> lines / <b>5</b> modules</span>
+    <span class="tag">tsdown <b>0.22.3</b></span>
+    <span class="tag">perry <b>@perryts/perry</b> pinned</span>
+    <span class="tag">scriptc <b>rejected</b> — no <code>bun:sqlite</code></span>
+    <span class="tag">artifacts <b>1 JS</b> → <b>7 native</b></span>
+    <span class="tag">lib / tests <b>unchanged</b></span>
+  </div>
+  <nav class="toc">
+    <a href="#today">01 Today</a>
+    <a href="#perry">02 What Perry is</a>
+    <a href="#bidders">03 Perry vs scriptc</a>
+    <a href="#fork">04 The fork</a>
+    <a href="#shape">05 Target shape</a>
+    <a href="#surface">06 Port surface</a>
+    <a href="#tickets">07 Tickets</a>
+    <a href="#gates">08 Gates</a>
+    <a href="#release">09 CI &amp; release</a>
+    <a href="#risks">10 Risks</a>
+    <a href="#open">11 OPEN — your calls</a>
+  </nav>
+</header>
+
+<section id="today">
+  <h2><span class="n">01</span>Today</h2>
+
+  <p class="lead">
+    One config file, thirteen lines, one entry, one output. The whole build is
+    <code>tsdown</code> plus a shebang — and the shebang is the reason the artifact needs Bun.
+  </p>
+
+  <span class="filename">packages/cli/tsdown.config.ts</span>
+<pre><code>export default defineConfig({
+  entry: ["src/bin.ts"],
+  format: "esm",
+  clean: true,
+  dts: false,
+  sourcemap: true,
+  target: "node20",
+  unbundle: true,
+})</code></pre>
+
+  <table>
+    <thead><tr><th>Fact</th><th>Where</th></tr></thead>
+    <tbody>
+      <tr><td>Build script is one word</td><td class="path">packages/cli/package.json <em>"build": "tsdown"</em></td></tr>
+      <tr><td>Output is one file, <code>dist/bin.mjs</code></td><td class="path">package.json <em>bin.tokrec</em>, <em>files: ["dist"]</em></td></tr>
+      <tr><td>Artifact starts with <code>#!/usr/bin/env bun</code></td><td class="path">src/bin.ts <em>line 1</em></td></tr>
+      <tr><td>Artifact imports <code>bun:sqlite</code> — Bun-only, no Node fallback</td><td class="path">src/browser-cookies.ts <em>line 9</em></td></tr>
+      <tr><td>Runtime deps: <code>@zfadhli/tokrec</code>, <code>cac</code>, <code>execa</code>, <code>yocto-spinner</code>, <code>yoctocolors</code></td><td class="path">packages/cli/package.json <em>dependencies</em></td></tr>
+      <tr><td>Release order is load-bearing: lib before cli</td><td class="path">AGENTS.md <em>Workspace invariants</em></td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout">
+    <span class="k">Consequence</span>
+    <p>
+      <code>unbundle: true</code> means the shipped file is a thin graph of <code>.mjs</code> modules that
+      resolve npm deps at runtime on the user's Bun. Perry cannot consume that shape: it wants sources
+      and it produces a binary. So the entry moves to <code>src/bin.ts</code> verbatim, and the
+      <code>dist/</code> tree stops existing.
+    </p>
+  </div>
+</section>
+
+<section id="perry">
+  <h2><span class="n">02</span>What Perry is</h2>
+
+  <p>
+    Perry is an ahead-of-time compiler, not a bundler. Rust host, SWC for parsing, LLVM 22 in-process
+    for codegen, and a native stdlib that replaces the Node/Bun built-ins it claims to support.
+    <code>perry compile src/main.ts -o myapp</code> writes a single self-contained executable —
+    ~330 KB for hello world — with no engine inside.
+  </p>
+
+  <p>What matters for <em>this</em> repo, from its own docs:</p>
+
+  <table>
+    <thead><tr><th>Capability</th><th>Perry answer</th><th>Hits us at</th></tr></thead>
+    <tbody>
+      <tr><td><code>bun:sqlite</code></td><td>Natively implemented alongside <code>node:sqlite</code> and <code>better-sqlite3</code></td><td class="path">src/browser-cookies.ts:9</td></tr>
+      <tr><td><code>node:fs</code>, <code>node:path</code>, <code>node:os</code></td><td>Native stdlib</td><td class="path">bin.ts, browser-cookies.ts</td></tr>
+      <tr><td><code>node:child_process</code></td><td>Native stdlib</td><td class="path">src/tmux.ts (via execa), lib io/media/ffmpeg.ts</td></tr>
+      <tr><td>npm packages</td><td>Compiled from source only if listed in <code>perry.compilePackages</code> <em>and</em> allowed by <code>perry.allow.compilePackages</code>; otherwise routed through an embedded V8 runtime</td><td>all five deps</td></tr>
+      <tr><td>Compat precheck</td><td><code>perry check src/</code> — no binary emitted</td><td>new CI step</td></tr>
+      <tr><td>Build-time constants</td><td><code>--define NAME=EXPR</code></td><td>replaces <code>import pkg from "../package.json"</code></td></tr>
+      <tr><td>Output types</td><td><code>executable</code> (default), <code>dylib</code>, <code>staticlib</code></td><td>we want <code>executable</code></td></tr>
+      <tr><td>JS output</td><td>Only <code>--target web</code> / <code>wasm</code>, aimed at browsers</td><td>not a substitute for <code>dist/bin.mjs</code></td></tr>
+    </tbody>
+  </table>
+
+  <p>
+    The "otherwise routed through an embedded V8" line is the one that decides whether this is worth
+    doing: a dep left out of <code>compilePackages</code> keeps the JS runtime in the binary and
+    forfeits the entire reason to compile. So the dep list is not an optimization — it is the
+    acceptance criterion.
+  </p>
+
+  <div class="callout">
+    <span class="k">Target table trap</span>
+    <p>
+      On Linux, Perry's <code>--target linux</code> is documented as a <strong>GTK4 executable</strong>.
+      A CLI must never link GTK4. The headless options are <code>--target linux-musl</code>
+      (fully static, "headless/server") and the explicit glibc <code>linux-x86_64</code> /
+      <code>linux-aarch64</code>. Which one produces a GUI-free binary is probe <b>P0-1</b>, not an
+      assumption.
+    </p>
+  </div>
+</section>
+
+<section id="bidders">
+  <h2><span class="n">03</span>Bidders: Perry vs scriptc</h2>
+
+  <p class="lead">
+    Two compilers claim the same job: TypeScript in, native executable out, no engine inside. They
+    differ on the one axis this repo actually needs — whether the runtime APIs and npm packages it
+    uses are inside or outside the supported subset, and what happens when they are outside.
+  </p>
+
+  <table>
+    <thead><tr><th>Axis</th><th>Perry <em>@perryts/perry 0.5.1520</em></th><th>scriptc <em>0.3.6</em></th></tr></thead>
+    <tbody>
+      <tr>
+        <td>Compiler core</td>
+        <td>Rust host · SWC parse · LLVM 22 in-process · native stdlib per API</td>
+        <td>TypeScript host · codegen driven by the types the TypeScript checker proved · own native runtime</td>
+      </tr>
+      <tr>
+        <td>Status</td>
+        <td>Pre-1.0, 5.0k stars, 1,520 patches, dated npm release</td>
+        <td>Pre-1.0, 6.2k stars, <strong>Vercel Labs calls it an <em>experiment</em></strong>, 62 releases</td>
+      </tr>
+      <tr>
+        <td>npm dependency model</td>
+        <td>Opt-in: listed in <code>compilePackages</code> <em>and</em> allowed by <code>allow.compilePackages</code></td>
+        <td>Automatic: whatever the program imports is compiled in; no allow list</td>
+      </tr>
+      <tr class="hot">
+        <td>Dep the compiler can't handle</td>
+        <td>Falls back to an embedded V8 runtime — ships, just fatter</td>
+        <td>Build fails with a diagnostic and a rewrite hint — no fallback exists</td>
+      </tr>
+      <tr class="hot">
+        <td><code>bun:sqlite</code> <span class="why">only non-JS API in the graph</span></td>
+        <td>Native; documented alongside <code>node:sqlite</code> and <code>better-sqlite3</code></td>
+        <td><strong>Absent</strong> — zero mentions of SQLite in its entire 248 KB documentation dump</td>
+      </tr>
+      <tr>
+        <td>Compatibility probe</td>
+        <td><code>perry check &lt;entry&gt;</code></td>
+        <td><code>scriptc coverage &lt;entry&gt;</code> — "reports what compiles and what blocks the rest"</td>
+      </tr>
+      <tr>
+        <td>Cross-compile</td>
+        <td><code>--target linux-x86_64|linux-aarch64|*-musl|windows-x86_64</code>, plus Apple targets on Apple hosts</td>
+        <td><code>SCRIPTC_TARGET</code> + per-target <code>@scriptc/runtime-&lt;triple&gt;</code> pack + zig as linker</td>
+      </tr>
+      <tr>
+        <td>Host requirement</td>
+        <td>Linker + platform SDK; <code>perry doctor</code> verifies</td>
+        <td>Linker + platform SDK; Node 24 just to install; zig for anything cross</td>
+      </tr>
+      <tr>
+        <td>Bonus outputs</td>
+        <td><code>dylib</code>, <code>staticlib</code>, <code>--target web|wasm</code></td>
+        <td><code>--emit=asm|obj|exe</code>, WASI Preview 1, iOS/Android static libs, native C-ABI FFI, <code>comptime</code></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>What that means for this CLI</h3>
+
+  <p>
+    The CLI's non-JS dependency surface is exactly one line — <code>import { Database } from "bun:sqlite"</code>
+    at <code>src/browser-cookies.ts:9</code>, used to read Firefox's cookie store. Perry implements that module;
+    scriptc does not, and by design cannot fall back to an engine, so the whole build fails. Swapping
+    the build tool would therefore mean rewriting Firefox cookie extraction on top of a pure-TS SQLite
+    reader — a feature regression funded by a build-tool change. That settles the compiler choice on
+    capability, not taste.
+  </p>
+
+  <figure>
+    <svg viewBox="0 0 900 150" role="img" aria-label="Build outcome for the CLI under each compiler">
+      <rect x="0" y="0" width="900" height="150" fill="none"/>
+      <text class="svgH" x="0" y="14">CLI graph → compiler → outcome</text>
+
+      <text class="svgC" x="0" y="46">src/bin.ts + 5 deps + bun:sqlite</text>
+      <path d="M 250 42 L 300 42" stroke="#5ee0c8" stroke-width="1.5"/>
+      <text class="svgAcc" x="306" y="46">perry</text>
+      <path d="M 360 42 L 410 42" stroke="#5ee0c8" stroke-width="1.5"/>
+      <text class="svgCb" x="418" y="46">native binary, sqlite compiled in</text>
+      <text class="svgAcc" x="700" y="46">✓ ships</text>
+
+      <text class="svgC" x="0" y="82">same graph</text>
+      <path d="M 250 78 L 300 78" stroke="#ff8a80" stroke-width="1.5"/>
+      <text class="svgBad" x="306" y="82">scriptc</text>
+      <path d="M 372 78 L 410 78" stroke="#ff8a80" stroke-width="1.5" stroke-dasharray="4 3"/>
+      <text class="svgBad" x="418" y="82">SC error: bun:sqlite unsupported</text>
+      <text class="svgBad" x="700" y="82">✗ no fallback</text>
+
+      <text class="svgN" x="0" y="118">Perry also compiles it with node:sqlite or better-sqlite3 if the import is ever changed — the module is not the binding.</text>
+      <text class="svgN" x="0" y="136">scriptc's decisive advantage is the opposite axis: no compilePackages bookkeeping for the four pure-JS deps.</text>
+    </svg>
+    <figcaption><b>Fig 1.</b> Where the two compilers diverge on this repo. Both are pre-1.0 and both can emit an executable; only one of them can absorb the cookie store today.</figcaption>
+  </figure>
+
+  <div class="callout">
+    <span class="k">Decision</span>
+    <p>
+      <strong>Perry.</strong> Not because it compiles better — scriptc's type-driven codegen is arguably
+      the cleaner idea, and its automatic dependency compilation removes the <code>compilePackages</code>
+      + allow-list ceremony entirely. Perry wins because this repo needs exactly one API that scriptc
+      lacks, and because Perry degrades to an embedded runtime instead of refusing to build. Keep this
+      section as the record of why the alternative was rejected.
+    </p>
+  </div>
+
+  <p>
+    One cross-check survives the decision: <code>scriptc coverage packages/cli/src/bin.ts</code> costs a
+    single command in the same throwaway P0 branch and returns an <em>independent</em> verdict on which
+    of the five deps are portable. If scriptc rejects <code>execa</code> too, the P2 rewrite is no longer
+    a Perry quirk — it is a property of the code, and the ticket gets cheaper to justify.
+  </p>
+</section>
+
+<section id="fork">
+  <h2><span class="n">04</span>The fork</h2>
+
+  <p class="lead">
+    Perry produces executables. npm <code>bin</code> fields point at files inside the package. Those
+    two sentences do not compose without a decision, and the decision is not reversible in a patch
+    release.
+  </p>
+
+  <div class="grid2">
+    <div class="card bad">
+      <h4>A — keep a JS dist</h4>
+      <p>
+        Perry has no node-target JS emitter, so this means building with <code>bun build</code> and
+        keeping the Bun shebang. Nothing is gained, and the CLI keeps requiring Bun on the user's
+        machine. Rejected — it is a rename, not a refactor.
+      </p>
+    </div>
+    <div class="card good">
+      <h4>B — ship native binaries</h4>
+      <p>
+        <code>@zfadhli/tokrec-cli</code> becomes a launcher plus seven <code>optionalDependencies</code>
+        platform packages, esbuild/Biome style. <code>tokrec</code> stops needing Bun, Node, or any
+        runtime. This is the plan.
+      </p>
+    </div>
+  </div>
+
+  <p>What option B costs, stated once:</p>
+
+  <ul class="tight">
+    <li><strong>Seven build artifacts instead of one</strong> — a CI matrix, not a single <code>bun run build</code>.</li>
+    <li><strong>A 25–35 line JS launcher stays</strong> — npm still needs a JS <code>bin</code> entry to pick the right platform binary. It is committed, never built.</li>
+    <li><strong>Release tooling grows</strong> — a script that stamps and publishes the platform packages before the launcher package.</li>
+    <li><strong>Compiler becomes a build-time dependency</strong> — pinned, with <code>perry doctor</code> in CI and its object cache gitignored.</li>
+  </ul>
+
+  <p>What option B buys, stated once:</p>
+
+  <ul class="tight">
+    <li><code>packages/cli</code> published with <strong>zero runtime dependencies</strong> — the five deps are compiled in.</li>
+    <li><strong>Publish-order invariant dissolves for the CLI</strong> — the binary embeds the library, so <code>@zfadhli/tokrec</code> no longer has to exist on the registry before the CLI is published.</li>
+    <li><strong>Bun requirement disappears</strong> from <code>engines</code> and from the shebang; <code>npx tokrec</code> works on a machine that has only Node for npm itself.</li>
+    <li><strong>Cold start drops to process spawn</strong> — no engine boot for a 2-second <code>--help</code>.</li>
+  </ul>
+</section>
+
+<section id="shape">
+  <h2><span class="n">05</span>Target shape</h2>
+
+  <span class="filename">build graph — before → after</span>
+<pre><code><span class="c">before</span>
+  packages/tokrec/src  ──tsdown──▶  packages/tokrec/dist/index.mjs
+                                              │
+  packages/cli/src     ──tsdown──▶  packages/cli/dist/bin.mjs  ──npm bin──▶  <span class="t">bun</span>
+                                              │
+                                     resolves cac/execa/yocto*/lib at runtime
+
+<span class="c">after</span>
+  packages/tokrec/src  ──tsdown──▶  packages/tokrec/dist/…        <span class="c">(library users, unchanged)</span>
+
+  packages/tokrec/src  ─┐
+  packages/cli/src     ─┴─perry──▶  build/tokrec-&lt;platform&gt;       <span class="c">(native, static)</span>
+                                              │
+                                     scripts/pack-cli-platforms.ts
+                                              │
+                       @zfadhli/tokrec-cli-{linux,darwin,win32}-…  ──optionalDependencies──▶
+                       @zfadhli/tokrec-cli/bin/tokrec.mjs  ──npm bin──▶  <span class="t">exec binary</span></code></pre>
+
+  <p>
+    The lib keeps tsdown and its <code>dts</code> build: it is still published as a library, still
+    consumed by Node and Bun users, still exports the same 12 types and 6 values. The <code>perry</code>
+    compile reads the lib's <em>sources</em> through the workspace link, so the CLI binary carries the
+    library inlined and the CLI package drops its <code>@zfadhli/tokrec</code> dependency.
+  </p>
+
+  <table>
+    <thead><tr><th>Package</th><th>Before</th><th>After</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><code>@zfadhli/tokrec-cli</code> <em>bin field</em></td>
+        <td class="path">./dist/bin.mjs</td>
+        <td class="path">./bin/tokrec.mjs <em>(committed launcher)</em></td>
+      </tr>
+      <tr>
+        <td><em>files</em></td><td class="path">["dist"]</td><td class="path">["bin"]</td>
+      </tr>
+      <tr>
+        <td><em>dependencies</em></td>
+        <td class="path">lib + cac + execa + yocto-spinner + yoctocolors</td>
+        <td class="path">— <em>(all five move to devDependencies)</em></td>
+      </tr>
+      <tr>
+        <td><em>optionalDependencies</em></td><td class="path">—</td><td class="path">7 × <code>@zfadhli/tokrec-cli-&lt;os&gt;-&lt;arch&gt;</code> @ <code>0.16.0</code></td>
+      </tr>
+      <tr>
+        <td><em>scripts.build</em></td><td class="path">tsdown</td><td class="path">perry compile src/bin.ts</td>
+      </tr>
+      <tr>
+        <td><em>engines</em></td><td class="path">bun &gt;=1.2 (inherited)</td><td class="path">none</td>
+      </tr>
+      <tr>
+        <td><em>tsdown.config.ts</em></td><td class="path">13 lines</td><td class="path"><span class="bad">deleted</span></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <span class="filename">packages/cli/package.json — new fragments</span>
+<pre><code>{
+  "bin": { "tokrec": "./bin/tokrec.mjs" },
+  "files": ["bin"],
+  "perry": {
+    "compilePackages": ["@zfadhli/tokrec", "cac", "execa", "yocto-spinner", "yoctocolors"],
+    "allow": { "compilePackages": ["@zfadhli/*", "cac", "execa", "yocto-*", "yoctocolors"] }
+  },
+  "optionalDependencies": {
+    "@zfadhli/tokrec-cli-linux-x64":      "0.16.0",
+    "@zfadhli/tokrec-cli-linux-arm64":    "0.16.0",
+    "@zfadhli/tokrec-cli-linux-x64-musl": "0.16.0",
+    "@zfadhli/tokrec-cli-linux-arm64-musl":"0.16.0",
+    "@zfadhli/tokrec-cli-darwin-arm64":   "0.16.0",
+    "@zfadhli/tokrec-cli-darwin-x64":     "0.16.0",
+    "@zfadhli/tokrec-cli-win32-x64":      "0.16.0"
+  }
+}</code></pre>
+
+  <span class="filename">packages/cli/bin/tokrec.mjs — the launcher (committed, not built)</span>
+<pre><code>#!/usr/bin/env node
+// Picks the platform package, hands over argv, and mirrors the child's exit.
+import { spawnSync } from "node:child_process"
+import { createRequire } from "node:module"
+
+const require = createRequire(import.meta.url)
+const libc = process.report?.getReport?.().header?.glibcVersionRuntime ? "" : "-musl"
+const name = process.platform === "linux"
+  ? `linux-${process.arch}${libc}`
+  : `${process.platform}-${process.arch}`
+
+let bin
+try {
+  bin = require.resolve(`@zfadhli/tokrec-cli-${name}/tokrec`)
+} catch {
+  console.error(`tokrec: no native build for ${process.platform}/${process.arch}${libc}`)
+  console.error("tokrec ships linux, darwin and win32 builds — open an issue if yours is missing.")
+  process.exit(1)
+}
+const { status, signal } = spawnSync(bin, process.argv.slice(2), { stdio: "inherit" })
+if (signal) process.kill(process.pid, signal)
+process.exit(status ?? 1)</code></pre>
+
+  <p>
+    <code>spawnSync</code> rather than <code>spawn</code>: <code>tokrec</code> is long-running and owns
+    the terminal's signal handling itself, so the launcher must not become a second signal broker. Its
+    only jobs are resolving, forwarding argv, and returning the child's status.
+  </p>
+</section>
+
+<section id="surface">
+  <h2><span class="n">06</span>Port surface</h2>
+
+  <p>Every import the CLI graph pulls in, and what Perry does with it. Nothing here is optional — an unported package means an embedded V8.</p>
+
+  <table class="deps">
+    <thead><tr><th>Dep</th><th>Used at</th><th>Shape</th><th>Expectation</th></tr></thead>
+    <tbody>
+      <tr><td><code>@zfadhli/tokrec</code></td><td class="path">bin.ts, cli.ts, ui.ts</td><td>workspace TS sources</td><td>Compiles if Perry resolves the workspace link and the <code>"bun"</code> export condition — probe <b>P0-2</b>. Falls back to <code>dist/index.mjs</code>, which restores the lib-before-cli build order but not a runtime dep.</td></tr>
+      <tr><td><code>cac</code></td><td class="path">cli.ts:8</td><td>pure JS, ~200 lines, class + proxy-free</td><td>High confidence. Pure JS, no AST tricks.</td></tr>
+      <tr><td><code>yoctocolors</code></td><td class="path">bin, cli, ui</td><td>pure JS, reads <code>process.env</code> / tty flags</td><td>High confidence.</td></tr>
+      <tr><td><code>yocto-spinner</code></td><td class="path">ui.ts:15</td><td>pure JS, <code>setInterval</code> + <code>stderr.write</code></td><td>Medium. Timers and raw tty writes are where AOT runtimes diverge; probe <b>P0-3</b>.</td></tr>
+      <tr><td><code>execa</code></td><td class="path">cli/src/tmux.ts (6 sites), lib io/media/ffmpeg.ts:54</td><td>ESM, builds on <code>node:child_process</code>, streams, <code>signal</code>, cross-spawn on Windows</td><td><span class="bad">Lowest confidence.</span> Probe <b>P0-4</b>. Fallback is local, not a port: 6 call sites need only <code>{ exitCode, stdout }</code> with <code>reject: false</code>.</td></tr>
+      <tr><td><code>../package.json</code></td><td class="path">cli.ts:10</td><td>static JSON import</td><td>Replaced regardless: <code>--define TOKREC_VERSION="0.16.0"</code> is documented and removes a file read from startup.</td></tr>
+      <tr><td><code>bun:sqlite</code></td><td class="path">browser-cookies.ts:9</td><td><code>new Database(path, { readonly: true })</code>, <code>.query().all()</code></td><td>Documented as native. The exact call shape is probe <b>P0-3</b>.</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout">
+    <span class="k">Scope note</span>
+    <p>
+      The CLI's graph includes <code>packages/tokrec/src</code>, so a Perry build makes lib source
+      changes unavoidable if <code>execa</code> fails. Those changes stay behaviour-neutral and are
+      covered by the existing <code>job</code>/<code>ffmpeg</code> tests — but they are a lib diff in a
+      "CLI build" plan, so they get their own ticket and their own commit.
+    </p>
+  </div>
+</section>
+
+<section id="tickets">
+  <h2><span class="n">07</span>Tickets</h2>
+
+  <p>
+    P0 is a probe, not an implementation: it exists to convert the table above into measured facts, and
+    its output decides whether P2 and P3 are one ticket or three. Nothing merges from P0 except the
+    answers.
+  </p>
+
+  <table class="tickets">
+    <thead><tr><th>#</th><th>Ticket</th><th>Files</th><th>Exit criterion</th></tr></thead>
+    <tbody>
+      <tr class="hot">
+        <td><b>P0</b></td>
+        <td>
+          Probe, time-boxed, throwaway branch
+          <span class="why">P0-1 headless Linux target · P0-2 lib resolution mode · P0-3 runtime API subset (spinner, sqlite) · P0-4 execa · P0-5 binary size + cold start · P0-6 <code>scriptc coverage</code> as an independent read on dep portability</span>
+        </td>
+        <td class="path">none committed</td>
+        <td><code>perry check packages/cli/src/bin.ts</code> verdict, plus a binary that prints the real <code>--help</code></td>
+      </tr>
+      <tr>
+        <td><b>P1</b></td>
+        <td>Version via define; drop the JSON import</td>
+        <td class="path">cli/src/cli.ts, cli/package.json</td>
+        <td><code>tokrec --version</code> still prints <code>tokrec/0.16.0</code>; <code>bun test</code> green</td>
+      </tr>
+      <tr>
+        <td><b>P2</b></td>
+        <td>
+          <em>Only if P0-4 fails.</em> Local <code>spawn</code> helper replaces execa
+          <span class="why">cli/src/tmux.ts is 6 call sites needing exitCode/stdout; lib io/media/ffmpeg.ts:54 needs one probe call. Commit separately per package.</span>
+        </td>
+        <td class="path">cli/src/tmux.ts (+ helper), packages/tokrec/src/io/media/ffmpeg.ts</td>
+        <td>tmux tests and ffmpeg tests green on Bun</td>
+      </tr>
+      <tr>
+        <td><b>P3</b></td>
+        <td>Swap the build: perry compile, delete tsdown config</td>
+        <td class="path">cli/package.json, cli/tsdown.config.ts <em>(deleted)</em>, root package.json</td>
+        <td><code>bun run build</code> yields <code>build/tokrec</code>; runs standalone with <code>node_modules</code> renamed</td>
+      </tr>
+      <tr>
+        <td><b>P4</b></td>
+        <td>Launcher + platform packages + packing script</td>
+        <td class="path">cli/bin/tokrec.mjs, cli/package.json, scripts/pack-cli-platforms.ts</td>
+        <td><code>npm pack</code> of the launcher and one platform package installs and runs <code>--help</code></td>
+      </tr>
+      <tr>
+        <td><b>P5</b></td>
+        <td>CI: <code>perry check</code> on PR, build matrix on release</td>
+        <td class="path">.github/workflows/ci.yml, publish.yml</td>
+        <td>Matrix produces 7 binaries; PR job fails when a dep stops compiling</td>
+      </tr>
+      <tr>
+        <td><b>P6</b></td>
+        <td>Docs truth pass</td>
+        <td class="path">AGENTS.md, CHANGELOG.md, README install text, .gitignore</td>
+        <td>No doc still claims the CLI needs Bun or that lib-before-cli is required for the CLI</td>
+      </tr>
+      <tr>
+        <td><b>P7</b></td>
+        <td>Live verification on the Perry binary (carries the open item from the slimming series)</td>
+        <td class="path">none</td>
+        <td><code>./build/tokrec -u tya25108</code> → Ctrl+C mid-stream → shutdown line, then <code>Converted: ….mp4</code>, <code>.ts</code> unlinked</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>
+    P1 is deliberately independent of Perry: it removes a runtime file read and shrinks the port
+    surface, and it is revertible on its own. P3 and P4 are the point of no return and land as one
+    commit or not at all — a half-swapped build is worse than tsdown.
+  </p>
+</section>
+
+<section id="gates">
+  <h2><span class="n">08</span>Gates</h2>
+
+  <p>Every ticket, from the repo root, exit status checked — same discipline as the slimming series:</p>
+
+<pre><code>bun run lint       <span class="c"># biome</span>
+bun run typecheck  <span class="c"># tsc --noEmit, both packages</span>
+bun test           <span class="c"># 13 files / 136 pass / 231 expects, unchanged</span>
+bun run build      <span class="c"># lib tsdown, then cli perry</span></code></pre>
+
+  <p>P3 onward adds three gates tsdown never had:</p>
+
+  <table>
+    <thead><tr><th>Gate</th><th>Command</th><th>Passes when</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>No JS runtime inside</td>
+        <td><code>perry check packages/cli/src/bin.ts</code></td>
+        <td>Zero unresolved entries — every dep is in <code>compilePackages</code>. A V8 fallback is a failed gate, not a warning.</td>
+      </tr>
+      <tr>
+        <td>Output parity</td>
+        <td><code>diff &lt;(bun run dev --help) &lt;(./build/tokrec --help)</code></td>
+        <td>Empty diff. Same for <code>--version</code> and <code>bun run dev status</code>.</td>
+      </tr>
+      <tr>
+        <td>Runtime-free execution</td>
+        <td><code>mv node_modules node_modules.off; ./build/tokrec --help</code></td>
+        <td>Works. A binary that still needs <code>node_modules</code> failed to inline a dep.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout">
+    <span class="k">Non-negotiable</span>
+    <p>
+      <code>bun test</code> stays on Bun and stays green throughout. Perry never runs the test suite —
+      it compiles the CLI only. Tests exercising <code>parseArgs</code>, the option table, and the
+      spinner keep running on the runtime they were written for.
+    </p>
+  </div>
+</section>
+
+<section id="release">
+  <h2><span class="n">09</span>CI &amp; release</h2>
+
+  <p>
+    Today <code>publish.yml</code> is one ubuntu runner: install, <code>bun run build</code>, publish
+    lib, publish cli. After this plan the cli publish is downstream of a build matrix, and the lib
+    publish is unrelated to it.
+  </p>
+
+<pre><code><span class="c"># ci.yml — add one job</span>
+perry-check:
+  runs-on: ubuntu-latest
+  steps:
+    - { uses: actions/checkout@v4 }
+    - { uses: oven-sh/setup-bun@v2 }
+    - run: bun install --frozen-lockfile
+    - run: bunx perry doctor
+    - run: bunx perry check packages/cli/src/bin.ts</code></pre>
+
+<pre><code><span class="c"># publish.yml — build matrix → 7 platform packages → launcher</span>
+strategy:
+  matrix:
+    include:
+      - { os: ubuntu-latest,  target: linux-x86_64,   suffix: linux-x64 }
+      - { os: ubuntu-latest,  target: linux-aarch64,  suffix: linux-arm64 }
+      - { os: ubuntu-latest,  target: linux-musl,     suffix: linux-x64-musl }
+      - { os: ubuntu-latest,  target: linux-aarch64-musl, suffix: linux-arm64-musl }
+      - { os: macos-latest,   target: "",             suffix: darwin-arm64 }
+      - { os: macos-13,       target: "",             suffix: darwin-x64 }
+      - { os: windows-latest, target: "",             suffix: win32-x64 }</code></pre>
+
+  <p>
+    macOS and Windows rows build on their own hosts because Perry's Apple and MSVC paths want the
+    platform toolchain; the four Linux rows cross-compile from one runner, including the fully static
+    musl pair. Each row uploads a binary artifact; a final job runs
+    <code>scripts/pack-cli-platforms.ts</code>, then publishes platform packages, then the launcher.
+  </p>
+
+  <table>
+    <thead><tr><th>Invariant</th><th>Before</th><th>After</th></tr></thead>
+    <tbody>
+      <tr><td>CLI needs the lib on the registry first</td><td class="path">yes — <code>workspace:^</code> rewrites</td><td class="path"><span class="bad">no</span> — lib is inlined in the binary</td></tr>
+      <tr><td>Lib publish still precedes its own consumers</td><td class="path">yes</td><td class="path">yes, unchanged</td></tr>
+      <tr><td>A cli release without a lib release</td><td class="path">impossible</td><td class="path">possible and correct</td></tr>
+      <tr><td><code>engines.bun</code> gates install</td><td class="path">yes</td><td class="path">lib only</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="risks">
+  <h2><span class="n">10</span>Risks</h2>
+
+  <table>
+    <thead><tr><th>#</th><th>Risk</th><th>Likelihood</th><th>Response</th></tr></thead>
+    <tbody>
+      <tr class="hot">
+        <td>R1</td>
+        <td><code>execa</code> does not compile, and the lib's <code>ffmpeg.ts</code> also uses it — dragging a lib diff into a CLI build plan</td>
+        <td>Medium</td>
+        <td>P2: local <code>spawn</code> helper, per package commit, existing tests prove behaviour. Time-box the port attempt; do not patch node_modules.</td>
+      </tr>
+      <tr class="hot">
+        <td>R2</td>
+        <td>Linux binary links GTK4 or needs GUI libs at runtime</td>
+        <td>Medium</td>
+        <td>P0-1 decides the target per platform. Prefer <code>linux-musl</code> static; verify with <code>ldd</code> on the artifact, and run it in a bare <code>debian:slim</code> container.</td>
+      </tr>
+      <tr>
+        <td>R3</td>
+        <td><code>bun:sqlite</code> compiles but the <code>.query().all()</code> / <code>readonly</code> shape differs at runtime</td>
+        <td>Medium</td>
+        <td>P0-3 smoke test against a fixture <code>cookies.sqlite</code>. Fallback: <code>node:sqlite</code> (also native) with a thin adapter.</td>
+      </tr>
+      <tr>
+        <td>R4</td>
+        <td>Perry ignores the <code>"bun"</code> export condition on the workspace lib and resolves <code>dist/index.mjs</code></td>
+        <td>Medium</td>
+        <td>Harmless: restores lib-before-cli <em>build</em> order (already the rule today). P0-2 reports which it is; P6 documents the winner.</td>
+      </tr>
+      <tr>
+        <td>R5</td>
+        <td>Compiler churn — a Perry minor changes codegen and the binary regresses</td>
+        <td>Medium</td>
+        <td>Pin an exact <code>@perryts/perry</code> version in root <code>devDependencies</code>, commit <code>bun.lock</code>, and gate on <code>perry check</code> in CI so the upgrade is a deliberate PR.</td>
+      </tr>
+      <tr>
+        <td>R6</td>
+        <td>Binary size or cold start is worse than the Bun artifact</td>
+        <td>Low</td>
+        <td>P0-5 measures both. If it loses, the plan still holds on the runtime-dependency and publish-order wins — but say so in the CHANGELOG instead of claiming speed.</td>
+      </tr>
+      <tr>
+        <td>R7</td>
+        <td>Windows build fails on <code>node:sqlite</code> paths, cookie lookup, or MSVC</td>
+        <td>Medium</td>
+        <td>Windows is the last matrix row. If it fails, 0.16.0 ships six platform packages and the launcher prints the existing "no native build" message. Deferring Windows is acceptable; silently publishing a broken one is not.</td>
+      </tr>
+      <tr>
+        <td>R8</td>
+        <td>ANSI/spinner output differs between runtimes</td>
+        <td>Low</td>
+        <td>The <code>--help</code> diff gate catches it; the spinner is behind a tty check and a fake-spinner path in tests.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>Non-goals</h3>
+  <ul class="tight">
+    <li>Compiling the <code>@zfadhli/tokrec</code> <em>library</em> to native. It stays a tsdown library with declared types.</li>
+    <li>Replacing <code>bun test</code> or <code>perry dev</code> as the dev loop. Perry builds cold in ~15 s; the dev loop stays <code>bun run dev</code>.</li>
+    <li>Homebrew, winget, or standalone GitHub binary downloads. They become easy once the matrix exists, and they are a separate decision.</li>
+    <li>Removing <code>bun:sqlite</code> from the lib's public surface. Nothing in the lib exports it.</li>
+  </ul>
+</section>
+
+<section id="open">
+  <h2><span class="n">11</span>OPEN — your calls</h2>
+
+  <table>
+    <thead><tr><th>#</th><th>Question</th><th>Recommendation</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>1</td>
+        <td>Native binaries for the CLI, or keep a JS dist and drop the Perry idea?</td>
+        <td>Native. A JS dist means Perry buys nothing.</td>
+      </tr>
+      <tr>
+        <td>2</td>
+        <td>Perry or <code>vercel-labs/scriptc</code>?</td>
+        <td>Perry — it implements <code>bun:sqlite</code> and degrades to an embedded runtime; scriptc refuses to build instead. If dropping Firefox cookie import is acceptable, scriptc becomes viable and its automatic dependency compilation removes the <code>compilePackages</code> bookkeeping entirely.</td>
+      </tr>
+      <tr>
+        <td>3</td>
+        <td>Windows in 0.16.0?</td>
+        <td>Attempt it, publish it only if the matrix row is green. Do not block the release on it.</td>
+      </tr>
+      <tr>
+        <td>4</td>
+        <td><code>execa</code>: probe first, or preemptively replace with a local helper?</td>
+        <td>Probe first. Rewriting six working call sites on suspicion is the thing the slimming series just spent nine commits undoing.</td>
+      </tr>
+      <tr>
+        <td>5</td>
+        <td>Version: 0.16.0, or 1.0.0 since install requirements change?</td>
+        <td>0.16.0. Semver minor for a pre-1.0 build change; the breaking note goes in the CHANGELOG body, not the version.</td>
+      </tr>
+      <tr>
+        <td>6</td>
+        <td>Does P7 (live Ctrl+C remux check) gate the release?</td>
+        <td>Yes. It is the one open item from the slimming series and the Perry binary is the honest place to finally run it.</td>
+      </tr>
+      <tr>
+        <td>7</td>
+        <td>Keep <code>perry check</code> in CI as a hard gate from P5, or advisory for a release or two?</td>
+        <td>Hard gate. Advisory gates are how a V8 fallback ships.</td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<footer>
+  Base 10a9bd7 · build:build change · sources: PerryTS/perry README, docs/src/cli/{commands,flags}.md,
+  docs/src/packages/porting.md, docs/src/stdlib/{overview,database}.md, docs/src/platforms/{macos,windows}.md ·
+  scriptc: vercel-labs/scriptc README, scriptc.dev/{docs/limitations,docs/dependencies,docs/platforms,docs/cli,llms.txt}, npm registry 0.3.6 ·
+  repo evidence: packages/cli/{package.json,tsdown.config.ts,src/bin.ts,src/browser-cookies.ts,src/cli.ts,src/tmux.ts},
+  .github/workflows/{ci,publish}.yml
+</footer>
+
+</div>
+</body>
+</html>
