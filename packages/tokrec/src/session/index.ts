@@ -23,6 +23,9 @@ import { createEventEmitter } from "./recorder-events"
 import { createRecorderState } from "./recorder-state"
 import { createStreamDownloader, type StreamDownloader } from "./stream"
 
+/** Max wait for a stop-time remux before aborting it (matches the pre-#32 cap). */
+const POST_REMUX_GRACE_MS = 10 * 60 * 1000
+
 export function createRecorder(config: RecorderConfig): RecorderController {
   const cfg = normalizeConfig(config)
   const logger = createLogger({
@@ -42,6 +45,7 @@ export function createRecorder(config: RecorderConfig): RecorderController {
   let converter: Converter | null = null
   let audioNormalizer: AudioNormalizer | null = null
   let scope: AbortScope | null = null
+  let postScope: AbortScope | null = null
   let currentJob: RecordingJob | null = null
   let recordedSec = 0
   let consecutiveErrors = 0
@@ -76,6 +80,10 @@ export function createRecorder(config: RecorderConfig): RecorderController {
     }
     const activeScope = abortScope()
     scope = activeScope
+    // Post-processing outlives a user stop: Ctrl+C aborts the download, but the
+    // partial .ts is still remuxed to .mp4 before the process exits.
+    const post = abortScope()
+    postScope = post
     currentJob = null
     recordedSec = 0
     consecutiveErrors = 0
@@ -84,7 +92,7 @@ export function createRecorder(config: RecorderConfig): RecorderController {
     httpClient = await createHttpClient(cfg)
     api = createTikTokApi(httpClient, logger, cfg.debug, activeScope.signal)
     downloader = createStreamDownloader(logger)
-    converter = createConverter(logger, activeScope.signal)
+    converter = createConverter(logger, post.signal)
     audioNormalizer = cfg.normalizeAudio
       ? createAudioNormalizer(
           {
@@ -194,7 +202,6 @@ export function createRecorder(config: RecorderConfig): RecorderController {
 
             emitter.emit("record", { phase: "download", ...result })
             recordedSec += result.duration
-            if (activeScope.signal.aborted) return
 
             const job = createRecordingJob({
               result,
@@ -203,7 +210,7 @@ export function createRecorder(config: RecorderConfig): RecorderController {
               runFfmpeg,
               converter: converter as Converter,
               audioNormalizer,
-              signal: activeScope.signal,
+              signal: post.signal,
               emitRecord: (event) => emitter.emit("record", event),
               emitProgress: (event) => emitter.emit("progress", event),
               emitFailure: (err) => emitter.emit("failure", err),
@@ -250,13 +257,18 @@ export function createRecorder(config: RecorderConfig): RecorderController {
     logger.info("Stopping recorder...")
     scope?.close("user")
 
-    const job = currentJob
-    if (job) {
-      logger.info("Waiting for active recording to finish...")
-      await job.finish()
-    }
+    const grace = setTimeout(() => postScope?.close("stop-timeout"), POST_REMUX_GRACE_MS)
+    try {
+      const job = currentJob
+      if (job) {
+        logger.info("Waiting for active recording to finish...")
+        await job.finish()
+      }
 
-    if (monitor) await monitor.stop()
+      if (monitor) await monitor.stop()
+    } finally {
+      clearTimeout(grace)
+    }
     if (httpClient) await httpClient.close()
     emitter.clear()
     stateManager.setState({ state: "stopped" })
