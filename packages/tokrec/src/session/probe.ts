@@ -17,11 +17,13 @@
  */
 
 import type { HttpClient } from "../adapters/http/wreq"
-import { createApiLiveSource } from "../adapters/tiktok/discovery/api-live"
-import { discover } from "../adapters/tiktok/discovery/chain"
+import {
+  type DiscoverySource,
+  discover,
+  type ResolveContext,
+} from "../adapters/tiktok/discovery/chain"
+import { createApiLiveSource, createProfileSource } from "../adapters/tiktok/discovery/fallback"
 import { createPageSource } from "../adapters/tiktok/discovery/page"
-import { createProfileSource } from "../adapters/tiktok/discovery/profile"
-import type { DiscoverySource, ResolveContext } from "../adapters/tiktok/discovery/types"
 import { createPageFetcher } from "../adapters/tiktok/page"
 import { createWebcastApi } from "../adapters/tiktok/webcast"
 import { isLiveReason, type Verdict, verdictOf } from "../domain/verdict"

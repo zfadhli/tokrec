@@ -6,9 +6,14 @@ import {
   extractUserFromUniversalData,
   findStreamUrlRecursively,
 } from "../parse"
-import { fromRoomInfo, miss, withStream } from "./candidates"
-import { fetchSigiLegacy } from "./sigi-legacy"
-import type { Candidate, DiscoverySource, ResolveContext } from "./types"
+import {
+  type Candidate,
+  type DiscoverySource,
+  fromRoomInfo,
+  miss,
+  type ResolveContext,
+  withStream,
+} from "./chain"
 
 /**
  * Page source: server-rendered SIGI_STATE first, then the async-loaded legacy
@@ -84,7 +89,7 @@ export function createPageSource(): DiscoverySource {
 
           // ── Legacy fallback: async-loaded SIGI_STATE ──
           ctx.debug("fetchLiveInfo: trying legacy fallback (UserModule)")
-          const legacy = take(await fetchSigiLegacy(sigi, ctx))
+          const legacy = take(await sigiLegacy(sigi, ctx))
           ctx.debug(`fetchLiveInfo: legacy fallback ${legacy ? "succeeded" : "returned null"}`)
           if (legacy) return legacy
         } // end if (sigi)
@@ -106,4 +111,32 @@ export function createPageSource(): DiscoverySource {
       return failure ?? miss("page: no room id")
     },
   }
+}
+
+/**
+ * Secondary live-info extraction when SIGI_STATE's LiveRoom data is
+ * async-loaded. Uses LiveRoom.liveRoomStatus for the live flag and
+ * UserModule.users[user].roomId for the room ID. Stream URL comes from the
+ * Webcast API (room/info/) as a final fallback.
+ */
+async function sigiLegacy(sigi: SigiState, ctx: ResolveContext): Promise<Candidate> {
+  const isLive = sigi.LiveRoom?.liveRoomStatus === 2 // 2 = live
+
+  // Try to get roomId from UserModule (usually populated even when LiveRoom is not)
+  const userModule = sigi.UserModule?.users?.[ctx.user]
+  let roomId: string | null = null
+
+  if (userModule?.roomId) {
+    roomId =
+      typeof userModule.roomId === "object"
+        ? String((userModule.roomId as { id: string }).id ?? "")
+        : String(userModule.roomId)
+  }
+
+  // No roomId available — treat as offline (room/enter was unreliable).
+  if (!roomId) return miss("sigi-legacy: no roomId")
+
+  const room: RoomRef = { id: roomId, title: null, live: isLive }
+  if (!isLive) return { kind: "room", room, stream: null, source: "sigi" }
+  return withStream(ctx, room, "sigi", null)
 }

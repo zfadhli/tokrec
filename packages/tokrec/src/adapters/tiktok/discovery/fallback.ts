@@ -1,6 +1,20 @@
+/**
+ * Fallback sources tried after the page: TikTok's own `/api-live/` endpoint,
+ * then the profile page's universal data. Both are thin, both fail into
+ * `miss`/`failed` so the chain keeps its evidence trail.
+ */
+
 import type { RoomRef } from "../../../domain/verdict"
-import { failed, miss, withStream } from "./candidates"
-import type { Candidate, DiscoverySource, ResolveContext } from "./types"
+import { extractUserFromUniversalData } from "../parse"
+import {
+  type Candidate,
+  type DiscoverySource,
+  failed,
+  fromRoomInfo,
+  miss,
+  type ResolveContext,
+  withStream,
+} from "./chain"
 
 export function createApiLiveSource(): DiscoverySource {
   return {
@@ -38,6 +52,34 @@ export function createApiLiveSource(): DiscoverySource {
 
         if (!room.live) return { kind: "room", room, stream: null, source: "api-live" }
         return withStream(ctx, room, "api-live", null)
+      } catch (error) {
+        return failed(error)
+      }
+    },
+  }
+}
+
+export function createProfileSource(): DiscoverySource {
+  return {
+    id: "profile",
+    async find(ctx: ResolveContext): Promise<Candidate> {
+      try {
+        const page = await ctx.fetchPage(ctx.user, "")
+        if (!page) {
+          ctx.debug("fetchLiveInfoFromProfile: all domains blocked for profile page")
+          return miss("profile: page blocked")
+        }
+        ctx.debug(
+          `fetchLiveInfoFromProfile: returned ${page.html.length} bytes (${page.baseUrl}), first 300: ${page.html.slice(0, 300).replace(/\n/g, "\\n")}`,
+        )
+        const { userId, roomId } = extractUserFromUniversalData(page.html)
+        if (!userId) return miss("profile: no universal data")
+        // No roomId means the user is offline (room/enter was unreliable).
+        if (!roomId) return miss("profile: user offline")
+
+        // If roomId is embedded in the profile page, the user is live.
+        // Use room/info which works reliably for both live and offline rooms.
+        return fromRoomInfo(ctx, roomId, "room-info")
       } catch (error) {
         return failed(error)
       }
