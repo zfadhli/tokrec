@@ -1,14 +1,13 @@
 /**
- * Terminal Display Manager — beautiful console output using koko-cli's
- * spinner, icons, and color utilities.
+ * Terminal Display Manager — console output via yocto-spinner and yoctocolors.
  *
  * This module owns the terminal and should be the only thing writing to
  * stdout/stderr (the file logger handles persistent logs).
  */
 
-import type { SpinnerInstance } from "@zfadhli/koko-cli"
-import { color, createSpinner } from "@zfadhli/koko-cli"
 import { formatDuration } from "@zfadhli/tokrec"
+import yoctoSpinner, { type Spinner } from "yocto-spinner"
+import * as color from "yoctocolors"
 
 // ─── Tag helpers ──────────────────────────────────────────
 const tag = {
@@ -77,7 +76,14 @@ export interface Display {
 }
 
 export function createDisplay(): Display {
-  let activeSpinner: SpinnerInstance | null = null
+  // yocto-spinner with handleSignals off: bin.ts owns SIGINT/SIGTERM teardown.
+  const stream = process.stdout
+  // Mirrors yocto-spinner's internal isInteractive(); spinner.text writes a full
+  // line when non-interactive, so per-tick updates must be skipped there.
+  const animated = Boolean(stream.isTTY && process.env.TERM !== "dumb" && !("CI" in process.env))
+  const spin = (text: string): Spinner => yoctoSpinner({ text, stream, handleSignals: false })
+
+  let activeSpinner: Spinner | null = null
   let offlineLineShown = false
 
   // Recording timer state
@@ -112,7 +118,7 @@ export function createDisplay(): Display {
 
     checkingUser(user: string): void {
       clearSpinner()
-      activeSpinner = createSpinner(color.cyan(`Checking @${user}...`))
+      activeSpinner = spin(color.cyan(`Checking @${user}...`))
       activeSpinner.start()
     },
 
@@ -160,13 +166,13 @@ export function createDisplay(): Display {
     startRecording(): void {
       clearSpinner()
       recordingStartTime = Date.now()
-      activeSpinner = createSpinner(
+      activeSpinner = spin(
         `${color.cyan("Recording...")} ${color.dim(`[${color.bold(color.yellow("0s"))}]`)}`,
       )
       activeSpinner.start()
 
       recordingTimer = setInterval(() => {
-        if (!activeSpinner?.isSpinning || !recordingStartTime) return
+        if (!animated || !activeSpinner?.isSpinning || !recordingStartTime) return
         const elapsed = (Date.now() - recordingStartTime) / 1000
         activeSpinner.text = `${color.cyan("Recording...")} ${color.dim(`[${color.bold(color.yellow(formatDuration(elapsed)))}]`)}`
       }, 1000)
@@ -185,7 +191,7 @@ export function createDisplay(): Display {
 
     startSegmenting(): void {
       clearSpinner()
-      activeSpinner = createSpinner(color.cyan("Segmenting..."))
+      activeSpinner = spin(color.cyan("Segmenting..."))
       activeSpinner.start()
     },
 
@@ -198,7 +204,7 @@ export function createDisplay(): Display {
 
     startConverting(): void {
       clearSpinner()
-      activeSpinner = createSpinner(color.cyan("Converting to MP4..."))
+      activeSpinner = spin(color.cyan("Converting to MP4..."))
       activeSpinner.start()
     },
 
@@ -208,12 +214,12 @@ export function createDisplay(): Display {
 
     normalizeStart(): void {
       clearSpinner()
-      activeSpinner = createSpinner(color.cyan("Normalizing audio..."))
+      activeSpinner = spin(color.cyan("Normalizing audio..."))
       activeSpinner.start()
     },
 
     normalizeProgress(percent: number, phase: string): void {
-      if (!activeSpinner?.isSpinning) return
+      if (!animated || !activeSpinner?.isSpinning) return
       const label = phase === "analyzing" ? "Analyzing" : "Normalizing"
       activeSpinner.text = ` ${label}... ${color.bold(color.yellow(`${percent}%`))}`
     },

@@ -6,9 +6,9 @@
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
-import { color } from "@zfadhli/koko-cli"
 import type { RecorderConfig } from "@zfadhli/tokrec"
 import { bytesToHuman, createRecorder, relativeTime, TikTokError } from "@zfadhli/tokrec"
+import * as color from "yoctocolors"
 import { extractTikTokCookiesFromFirefox } from "./browser-cookies"
 import { type CLIResult, parseArgs } from "./cli"
 import { tmuxStart, tmuxStatus, tmuxStop } from "./tmux"

@@ -15,8 +15,10 @@
   },
   "dependencies": {
     "@zfadhli/tokrec": "workspace:^",
-    "@zfadhli/koko-cli": "^0.2.1",
-    "execa": "^9.6.1"
+    "cac": "^7.0.0",
+    "execa": "^9.6.1",
+    "yocto-spinner": "^1.2.2",
+    "yoctocolors": "^2.2.0"
   },
   "license": "MIT",
   "repository": {

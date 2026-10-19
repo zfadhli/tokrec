@@ -1,11 +1,12 @@
 /**
- * CLI argument parser — uses koko-cli's createCLI (wraps cac).
+ * CLI argument parser — thin wrapper over cac.
  * Exports a single parseArgs() function.
  */
 
-import { type CommandBuilder, createCLI } from "@zfadhli/koko-cli"
 import type { LogLevel, RecorderConfig } from "@zfadhli/tokrec"
 import { sanitizeUser, TikTokError } from "@zfadhli/tokrec"
+import cac, { type Command } from "cac"
+import * as color from "yoctocolors"
 import pkg from "../package.json"
 
 export type CLIResult =
@@ -16,7 +17,7 @@ export type CLIResult =
   | { command: "setup" }
 
 /** Shared recorder options for both default and start commands. */
-function registerRecorderOptions(cmd: CommandBuilder) {
+function registerRecorderOptions(cmd: Command) {
   cmd.option("-u, --user <name>", "TikTok username (or pass as first argument)")
   cmd.option("-o, --output <dir>", "Output directory", {
     default: ".",
@@ -103,57 +104,63 @@ function parseRecorderOpts(opts: Record<string, unknown>): RecorderConfig {
   return parsed
 }
 
+/** styled startup banner, printed before each command action (stderr) */
+function banner(): void {
+  console.error(`${color.bold(color.cyan("tokrec"))} ${color.yellow(`v${pkg.version}`)}`)
+}
+
 export function parseArgs(argv: string[] = process.argv): CLIResult {
   let result: CLIResult | undefined
   let error: string | undefined
 
-  const cli = createCLI("tokrec", pkg.version).description(
-    "Minimal TikTok live stream recorder — Bun + TypeScript",
-  )
+  const cli = cac("tokrec")
+  cli.version(pkg.version)
+  cli.help()
+  cli.usage("Minimal TikTok live stream recorder — Bun + TypeScript")
 
-  cli.command("", "Record a TikTok live stream", (cmd) => {
-    registerRecorderOptions(cmd)
-    cmd.action((opts: Record<string, unknown>) => {
-      try {
-        result = { command: "record", config: parseRecorderOpts(opts) }
-      } catch (err) {
-        error = err instanceof Error ? err.message : String(err)
-      }
-    })
+  const record = cli.command("", "Record a TikTok live stream")
+  registerRecorderOptions(record)
+  record.action((opts: Record<string, unknown>) => {
+    banner()
+    try {
+      result = { command: "record", config: parseRecorderOpts(opts) }
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err)
+    }
   })
 
-  cli.command("start", "Start recorder in a tmux session (survives terminal close)", (cmd) => {
-    registerRecorderOptions(cmd)
-    cmd.action((opts: Record<string, unknown>) => {
-      try {
-        parseRecorderOpts(opts)
-        // Pass through original args (minus 'start') to the inner tokrec process
-        const args = argv.slice(2).filter((a) => a !== "start")
-        result = { command: "start", args }
-      } catch (err) {
-        error = err instanceof Error ? err.message : String(err)
-      }
-    })
+  const start = cli.command("start", "Start recorder in a tmux session (survives terminal close)")
+  registerRecorderOptions(start)
+  start.action((opts: Record<string, unknown>) => {
+    banner()
+    try {
+      parseRecorderOpts(opts)
+      // Pass through original args (minus 'start') to the inner tokrec process
+      const args = argv.slice(2).filter((a) => a !== "start")
+      result = { command: "start", args }
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err)
+    }
   })
 
-  cli.command("stop", "Stop background tmux session(s)", (cmd) => {
-    cmd.option("-u, --user <name>", "Stop a specific user's session (omit to stop all)")
-    cmd.action((opts: Record<string, unknown>) => {
-      result = { command: "stop", user: opts.user as string | undefined }
-    })
+  const stop = cli.command("stop", "Stop background tmux session(s)")
+  stop.option("-u, --user <name>", "Stop a specific user's session (omit to stop all)")
+  stop.action((opts: Record<string, unknown>) => {
+    banner()
+    result = { command: "stop", user: opts.user as string | undefined }
   })
 
-  cli.command("status", "Check tmux session(s)", (cmd) => {
-    cmd.option("-u, --user <name>", "Check a specific user's session (omit to show all)")
-    cmd.action((opts: Record<string, unknown>) => {
-      result = { command: "status", user: opts.user as string | undefined }
-    })
+  const status = cli.command("status", "Check tmux session(s)")
+  status.option("-u, --user <name>", "Check a specific user's session (omit to show all)")
+  status.action((opts: Record<string, unknown>) => {
+    banner()
+    result = { command: "status", user: opts.user as string | undefined }
   })
 
-  cli.command("setup", "Check cookie status or create cookies.json interactively", (cmd) => {
-    cmd.action(() => {
-      result = { command: "setup" }
-    })
+  const setup = cli.command("setup", "Check cookie status or create cookies.json interactively")
+  setup.action(() => {
+    banner()
+    result = { command: "setup" }
   })
 
   cli.parse(argv)

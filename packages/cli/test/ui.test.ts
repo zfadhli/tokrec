@@ -30,3 +30,16 @@ describe("restricted / no-stream display", () => {
     expect(writes.join("")).toContain("no stream URL")
   })
 })
+
+describe("spinner in non-interactive mode", () => {
+  test("emits plain lines, no cursor-hide or carriage-return rewrites", () => {
+    spyStdout()
+    const display = createDisplay()
+    display.checkingUser("x")
+    display.userLive("x", "123")
+    const out = writes.join("")
+    expect(out).toContain("Checking @x")
+    expect(out).not.toContain("\u001B[?25l")
+    expect(out).not.toContain("\r")
+  })
+})
