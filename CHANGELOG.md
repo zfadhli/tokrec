@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Removed `./cli` subpath export and deep imports** — breaking, pre-1.0. Import the CLI from `@zfadhli/tokrec-cli` instead.
 - **CLI install and one-off commands now use `@zfadhli/tokrec-cli`** — e.g. `npm install -g @zfadhli/tokrec-cli` and `npx @zfadhli/tokrec-cli`.
 - **Age-protected LIVES are now reported explicitly** — age-protected rooms show as restricted instead of being confused with offline or a missing stream URL.
+- **CLI colors and spinner come from `yoctocolors` and `yocto-spinner`** — `@zfadhli/koko-cli` is dropped; args are parsed with `cac` directly. Flags and output text are unchanged. Non-TTY runs now print one plain line per state change instead of `\r`/ANSI rewrites, and skip per-tick text updates.
 
 ## [0.13.0] — 2026-07-06
 
