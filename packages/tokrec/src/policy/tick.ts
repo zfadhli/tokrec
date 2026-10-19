@@ -11,18 +11,17 @@ export interface TickFacts {
   readonly recordedSec: number
   readonly oneShot: boolean
   readonly consecutiveErrors: number
-  readonly stopRequested: boolean
 }
 
 export type TickPlan =
   | { kind: "poll"; note: string }
   | { kind: "hold"; reason: "restricted" | "no-stream-url"; room: RoomRef }
   | { kind: "record"; room: RoomRef; stream: StreamRef }
-  | { kind: "stop"; why: "one-shot" | "user" | "gave-up" }
+  | { kind: "stop"; why: "one-shot" | "gave-up" }
 
 export function planTick(v: Verdict, f: TickFacts): TickPlan {
-  if (f.stopRequested) return { kind: "stop", why: "user" }
-
+  // No user-stop arm: `stop()` aborts the scope, which ends the poll loop before
+  // the next tick. A user stop is a signal, never a verdict.
   switch (v.reason) {
     case "live":
       if (f.recording) return { kind: "poll", note: "already recording" }

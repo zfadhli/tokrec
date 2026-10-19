@@ -133,7 +133,6 @@ export function createRecorder(config: RecorderConfig): RecorderController {
           recordedSec,
           oneShot: cfg.duration > 0,
           consecutiveErrors,
-          stopRequested: activeScope.signal.aborted,
         }
         consecutiveErrors =
           verdict.reason === "error" || verdict.reason === "no-room-id" ? consecutiveErrors + 1 : 0

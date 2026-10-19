@@ -28,7 +28,6 @@ const IDLE: TickFacts = {
   recordedSec: 0,
   oneShot: false,
   consecutiveErrors: 0,
-  stopRequested: false,
 }
 
 const FACTS: [string, TickFacts][] = [
@@ -96,15 +95,6 @@ describe("planTick — 6 reasons × 4 fact combinations", () => {
       })
     }
   }
-
-  test("stopRequested outranks every reason", () => {
-    for (const reason of REASONS) {
-      expect(planTick(verdict(reason), { ...IDLE, stopRequested: true })).toEqual({
-        kind: "stop",
-        why: "user",
-      })
-    }
-  })
 
   test("a single error below the threshold keeps polling", () => {
     expect(planTick(verdict("no-room-id"), { ...IDLE, consecutiveErrors: 9 })).toEqual({

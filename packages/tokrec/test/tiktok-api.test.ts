@@ -83,7 +83,7 @@ describe("createTikTokApi with fixture mocks", () => {
     })
 
     const api = createTikTokApi(http)
-    const roomId = await api.getRoomId("anomaliaa27")
+    const roomId = (await api.getVerdict("anomaliaa27")).room?.id ?? null
     expect(roomId).toBe("7649515096078600981")
 
     const isLive = await api.isRoomAlive(roomId!)
@@ -102,7 +102,7 @@ describe("createTikTokApi with fixture mocks", () => {
     })
 
     const api = createTikTokApi(http)
-    const roomId = await api.getRoomId("nonexistent")
+    const roomId = (await api.getVerdict("nonexistent")).room?.id ?? null
     expect(roomId).toBeNull()
 
     await http.close()
@@ -117,7 +117,7 @@ describe("createTikTokApi with fixture mocks", () => {
 
     const api = createTikTokApi(http)
     // TikTok assigns persistent room IDs even when offline
-    const roomId = await api.getRoomId("naylaarindinta")
+    const roomId = (await api.getVerdict("naylaarindinta")).room?.id ?? null
     expect(roomId).toBe("7649522507606919957")
 
     // But the room should NOT be alive
@@ -140,7 +140,7 @@ describe("createTikTokApi with fixture mocks", () => {
     })
 
     const api = createTikTokApi(http)
-    const roomId = await api.getRoomId("anomaliaa27")
+    const roomId = (await api.getVerdict("anomaliaa27")).room?.id ?? null
     // No SSR data, no universal data, no room/info API → should return null
     expect(roomId).toBeNull()
 
@@ -160,7 +160,7 @@ describe("createTikTokApi with fixture mocks", () => {
     })
 
     const api = createTikTokApi(http)
-    const roomId = await api.getRoomId("anomaliaa27")
+    const roomId = (await api.getVerdict("anomaliaa27")).room?.id ?? null
     // The profile page has universal data with userId but no roomId
     // API will try room/enter API which returns 404 → null
     expect(roomId).toBeNull()
@@ -231,8 +231,8 @@ describe("isRoomAlive with check_alive endpoint", () => {
 
     const api = createTikTokApi(http)
 
-    // First call populates cache via getRoomId
-    const roomId = await api.getRoomId("anomaliaa27")
+    // First call populates cache via getVerdict
+    const roomId = (await api.getVerdict("anomaliaa27")).room?.id ?? null
     expect(roomId).toBe("7649515096078600981")
 
     // isRoomAlive uses cache — should NOT call check_alive

@@ -7,7 +7,7 @@
  * public verdict surface.
  *
  * Architecture:
- *   createTikTokApi(httpClient) → { getRoomId, isRoomAlive, getLiveUrl, getVerdict }
+ *   createTikTokApi(httpClient) → { isRoomAlive, getLiveUrl, getVerdict }
  *
  * All public methods share a per-tick cache so the page is fetched at most once
  * per poll cycle. The optional `signal` aborts in-flight HTTP requests.
@@ -28,8 +28,6 @@ import type { Logger } from "../lib/logger"
 import type { HttpClient } from "../ports/http"
 
 export interface TikTokApi {
-  /** Resolve a username to a room ID. Returns null if not found. */
-  getRoomId(user: string): Promise<string | null>
   /** Check if a room is currently live. */
   isRoomAlive(roomId: string): Promise<boolean>
   /** Get the best-quality FLV stream URL for a room. Returns null on failure. */
@@ -78,11 +76,6 @@ export function createTikTokApi(
 
     async getVerdict(user: string): Promise<Verdict> {
       return ensureCache(user)
-    },
-
-    async getRoomId(user: string): Promise<string | null> {
-      const verdict = await ensureCache(user)
-      return verdict.room?.id ?? null
     },
 
     async isRoomAlive(roomId: string): Promise<boolean> {
