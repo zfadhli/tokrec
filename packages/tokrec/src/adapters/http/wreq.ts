@@ -2,6 +2,9 @@
  * HTTP client — thin wrapper around wreq-js createSession.
  * Provides TLS fingerprint impersonation, cookie jar, proxy support,
  * and configurable rate limiting to prevent WAF triggering.
+ *
+ * This file owns the `HttpClient` contract: it is the seam every adapter and
+ * `test/utils/mock-http.ts` implement. There is no second definition.
  */
 
 import { createSession, type Session } from "wreq-js"
@@ -10,13 +13,13 @@ import { createRateLimiter } from "./rate-limit"
 
 // BodyInit is only available inside declare module "bun" in bun-types, not as a global
 // under the ES2022 lib. We explicitly import it to keep lib focused on ES2022.
-type _BodyInit = import("bun").BodyInit
+export type HttpBody = import("bun").BodyInit
 
 export interface HttpClient {
   get: (url: string, signal?: AbortSignal) => Promise<Response>
   post: (
     url: string,
-    body?: _BodyInit,
+    body?: HttpBody,
     headers?: Record<string, string>,
     signal?: AbortSignal,
   ) => Promise<Response>
@@ -95,7 +98,7 @@ export async function createHttpClient(config: RecorderConfig): Promise<HttpClie
     get: async (url: string, signal?: AbortSignal) => rateLimitedFetch(url, undefined, signal),
     post: async (
       url: string,
-      body?: _BodyInit,
+      body?: HttpBody,
       headers?: Record<string, string>,
       signal?: AbortSignal,
     ) =>

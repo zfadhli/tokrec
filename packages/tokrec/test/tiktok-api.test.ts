@@ -8,13 +8,13 @@
  */
 
 import { describe, expect, test } from "bun:test"
+import type { HttpClient } from "../src/adapters/http/wreq"
 import {
   extractSigiState,
   extractUserFromUniversalData,
   findStreamUrlRecursively,
 } from "../src/adapters/tiktok/parse"
 import { isLiveReason, type Verdict } from "../src/domain/verdict"
-import type { HttpClient } from "../src/ports/http"
 import { createTikTokApi } from "../src/session/probe"
 import { createMockHttp, loadFixture } from "./utils/mock-http"
 

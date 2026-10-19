@@ -1,6 +1,6 @@
 import type { RoomRef, SourceId, StreamRef } from "../../../domain/verdict"
-import type { HttpClient } from "../../../ports/http"
-import type { WebcastReader } from "../../../ports/tiktok"
+import type { HttpClient } from "../../http/wreq"
+import type { WebcastReader } from "../webcast"
 
 /**
  * What one discovery source found. `room`/`denied` end the chain; `miss` and

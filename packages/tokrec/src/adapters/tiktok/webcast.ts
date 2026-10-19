@@ -1,9 +1,37 @@
-import type { RoomRef } from "../../domain/verdict"
-import type { HttpClient } from "../../ports/http"
-import type { RoomApiResult, RoomFacts, WebcastReader } from "../../ports/tiktok"
+import type { RoomRef, StreamRef } from "../../domain/verdict"
+import type { HttpClient } from "../http/wreq"
 import { findStreamUrlRecursively } from "./parse"
 
 const WEBCAST_BASE = "https://webcast.tiktok.com"
+
+/**
+ * Discriminated room/info result: refusals (notably status_code 4003110)
+ * and transport failures surface as `{ ok: false }` instead of null.
+ * `statusCode: 0` means the request threw before a status was read.
+ */
+export type RoomApiResult<T> =
+  | { ok: true; value: T | null }
+  | { ok: false; statusCode: number; body: string }
+
+/** Authoritative room/info facts: the room plus its stream URL when present. */
+export interface RoomFacts {
+  readonly room: RoomRef
+  readonly stream: StreamRef | null
+}
+
+/** What discovery sources consume. `createWebcastApi` is the only implementation. */
+export interface WebcastReader {
+  fetchFromRoomApi: <T>(
+    roomId: string,
+    extract: (data: Record<string, unknown>) => T | null,
+  ) => Promise<RoomApiResult<T>>
+  fetchCheckAlive: (roomId: string) => Promise<boolean>
+  fetchStreamUrlFromApi: (roomId: string) => Promise<RoomApiResult<string>>
+  /** room/info as domain facts; 4003110 comes back as `{ ok: false }`. */
+  roomInfo: (roomId: string) => Promise<RoomApiResult<RoomFacts>>
+  /** Resolve a 4003110 refusal: alive → restricted candidate, else offline. */
+  refusedRoom: (roomId: string, title: string | null) => Promise<RoomRef>
+}
 
 export function createWebcastApi(
   http: HttpClient,

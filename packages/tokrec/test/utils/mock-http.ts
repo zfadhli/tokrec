@@ -9,7 +9,7 @@
  *   const api = createTikTokApi(http)
  */
 
-import type { HttpClient } from "../../src/ports/http"
+import type { HttpClient } from "../../src/adapters/http/wreq"
 
 export interface MockResponse {
   status: number

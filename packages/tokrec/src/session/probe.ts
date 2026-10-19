@@ -16,6 +16,7 @@
  * 403 errors. All lookups go through room/info (reliable for live + offline).
  */
 
+import type { HttpClient } from "../adapters/http/wreq"
 import { createApiLiveSource } from "../adapters/tiktok/discovery/api-live"
 import { discover } from "../adapters/tiktok/discovery/chain"
 import { createPageSource } from "../adapters/tiktok/discovery/page"
@@ -25,7 +26,6 @@ import { createPageFetcher } from "../adapters/tiktok/page"
 import { createWebcastApi } from "../adapters/tiktok/webcast"
 import { isLiveReason, type Verdict, verdictOf } from "../domain/verdict"
 import type { Logger } from "../lib/logger"
-import type { HttpClient } from "../ports/http"
 
 export interface TikTokApi {
   /** Check if a room is currently live. */
