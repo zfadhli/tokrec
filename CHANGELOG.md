@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.1] — 2026-10-19
+
+CLI packaging fix. `@zfadhli/tokrec` is unchanged from 0.15.0 and is not
+republished.
+
+### Fixed
+
+- **`@zfadhli/tokrec-cli@0.15.0` could not be installed.** Its published
+  manifest carried `"@zfadhli/tokrec": "workspace:^"` — the Bun workspace
+  protocol, which npm does not implement, so every `npm install` of the package
+  died with `EUNSUPPORTEDPROTOCOL: Unsupported URL Type "workspace:"`. The
+  release now packs with `bun pm pack`, which rewrites the range to `^0.15.0`,
+  and publishes that tarball with `npm publish <tarball>` so the manifest ships
+  as packed. `0.15.0` of the CLI is deprecated.
+
+### Changed — CI
+
+- The publish workflow skips a package whose version is already on the registry,
+  so a retry after a partial release finishes the run instead of failing on
+  `EPUBLISHCONFLICT`.
+
 ## [0.15.0] — 2026-10-19
 
 Version: `0.15.0`. Internal restructuring plus one fix that landed on `main`

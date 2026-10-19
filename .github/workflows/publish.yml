@@ -34,13 +34,45 @@ jobs:
       - name: Build
         run: bun run build
 
+      # A retry after a partially failed release must finish, not die on
+      # EPUBLISHCONFLICT. Each publish step is skipped when its version exists.
+      - name: Resolve versions already on the registry
+        id: published
+        run: |
+          lib=$(node -p "require('./packages/tokrec/package.json').version")
+          cli=$(node -p "require('./packages/cli/package.json').version")
+          lib_exists=$(npm view "@zfadhli/tokrec@$lib" version >/dev/null 2>&1 && echo true || echo false)
+          cli_exists=$(npm view "@zfadhli/tokrec-cli@$cli" version >/dev/null 2>&1 && echo true || echo false)
+          echo "lib=$lib lib_exists=$lib_exists cli=$cli cli_exists=$cli_exists"
+          {
+            echo "lib_exists=$lib_exists"
+            echo "cli_exists=$cli_exists"
+          } >> "$GITHUB_OUTPUT"
+
       # No NODE_AUTH_TOKEN on purpose: the npm CLI uses the OIDC trusted-publisher
       # flow when a token is absent, and prefers it when one is present.
       - name: Publish lib to npm
+        if: steps.published.outputs.lib_exists == 'false'
         run: npm publish --workspace packages/tokrec --provenance --access public
 
+      # The CLI depends on the lib through the Bun-only `workspace:` protocol,
+      # which npm neither understands nor rewrites. `bun pm pack` rewrites it to a
+      # concrete range; `npm publish <tarball>` then ships that manifest as packed.
+      - name: Pack cli with resolved workspace range
+        if: steps.published.outputs.cli_exists == 'false'
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/build/npm"
+          bun pm pack --cwd packages/cli --destination "$GITHUB_WORKSPACE/build/npm"
+
       - name: Publish cli to npm
-        run: npm publish --workspace packages/cli --provenance --access public
+        if: steps.published.outputs.cli_exists == 'false'
+        run: |
+          tarball=$(ls build/npm/zfadhli-tokrec-cli-*.tgz)
+          if tar -xzOf "$tarball" package/package.json | grep -q '"workspace:'; then
+            echo "::error::workspace: protocol survived packing in $tarball"
+            exit 1
+          fi
+          npm publish "$tarball" --provenance --access public
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
